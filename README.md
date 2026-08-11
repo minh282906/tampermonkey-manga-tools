@@ -96,7 +96,7 @@ Rất hoan nghênh sự đóng góp (Pull Request) cải tiến code từ cộng
 ### Quy trình phát triển:
 1. Clone dự án về máy:
    ```bash
-   git clone https://github.com/minh282906/manga-downloaders.git
+   git clone https://github.com/minh282906/tampermonkey-manga-tools.git
    cd manga-downloaders
    ```
 2. Chỉnh sửa code trực tiếp trong thư mục
@@ -108,7 +108,7 @@ Rất hoan nghênh sự đóng góp (Pull Request) cải tiến code từ cộng
 ## 🐛 Báo Lỗi & Yêu Cầu Tính Năng
 
 Nếu bạn gặp trang web bị lỗi, không tải được ảnh hoặc muốn đóng góp ý tưởng mới, vui lòng gửi báo lỗi tại:
-**[Tạo Issue Báo Lỗi Mới](https://github.com/minh282906/manga-downloaders/issues/new)**
+**[Tạo Issue Báo Lỗi Mới](https://github.com/minh282906/tampermonkey-manga-tools/issues/new)**
 
 ---
 

@@ -28,7 +28,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 - 🚀 **Tải song song siêu tốc (Parallel Queue):** Tải đồng thời 4 luồng ảnh giúp tiết kiệm thời gian tối đa mà không gây nghẽn băng thông.
 - 🧩 **Giải mã Ma trận 4x4 chuẩn 100%:** Tự động khôi phục các trang ảnh bị xáo trộn ma trận (Scramble / Matrix Transpose) về đúng nguyên bản.
 - 📦 **Nén ZIP nguyên bản (Pure Zip Writer):** Đóng gói file ZIP trực tiếp trong bộ nhớ RAM không cần qua server trung gian hay thư viện ngoài.
-- 🔄 **Tự động thích ứng chuyển Chap (SPA Route Watcher):** Tự động dọn dẹp bộ nhớ RAM và cập nhật dữ liệu khi bấm chuyển Chap mà không cần bấm F5.
+- 🔄 **Tự động thích ứng chuyển Chap (SPA Route Watcher):** Tự động dọn dẹp bộ nhớ RAM và cập nhật dữ liệu khi bấm chuyển Chap mà không cần refresh trang.
 - 🎨 **Giao diện riêng biệt cho từng Script:** Bảng UI thu gọn đính ở góc trên bên phải với tông màu nhận diện thương hiệu riêng biệt cho từng nền tảng.
 - 🏷️ **Phân loại ảnh thông minh:**
   - Trang truyện chính: Đánh số thứ tự tăng dần `1.png`, `2.png`, `3.png`...

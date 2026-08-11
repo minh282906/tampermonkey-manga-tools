@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Comici+ Universal Downloader
-// @version      1.0
+// @version      1.1
 // @description  Tải và giải mã chuẩn truyện trên nền tảng Comici+, có đóng gói ZIP, lưu tên trang theo số thứ tự tăng dần và một file txt lưu tên mã truyện tương ứng (Champion Cross, Comic Growl, Young Champion, Young Animal, Hana to Yume, Big Comics, Rimacomi+, HERO'S Web, Takecomic, Hayacomic, MAGKAN, COMIC MeDu, Comic PASH!, KimiComi, Comic Room Base, Comirela, BiBiBi Comic, Mangalt, Comici Comic).
 // @author       anonymous & AI
 // @run-at       document-start
@@ -45,6 +45,7 @@
 // @match        https://mangalt.jp/*
 // @match        https://comics.comici.jp/*
 // @match        https://rimacomiplus.jp/*
+// @preserve
 // ==/UserScript==
 
 (function comiciUniversalDownloader() {
@@ -197,30 +198,48 @@
     return "Comici_Episode";
   }
 
+  // TẠO TÊN FILE ZIP ĐÚNG CHUẨN: "Tên Truyện - Tên Chap"
   function getCleanTitle() {
     try {
-      const el = DOC.getElementById('comici-viewer') || DOC.querySelector('[data-share-text], [data-comic-title]');
-      if (el) {
-        let shareText = el.getAttribute('data-share-text');
-        if (shareText) {
-          shareText = shareText.split('#')[0].split('[')[0].trim();
-          shareText = shareText.replace(/[\\/*?:"<>|]/g, '').trim();
-          if (shareText.length > 1) return shareText;
-        }
+      let seriesTitle = "";
+      let episodeTitle = "";
 
-        const title = el.getAttribute('data-comic-title');
-        if (title) {
-          const clean = title.replace(/[\\/*?:"<>|]/g, '').trim();
-          if (clean.length > 1) return clean;
+      // 1. Lấy Tên Tựa Truyện
+      const viewerEl = DOC.getElementById('comici-viewer') || DOC.querySelector('[data-comic-title]');
+      if (viewerEl) {
+        seriesTitle = viewerEl.getAttribute('data-comic-title') || "";
+      }
+
+      if (!seriesTitle) {
+        const sEl = DOC.querySelector('.episode-header-series-title, .series-header-title, [class*="series-title"]');
+        if (sEl) seriesTitle = sEl.textContent.trim();
+      }
+
+      // 2. Lấy Tên Chap (VD: "第2話")
+      const eEl = DOC.querySelector('.episode-header-title, [class*="episode-title"], .ep-title');
+      if (eEl) {
+        episodeTitle = eEl.textContent.trim();
+      }
+
+      // 3. Dự phòng lấy từ document.title
+      if ((!seriesTitle || !episodeTitle) && DOC.title) {
+        const parts = DOC.title.split(/[｜|・]/);
+        if (parts.length >= 2) {
+          if (!seriesTitle) seriesTitle = parts[0].trim();
+          if (!episodeTitle) episodeTitle = parts[1].trim();
         }
       }
-    } catch (e) {}
 
-    try {
-      let t = DOC.title || '';
-      t = t.split('｜')[0].split('|')[0].replace(/【[^】]*】/g, '').trim();
-      t = t.replace(/[\\/*?:"<>|]/g, '').trim();
-      if (t) return t;
+      seriesTitle = seriesTitle.replace(/[\\/*?:"<>|]/g, '').trim();
+      episodeTitle = episodeTitle.replace(/[\\/*?:"<>|]/g, '').trim();
+
+      if (seriesTitle && episodeTitle && !seriesTitle.includes(episodeTitle)) {
+        return `${seriesTitle} - ${episodeTitle}`;
+      } else if (seriesTitle) {
+        return seriesTitle;
+      } else if (episodeTitle) {
+        return episodeTitle;
+      }
     } catch (e) {}
 
     return `Comici_${getEpisodeId()}`;
@@ -240,17 +259,13 @@
     return defaultExt;
   }
 
-  // Quét LẤY TẤT CẢ Ảnh PR / Quảng Cáo / Đề Xuất (Cả đầu trang #xCVTopPr và cuối trang #xCVPr)
+  // Quét LẤY TẤT CẢ Ảnh PR / Quảng Cáo TOÀN TRANG (Lọc bỏ các icon logo nhỏ)
   async function getAllPrImages(timeoutMs = 400) {
     const selectors = [
       '.-cv-pr-img-wrap img',
-      '#xCVTopPr img',
-      '#xCVPr img',
-      '.-cv-pr-link img',
-      '.mode-pr img',
-      '.x-cv-pr-img',
-      '.-cv-pr-btn img',
-      '#xCVComicInfoPage img'
+      '#xCVTopPr figure img',
+      '.mode-top-pr img',
+      '.x-cv-pr-img'
     ];
     
     const startTime = Date.now();
@@ -260,11 +275,19 @@
       const imgs = DOC.querySelectorAll(selectors.join(', '));
       for (const img of imgs) {
         let src = img.getAttribute('data-src') || img.getAttribute('src') || '';
-        if (src && !src.startsWith('data:') && (src.includes('comici.jp') || src.includes('rimacomiplus.jp') || src.includes('comic-growl.com') || /\.(jpg|jpeg|png|webp)/i.test(src))) {
-          if (src.startsWith('//')) src = 'https:' + src;
-          if (!prList.includes(src)) {
-            prList.push(src);
-          }
+        if (!src || src.startsWith('data:')) continue;
+
+        // BỘ LỌC KÍCH THƯỚC: Bỏ qua các ảnh icon logo nhỏ (< 300px height hoặc dạng ảnh nằm ngang w/h > 1.8)
+        const w = img.naturalWidth || parseInt(img.getAttribute('width') || '0', 10);
+        const h = img.naturalHeight || parseInt(img.getAttribute('height') || '0', 10);
+
+        if ((w > 0 && h > 0) && (h < 300 || (w / h) > 1.8)) {
+          continue; // Bỏ qua logo nút bấm
+        }
+
+        if (src.startsWith('//')) src = 'https:' + src;
+        if (!prList.includes(src)) {
+          prList.push(src);
         }
       }
       if (prList.length > 0) break;
@@ -343,7 +366,7 @@
     let prCount = 0;
     let mainPageNo = 1;
 
-    // 1. Quét LẤY TẤT CẢ Ảnh PR / Quảng cáo / Đề xuất từ DOM
+    // 1. Quét LẤY TẤT CẢ Ảnh PR / Quảng cáo toàn trang từ DOM
     const prSrcs = await getAllPrImages(400);
     for (const prSrc of prSrcs) {
       prCount++;
@@ -373,7 +396,7 @@
 
       resultPages.push({
         isPR: false,
-        pageNo: mainPageNo++, // Đánh số trang chính 1, 2, 3...
+        pageNo: mainPageNo++, // Luôn xuất phát từ trang 1
         url: imgUrl,
         scramble: scramble
       });
@@ -595,7 +618,7 @@
       const tasks = pages.map((pageObj) => async () => {
         const rawBlob = await fetchImageBlob(pageObj.url);
 
-        // Ảnh PR / Bìa / Quảng cáo: Giữ nguyên định dạng gốc 100%, không qua Canvas
+        // Ảnh PR / Bìa / Quảng cáo: Giữ nguyên 100% định dạng gốc, không qua Canvas
         if (pageObj.isPR) {
           let ext = getExtensionFromUrl(pageObj.url);
           if (!ext && rawBlob.type) {

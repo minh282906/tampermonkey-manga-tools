@@ -16,10 +16,10 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 
 | Script | Các trang hỗ trợ | Trạng thái | Cài Đặt (1-Click) |
 | :--- | :--- | :---: | :---: |
-| **Comici+ Downloader** | Champion Cross, Comic Growl, Young Champion, Young Animal, Rimacomi+, HERO'S Web... *(20+ sites)* | 🟢 Hoạt động | [Cài đặt](https://raw.githubusercontent.com/minh282906/manga-downloaders/main/ComiciDownloader.user.js) |
-| **GigaViewer Downloader** | ShonenJump+, Sunday Webry, Comic Days, Kurage Bunch, MAGCOMI, Comic Gardo, Comic Zenon... *(20+ sites)* | 🟢 Hoạt động | [Cài đặt](https://raw.githubusercontent.com/minh282906/manga-downloaders/main/GigaViewerDownloader.user.js) |
-| **EbookJapan Downloader** | EbookJapan bviewer (`ebookjapan.yahoo.co.jp`) | 🟢 Hoạt động | [Cài đặt](https://raw.githubusercontent.com/minh282906/manga-downloaders/main/EbookJP.user.js) |
-| **CMOA Downloader** | CMOA SpeedReader (`cmoa.jp`) | 🟢 Hoạt động | [Cài đặt](https://raw.githubusercontent.com/minh282906/manga-downloaders/main/CmoaJPDownloader.user.js) |
+| **Comici+ Downloader** | Champion Cross, Comic Growl, Young Champion, Young Animal, Rimacomi+, HERO'S Web... *(20+ sites)* | 🟢 Hoạt động | [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/ComiciDownloader.user.js) |
+| **GigaViewer Downloader** | ShonenJump+, Sunday Webry, Comic Days, Kurage Bunch, MAGCOMI, Comic Gardo, Comic Zenon... *(20+ sites)* | 🟢 Hoạt động | [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/GigaViewerDownloader.user.js) |
+| **EbookJapan Downloader** | EbookJapan bviewer (`ebookjapan.yahoo.co.jp`) | 🟢 Hoạt động | [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/EbookJP.user.js) |
+| **CMOA Downloader** | CMOA SpeedReader (`cmoa.jp`) | 🟢 Hoạt động | [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/CmoaJPDownloader.user.js) |
 
 ---
 

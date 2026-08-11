@@ -45,7 +45,6 @@
 // @match        https://mangalt.jp/*
 // @match        https://comics.comici.jp/*
 // @match        https://rimacomiplus.jp/*
-// @preserve
 // ==/UserScript==
 
 (function comiciUniversalDownloader() {

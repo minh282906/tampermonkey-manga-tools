@@ -277,11 +277,11 @@
         let src = img.getAttribute('data-src') || img.getAttribute('src') || '';
         if (!src || src.startsWith('data:')) continue;
 
-        // BỘ LỌC KÍCH THƯỚC: Bỏ qua các ảnh icon logo nhỏ (< 300px height hoặc dạng ảnh nằm ngang w/h > 1.8)
+        // BỘ LỌC KÍCH THƯỚC: Bỏ qua các ảnh icon logo nhỏ (< 500px height hoặc dạng ảnh nằm ngang w/h > 1.8)
         const w = img.naturalWidth || parseInt(img.getAttribute('width') || '0', 10);
         const h = img.naturalHeight || parseInt(img.getAttribute('height') || '0', 10);
 
-        if ((w > 0 && h > 0) && (h < 500) {
+        if (w > 0 && h > 0 && h < 500) {
           continue; // Bỏ qua logo nút bấm và banner quảng cáo dưới 500px
         }
 

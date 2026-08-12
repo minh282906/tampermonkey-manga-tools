@@ -281,8 +281,8 @@
         const w = img.naturalWidth || parseInt(img.getAttribute('width') || '0', 10);
         const h = img.naturalHeight || parseInt(img.getAttribute('height') || '0', 10);
 
-        if ((w > 0 && h > 0) && (h < 300 || (w / h) > 1.8)) {
-          continue; // Bỏ qua logo nút bấm
+        if ((w > 0 && h > 0) && (h < 500) {
+          continue; // Bỏ qua logo nút bấm và banner quảng cáo dưới 500px
         }
 
         if (src.startsWith('//')) src = 'https:' + src;

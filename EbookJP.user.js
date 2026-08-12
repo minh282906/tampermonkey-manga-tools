@@ -1,6 +1,7 @@
 // ==UserScript==
 // @name         EbookJapan Downloader
 // @namespace    https://ebookjapan.yahoo.co.jp/
+// @icon         https://play-lh.googleusercontent.com/_y6g7elu9JUiyApYhxYikneQZjxPrhIXdz4nuB6y8TreLY1wyhbhRi6WzexLR-mPLP01CYs_T8IElkxWndTNh4k=w240-h480-rw
 // @version      1.0
 // @description  Giải mã và tải chuẩn 100% ảnh truyện bị xáo trộn trên EbookJapan, có đóng gói ZIP, lưu tên trang theo số thứ tự tăng dần và một file txt lưu tên mã truyện tương ứng.
 // @author       anonymous & AI

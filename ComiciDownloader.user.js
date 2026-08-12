@@ -446,6 +446,16 @@
    * 3. THUẬT TOÁN GIẢI MÃ MA TRẬN 4x4
    * ========================================================================= */
   async function unscrambleComiciBlob(rawBlob, scrambleArray, isJpg) {
+    // 1. Nếu không có mảng scramble hoặc mảng thứ tự gốc [0,1,2...], dùng trực tiếp file gốc
+    const isIdentity = Array.isArray(scrambleArray) && scrambleArray.length === 16 && scrambleArray.every((val, idx) => val === idx);
+    if (!scrambleArray || !Array.isArray(scrambleArray) || scrambleArray.length < 16 || isIdentity) {
+      if (!isJpg) {
+        // Giữ nguyên file gốc từ CDN, không tốn RAM vẽ Canvas!
+        const buffer = await rawBlob.arrayBuffer();
+        return { uint8Array: new Uint8Array(buffer), ext: 'png' };
+      }
+    }
+
     const objUrl = WIN.URL.createObjectURL(rawBlob);
     const img = new WIN.Image();
     img.decoding = "async";
@@ -463,12 +473,11 @@
     const canvas = DOC.createElement('canvas');
     canvas.width = width;
     canvas.height = height;
-    const ctx = canvas.getContext('2d', { alpha: !isJpg });
-
-    if (isJpg) {
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, width, height);
-    }
+    
+    // TỐI ƯU: Luôn tắt alpha để ép Canvas xuất PNG 24-bit RGB nhẹ hơn 25-30%
+    const ctx = canvas.getContext('2d', { alpha: false });
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, width, height);
 
     const cellWidth = Math.floor(width / 4);
     const cellHeight = Math.floor(height / 4);

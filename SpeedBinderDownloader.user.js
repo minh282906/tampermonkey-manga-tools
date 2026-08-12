@@ -359,7 +359,9 @@
     const canvas = DOC.createElement('canvas');
     canvas.width = targetW;
     canvas.height = targetH;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { alpha: false });
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, targetW, targetH);
 
     if (isJpg) {
       ctx.fillStyle = '#ffffff';

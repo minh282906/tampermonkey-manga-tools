@@ -461,17 +461,16 @@
     const canvas = DOC.createElement('canvas');
     canvas.width = width;
     canvas.height = height;
-    const ctx = canvas.getContext('2d', { alpha: !isJpg });
 
-    if (isJpg) {
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, width, height);
-    }
+    // TỐI ƯU: Tắt alpha để xuất 24-bit RGB PNG
+    const ctx = canvas.getContext('2d', { alpha: false });
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, width, height);
 
     const cellWidth = Math.floor(width / (CONFIG.DIVIDE_NUM * CONFIG.MULTIPLE)) * CONFIG.MULTIPLE;
     const cellHeight = Math.floor(height / (CONFIG.DIVIDE_NUM * CONFIG.MULTIPLE)) * CONFIG.MULTIPLE;
 
-    ctx.drawImage(img, 0, 0, width, height, 0, 0, width, height);
+    // ĐÃ XÓA LỆNH ctx.drawImage(img...) DƯ THỪA Ở ĐÂY
 
     for (let e = 0; e < CONFIG.DIVIDE_NUM * CONFIG.DIVIDE_NUM; e++) {
       const srcRow = Math.floor(e / CONFIG.DIVIDE_NUM);

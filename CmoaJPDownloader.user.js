@@ -1,6 +1,7 @@
 // ==UserScript==
-// @name         Cmoajp Downloader (Auto Dynamic Inset & Pure ZIP)
+// @name         Cmoajp Downloader
 // @namespace    https://www.cmoa.jp/
+// @icon         https://c-cmoa.akamaized.net/sol/pcc/images/webclipicon/icon_cmoa.png?v=
 // @version      1.0
 // @description  Giải mã ghép ảnh chuẩn tỷ lệ Inset % từng trang truyện của cmoa.jp, có đóng gói ZIP, lưu tên trang theo số thứ tự tăng dần và một file txt lưu tên mã truyện tương ứng.
 // @author       anonymous & AI

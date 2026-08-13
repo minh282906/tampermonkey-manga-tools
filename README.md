@@ -10,17 +10,18 @@ Bộ công cụ **Tampermonkey Userscripts** hỗ trợ tải ngầm, giải mã
 
 ## ⚡ Cài Đặt Nhanh (1-Click Install)
 
-*(Yêu cầu trình duyệt đã cài đặt tiện ích mở rộng [Tampermonkey](https://www.tampermonkey.net/))*
+_(Yêu cầu trình duyệt đã cài đặt tiện ích mở rộng [Tampermonkey](https://www.tampermonkey.net/))_
 
 Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp vào Tampermonkey:
 
-| Script | Các trang hỗ trợ | Trạng thái | Cài Đặt (1-Click) |
-| :--- | :--- | :---: | :---: |
-| **Comici+ Downloader** | Champion Cross, Comic Growl, Young Champion, Young Animal, Rimacomi+, HERO'S Web... *(20+ sites)* | 🟢 Hoạt động | [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/ComiciDownloader.user.js) |
-| **GigaViewer Downloader** | ShonenJump+, Sunday Webry, Comic Days, Kurage Bunch, MAGCOMI, Comic Gardo, Comic Zenon... *(20+ sites)* | 🟢 Hoạt động | [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/GigaViewerDownloader.user.js) |
-| **EbookJapan Downloader** | EbookJapan bviewer (`ebookjapan.yahoo.co.jp`) | 🟢 Hoạt động | [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/EbookJPDownloader.user.js) |
-| **SpeedBinder Downloader** | Comic C'moA và Yanmaga Web | 🟢 Hoạt động | [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/SpeedBinderDownloader.user.js) |
-| **Pocket Downloader** | MagaPoke (`pocket.shonenmagazine.com`) | 🟢 Hoạt động | [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/PocketShonenMagazineDownloader.user.js) |
+| Script                     | Các trang hỗ trợ                                                                                        |  Trạng thái  |                                                      Cài Đặt (1-Click)                                                       |
+| :------------------------- | :------------------------------------------------------------------------------------------------------ | :----------: | :--------------------------------------------------------------------------------------------------------------------------: |
+| **Comici+ Downloader**     | Champion Cross, Comic Growl, Young Champion, Young Animal, Rimacomi+, HERO'S Web... _(20+ sites)_       | 🟢 Hoạt động |        [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/ComiciDownloader.user.js)        |
+| **GigaViewer Downloader**  | ShonenJump+, Sunday Webry, Comic Days, Kurage Bunch, MAGCOMI, Comic Gardo, Comic Zenon... _(20+ sites)_ | 🟢 Hoạt động |      [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/GigaViewerDownloader.user.js)      |
+| **EbookJapan Downloader**  | EbookJapan bviewer (`ebookjapan.yahoo.co.jp`)                                                           | 🟢 Hoạt động |       [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/EbookJPDownloader.user.js)        |
+| **SpeedBinder Downloader** | Comic C'moA và Yanmaga Web                                                                              | 🟢 Hoạt động |     [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/SpeedBinderDownloader.user.js)      |
+| **Pocket Downloader**      | MagaPoke (`pocket.shonenmagazine.com`)                                                                  | 🟢 Hoạt động | [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/PocketShonenMagazineDownloader.user.js) |
+| **Amazon Downloader**      | (`amazon.co.jp`)                                                                                        | 🟢 Hoạt động |        [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/AmazonDownloader.user.js)        |
 
 ---
 
@@ -95,6 +96,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 Rất hoan nghênh sự đóng góp (Pull Request) cải tiến code từ cộng đồng!
 
 ### Quy trình phát triển:
+
 1. Clone dự án về máy:
    ```bash
    git clone https://github.com/minh282906/tampermonkey-manga-tools.git

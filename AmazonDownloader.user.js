@@ -3,7 +3,7 @@
 // @namespace    https://read.amazon.co.jp/
 // @version      1.0
 // @icon         https://www.amazon.co.jp/favicon.ico
-// @description  Tải và nén ZIP truyện Manga trên Amazon Kindle Web Reader. Cắt lề đen Edge-Scan, chia đôi 50/50 chuẩn toán học và xuất file txt ASIN.
+// @description  Tải và nén ZIP truyện Manga trên Amazon Kindle Web Reader.
 // @author       anonymous & AI
 // @match        https://read.amazon.co.jp/manga/*
 // @match        https://read.amazon.com/manga/*

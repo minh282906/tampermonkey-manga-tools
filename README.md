@@ -22,7 +22,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 | **SpeedBinder Downloader** | Comic C'moA và Yanmaga Web                                                                              | 🟢 Hoạt động |     [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/SpeedBinderDownloader.user.js)     |
 | **Pocket Downloader**      | MagaPoke (`pocket.shonenmagazine.com`)                                                                 | 🟢 Hoạt động | [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/PocketShonenMagazineDownloader.user.js) |
 | **Amazon Downloader**      | (`amazon.co.jp`)                                                                                       | 🟢 Hoạt động |        [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/AmazonDownloader.user.js)        |
-| **Niconico Downloader**    | (`sp.manga.nicovideo.jp`)                                                                              | 🟢 Hoạt động |       [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/NicoNicoDownloader.user.js)       |
+| **Niconico Downloader**    | (`sp.manga.nicovideo.jp`)                                                                              | 🟢 Hoạt động |       [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/NiconicoDownloader.user.js)       |
 
 ---
 

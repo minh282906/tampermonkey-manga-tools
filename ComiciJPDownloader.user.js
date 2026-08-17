@@ -2,7 +2,7 @@
 // @name         Comici.jp Downloader
 // @version      1.1
 // @icon         https://www.google.com/s2/favicons?domain=comici.jp&sz=128
-// @description  Tải truyện trên nền tảng comici.jp, khắc phục triệt để lazy loading, đóng gói ZIP chuẩn Tên Truyện - Tên Chap, lưu mã tập .txt, xuất PNG/JPG.
+// @description  Tải truyện trên nền tảng comici.jp
 // @author       anonymous & AI
 // @run-at       document-start
 // @grant        unsafeWindow

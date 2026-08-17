@@ -13,9 +13,6 @@
 (function bookWalkerUniversalDownloader() {
   'use strict';
 
-  /* =========================================================================
-   * CẤU HÌNH HỆ THỐNG
-   * ========================================================================= */
   const CONFIG = {
     PAGE_LIMIT: null,
     FALLBACK_WIDTH: 1275,
@@ -27,9 +24,7 @@
   const DOC = WIN.document;
   const sleep = ms => new Promise(resolve => WIN.setTimeout(resolve, ms));
 
-  if (WIN.top !== WIN.self) {
-    return;
-  }
+  if (WIN.top !== WIN.self) return;
 
   /* =========================================================================
    * 1. BỘ ĐÓNG GÓI ZIP (PURE ZIP WRITER)
@@ -184,9 +179,6 @@
     return `BookWalker_${getEpisodeId()}`;
   }
 
-  /* =========================================================================
-   * 3. BÓC TÁCH RUNTIME NFBR & METADATA
-   * ========================================================================= */
   function getNFBRRuntime(targetWin = WIN) {
     try {
       const init = targetWin.NFBR?.a6G?.Initializer?.T1V || targetWin.NFBR?.a6G?.Initial?.T1V;
@@ -203,9 +195,7 @@
 
   function getModelProperty(obj, key) {
     try {
-      if (typeof obj?.get === "function") {
-        return obj.get(key);
-      }
+      if (typeof obj?.get === "function") return obj.get(key);
     } catch (e) {}
     return obj?.attributes?.[key];
   }
@@ -314,7 +304,7 @@
   }
 
   /* =========================================================================
-   * 4. WORKER IFRAME & QUY TRÌNH CHỤP ẢNH FULL CANVAS CHUẨN XÁC
+   * 4. WORKER IFRAME & QUY TRÌNH LẤY ẢNH CANVAS
    * ========================================================================= */
   function updateIframeSize(iframeEl, pageDim) {
     const targetW = parsePositiveInt(pageDim?.width, CONFIG.FALLBACK_WIDTH);
@@ -385,7 +375,6 @@
         return { runtime: rt, screen, side };
       }
 
-      // Tự động phát lại lệnh chuyển trang nếu ban đầu Iframe khởi động vào trang khác
       if (Date.now() - startTime > 1500 * (retryCount + 1)) {
         retryCount++;
         try {
@@ -401,7 +390,6 @@
       await sleep(90);
     }
 
-    console.error("[bw-dl] Render Timeout State:", lastState);
     throw new Error(`Thời gian chờ render trang ${pageIndex + 1} quá lâu.`);
   }
 
@@ -418,9 +406,7 @@
       await sleep(100);
     }
 
-    if (!rt) {
-      throw new Error("Không tìm thấy hàm điều khiển trang BookWalker.");
-    }
+    if (!rt) throw new Error("Không tìm thấy hàm điều khiển trang BookWalker.");
 
     const menu = rt.menu;
     if (typeof menu.moveToPage === "function") {
@@ -432,9 +418,6 @@
     return await waitForRender(iframeEl, Number(pageIndex));
   }
 
-  /**
-   * BÓC TÁCH TOÀN BỘ 100% CANVAS NGUỒN VÀ THU NHỎ VỀ KÍCH THƯỚC METADATA (TRUE DOWNSCALE)
-   */
   async function renderCanvasToBlob(iframeEl, pageObj, renderResult, isJpg) {
     const screen = renderResult.screen || renderResult.runtime?.renderer?.currentScreen;
     const srcCanvas = screen?.canvas;
@@ -446,7 +429,6 @@
     const canvasDim = { width: srcCanvas.width, height: srcCanvas.height };
     const targetDim = getTargetPageDimensions(pageObj, canvasDim);
 
-    // Tạo canvas xuất file theo đúng kích thước metadata của trang
     const outCanvas = DOC.createElement("canvas");
     outCanvas.width = targetDim.width;
     outCanvas.height = targetDim.height;
@@ -460,7 +442,6 @@
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
 
-    // Thu nhỏ toàn bộ 100% Canvas GPU về kích thước targetDim
     ctx.drawImage(
       srcCanvas,
       0, 0, srcCanvas.width, srcCanvas.height,
@@ -481,9 +462,7 @@
           const arr = new Uint8Array(byteStr.length);
           for (let i = 0; i < byteStr.length; i++) arr[i] = byteStr.charCodeAt(i);
           resolve(new Blob([arr], { type: mimeType }));
-        } catch (e) {
-          reject(e);
-        }
+        } catch (e) { reject(e); }
       }
     });
 
@@ -512,7 +491,7 @@
   }
 
   /* =========================================================================
-   * 5. GIAO DIỆN UI (VIOLET THEME & TRẠNG THÁI GIGAVIEWER)
+   * 5. GIAO DIỆN UI (TÔNG TRẮNG CHỦ ĐẠO + ĐIỂM NHẤN CYAN BOOKWALKER)
    * ========================================================================= */
   function updateProgressUI(data = {}) {
     const total = Number.isFinite(data.total) ? data.total : state.lastProgress.total;
@@ -531,7 +510,7 @@
 
     ui.count.textContent = completed + '/' + total;
     ui.percent.textContent = pct + '%';
-    ui.fill.style.transform = "scaleX(" + pct / 100 + ')';
+    ui.fill.style.transform = "scaleX(" + (total > 0 ? pct / 100 : 0) + ')';
     ui.status.textContent = state.lastProgress.status;
   }
 
@@ -539,11 +518,10 @@
     const ui = state.ui;
     if (!ui) return;
     ui.button.disabled = Boolean(isBusy);
-    ui.button.textContent = isBusy ? "Đang xử lý..." : "Download";
+    ui.button.textContent = "Download";
     ui.button.style.opacity = isBusy ? "0.72" : '1';
     ui.button.style.cursor = isBusy ? "progress" : "pointer";
     ui.jpgInput.disabled = Boolean(isBusy);
-    ui.jpgInput.style.cursor = isBusy ? "default" : "pointer";
   }
 
   function createUI() {
@@ -564,17 +542,17 @@
       "box-sizing:border-box",
       `width:${PANEL_WIDTH}px`,
       "padding:10px 14px",
-      "border:1px solid #3730a3",
+      "border:1.5px solid #0284c7",
       "border-right:none",
       "border-radius:12px 0 0 12px",
-      "background:#1e1b4b",
-      "color:#ffffff",
+      "background:#ffffff",
+      "color:#0284c7",
       "font:12px/1.3 system-ui,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif",
       "user-select:none",
-      "box-shadow:0 8px 24px rgba(0,0,0,0.85)",
+      "box-shadow:-4px 10px 30px rgba(0,0,0,0.15), 0 0 15px rgba(2, 132, 199, 0.12)",
       "transition:transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)",
       `transform:${isCollapsed ? `translateX(calc(100% - ${TAB_WIDTH}px))` : "translateX(0)"}`,
-      "display:none",
+      "display:block",
       "overflow:hidden"
     ].join(';');
 
@@ -586,15 +564,15 @@
       "top:0px",
       `width:${TAB_WIDTH}px`,
       "height:100%",
-      "background:#4f46e5",
+      "background:#ffffff",
       "cursor:pointer",
       "transition:opacity 0.15s, background 0.15s",
       `opacity:${isCollapsed ? "1" : "0"}`,
       `pointer-events:${isCollapsed ? "auto" : "none"}`
     ].join(';');
-    collapsedStrip.title = "Bấm để mở bảng tải";
-    collapsedStrip.onmouseenter = () => { collapsedStrip.style.background = "#6366f1"; };
-    collapsedStrip.onmouseleave = () => { collapsedStrip.style.background = "#4f46e5"; };
+    collapsedStrip.title = "Mở bảng tải";
+    collapsedStrip.onmouseenter = () => { collapsedStrip.style.background = "#f0f9ff"; };
+    collapsedStrip.onmouseleave = () => { collapsedStrip.style.background = "#ffffff"; };
 
     const mainContent = DOC.createElement("div");
     mainContent.style.cssText = [
@@ -620,19 +598,21 @@
       "align-items:center",
       "justify-content:center",
       "border-radius:12px 0 8px 0",
-      "background:#4f46e5",
-      "color:#ffffff",
+      "background:#ffffff",
+      "border-bottom:1.5px solid #0284c7",
+      "border-right:1.5px solid #0284c7",
+      "color:#0284c7",
       "font:900 10px system-ui,sans-serif",
       "cursor:pointer",
-      "transition:background 0.15s ease",
+      "transition:background 0.15s ease, color 0.15s ease",
       "z-index:2"
     ].join(';');
-    collapseBtn.onmouseenter = () => { collapseBtn.style.background = "#6366f1"; };
-    collapseBtn.onmouseleave = () => { collapseBtn.style.background = "#4f46e5"; };
+    collapseBtn.onmouseenter = () => { collapseBtn.style.background = "#0284c7"; collapseBtn.style.color = "#ffffff"; };
+    collapseBtn.onmouseleave = () => { collapseBtn.style.background = "#ffffff"; collapseBtn.style.color = "#0284c7"; };
 
     const title = DOC.createElement("div");
     title.textContent = "BookWalker Downloader";
-    title.style.cssText = "all:initial;display:block;color:#a5b4fc;font:800 13px system-ui;margin-bottom:8px;text-align:center;padding-left:14px;";
+    title.style.cssText = "all:initial;display:block;color:#0284c7;font:800 13px system-ui;margin-bottom:8px;text-align:center;padding-left:14px;";
 
     const btn = DOC.createElement("button");
     btn.type = "button";
@@ -643,29 +623,32 @@
       "box-sizing:border-box",
       "width:100%",
       "padding:8px 0",
-      "border:0",
+      "border:1.5px solid #0284c7",
       "border-radius:6px",
-      "background:#4f46e5",
-      "color:#ffffff",
-      "font:700 14px/1.2 system-ui,sans-serif",
+      "background:#ffffff",
+      "color:#0284c7",
+      "font:800 14px/1.2 system-ui,sans-serif",
       "text-align:center",
       "cursor:pointer",
-      "box-shadow:0 3px 10px rgba(79, 70, 229, 0.35)"
+      "box-shadow:0 3px 10px rgba(2, 132, 199, 0.2)",
+      "transition:background 0.15s, color 0.15s, box-shadow 0.15s"
     ].join(';');
+    btn.onmouseenter = () => { btn.style.background = "#0284c7"; btn.style.color = "#ffffff"; btn.style.boxShadow = "0 3px 12px rgba(2, 132, 199, 0.4)"; };
+    btn.onmouseleave = () => { btn.style.background = "#ffffff"; btn.style.color = "#0284c7"; btn.style.boxShadow = "0 3px 10px rgba(2, 132, 199, 0.2)"; };
 
     btn.addEventListener("click", e => {
       e.preventDefault();
       e.stopPropagation();
-      startDownload();
+      if (!state.running) startDownload();
     });
 
     const label = DOC.createElement("label");
-    label.style.cssText = "all:initial;display:inline-flex;align-items:center;gap:6px;margin-top:8px;color:#c7d2fe;font:700 11px system-ui;cursor:pointer;";
+    label.style.cssText = "all:initial;display:inline-flex;align-items:center;gap:6px;margin-top:8px;color:#0369a1;font:700 11px system-ui;cursor:pointer;";
 
     const jpgInput = DOC.createElement("input");
     jpgInput.type = "checkbox";
     jpgInput.checked = state.convertJpeg;
-    jpgInput.style.cssText = "all:initial;appearance:auto;width:14px;height:14px;accent-color:#4f46e5;cursor:pointer;";
+    jpgInput.style.cssText = "all:initial;appearance:auto;width:14px;height:14px;accent-color:#0284c7;cursor:pointer;";
     jpgInput.addEventListener("change", e => {
       e.stopPropagation();
       state.convertJpeg = jpgInput.checked;
@@ -674,32 +657,32 @@
 
     const spanJpg = DOC.createElement("span");
     spanJpg.textContent = "Xuất file JPG (mặc định PNG)";
-    spanJpg.style.cssText = "all:initial;color:#c7d2fe;font:700 11px system-ui;";
+    spanJpg.style.cssText = "all:initial;color:#0369a1;font:700 11px system-ui;";
     label.append(jpgInput, spanJpg);
 
     const progressRow = DOC.createElement("div");
-    progressRow.style.cssText = "all:initial;display:flex;justify-content:space-between;align-items:center;margin-top:10px;color:#ffffff;font:800 12px system-ui;";
+    progressRow.style.cssText = "all:initial;display:flex;justify-content:space-between;align-items:center;margin-top:10px;color:#0284c7;font:800 12px system-ui;";
 
     const countText = DOC.createElement("span");
     countText.textContent = "0/0";
-    countText.style.cssText = "all:initial;color:#ffffff;font:800 12px system-ui;";
+    countText.style.cssText = "all:initial;color:#0284c7;font:800 12px system-ui;";
 
     const percentText = DOC.createElement("span");
     percentText.textContent = "0%";
-    percentText.style.cssText = "all:initial;color:#ffffff;font:800 12px system-ui;";
+    percentText.style.cssText = "all:initial;color:#0284c7;font:800 12px system-ui;";
 
     progressRow.append(countText, percentText);
 
     const track = DOC.createElement("div");
-    track.style.cssText = "all:initial;display:block;height:6px;overflow:hidden;border-radius:3px;background:#312e81;margin-top:6px;";
+    track.style.cssText = "all:initial;display:block;height:6px;overflow:hidden;border-radius:3px;background:#e0f2fe;margin-top:6px;";
 
     const fill = DOC.createElement("div");
-    fill.style.cssText = "all:initial;display:block;width:100%;height:100%;background:#818cf8;transform:scaleX(0);transform-origin:left center;transition:transform .22s ease;";
+    fill.style.cssText = "all:initial;display:block;width:100%;height:100%;background:#0284c7;transform:scaleX(0);transform-origin:left center;transition:transform .22s ease;";
     track.appendChild(fill);
 
     const statusText = DOC.createElement("div");
     statusText.textContent = state.lastProgress.status;
-    statusText.style.cssText = "all:initial;display:block;margin-top:8px;color:#c7d2fe;font:11px system-ui;word-break:break-word;";
+    statusText.style.cssText = "all:initial;display:block;margin-top:8px;color:#0369a1;font:11px system-ui;word-break:break-word;";
 
     mainContent.append(collapseBtn, title, btn, label, progressRow, track, statusText);
     panel.append(collapsedStrip, mainContent);
@@ -725,12 +708,7 @@
       if (isCollapsed) setCollapsedState(false);
     });
 
-    const attachUI = () => {
-      if (DOC.body && !DOC.getElementById("bw-dl-panel")) {
-        DOC.body.appendChild(panel);
-      }
-    };
-    attachUI();
+    DOC.body.appendChild(panel);
 
     state.ui = {
       panel,
@@ -757,47 +735,30 @@
     let initialPageIndex = 0;
 
     try {
-      updateProgressUI({ completed: 0, total: 0, status: "Đang đọc dữ liệu..." });
+      updateProgressUI({ completed: 0, total: 0, status: "Đang tải..." });
 
       const { rt: mainRt, pagesList } = state.episodeData;
-
-      // Giới hạn 15 trang
       const selectedPages = CONFIG.PAGE_LIMIT ? pagesList.slice(0, CONFIG.PAGE_LIMIT) : pagesList;
       const totalPages = selectedPages.length;
 
-      if (!totalPages) {
-        throw new Error("Không tìm thấy trang truyện.");
-      }
+      if (!totalPages) throw new Error("Không tìm thấy trang truyện.");
 
       initialPageIndex = getCurrentPageIndex(mainRt);
       const useJpeg = Boolean(state.convertJpeg);
       const zip = new PureZipWriter();
       const episodeId = getEpisodeId();
 
-      // Xuất file txt lưu mã truyện
       zip.addFile(`${episodeId}.txt`, new Uint8Array(0));
 
-      updateProgressUI({ completed: 0, total: totalPages, status: "Đang mở Trình xem ngầm..." });
-
-      // 1. Tạo Iframe ngầm
       workerIframe = createWorkerIframe(selectedPages[0]);
-
-      // 2. Chạy tải tuần tự từng trang từ trang 1 (index 0)
       updateProgressUI({ completed: 0, total: totalPages, status: "Đang tải..." });
 
       for (let i = 0; i < totalPages; i++) {
         const pageObj = selectedPages[i];
-
-        // A. Thay đổi kích thước Iframe theo kích thước động của trang
         await resizeIframeAndTrigger(workerIframe, pageObj);
-
-        // B. Điều hướng tới trang cần tải và chờ render hoàn tất
         const renderResult = await navigateToPage(workerIframe, pageObj.index);
-
-        // C. Render Canvas và trích xuất Blob (mặc định PNG, hoặc JPG 0.95)
         const capture = await renderCanvasToBlob(workerIframe, pageObj, renderResult, useJpeg);
 
-        // D. Lưu ảnh theo thứ tự 1.png, 2.png, ...
         zip.addFile(`${i + 1}.${capture.ext}`, capture.data);
 
         updateProgressUI({
@@ -809,14 +770,14 @@
         await sleep(60);
       }
 
-      updateProgressUI({ completed: totalPages, total: totalPages, status: "Đang đóng gói ZIP..." });
+      updateProgressUI({ completed: totalPages, total: totalPages, status: "Đang đóng gói file ZIP..." });
       await sleep(50);
 
       const zipBlob = zip.generateBlob();
       const zipFileName = `${getCleanMangaTitle()}.zip`;
       triggerDownload(zipBlob, zipFileName);
 
-      updateProgressUI({ completed: totalPages, total: totalPages, status: "Hoàn tất!" });
+      updateProgressUI({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
     } catch (err) {
       const msg = err?.message || String(err);
       updateProgressUI({ status: "Lỗi: " + msg });
@@ -839,16 +800,8 @@
   }
 
   /* =========================================================================
-   * 7. KHỞI CHẠY & BỘ LẮNG NGHE ĐỔI ROUTE (SPA COMPATIBLE)
+   * 7. KHỞI CHẠY (BOOT & SPA WATCHER)
    * ========================================================================= */
-  function resetState() {
-    state.running = false;
-    state.episodeData = null;
-    if (state.ui?.panel) {
-      state.ui.panel.style.display = "none";
-    }
-  }
-
   function initRouteWatcher() {
     let lastUrl = WIN.location.href;
 
@@ -856,10 +809,8 @@
       const currentUrl = WIN.location.href;
       if (currentUrl !== lastUrl) {
         lastUrl = currentUrl;
-
         state.running = false;
         setUiBusy(false);
-
         boot();
       }
     };
@@ -885,12 +836,12 @@
     while (!DOC.body) await sleep(100);
 
     createUI();
+    updateProgressUI({ completed: 0, total: 0, status: "Đang kiểm tra..." });
 
     let rt = null;
     let pagesList = [];
     let attempts = 0;
 
-    // Chờ Runtime BookWalker sẵn sàng
     while (attempts < 100) {
       rt = getNFBRRuntime(WIN);
       if (rt) {
@@ -905,8 +856,6 @@
 
     if (pagesList.length > 0) {
       state.episodeData = { rt, pagesList };
-      if (state.ui?.panel) state.ui.panel.style.display = "block";
-
       const total = CONFIG.PAGE_LIMIT ? Math.min(pagesList.length, CONFIG.PAGE_LIMIT) : pagesList.length;
       updateProgressUI({
         completed: 0,
@@ -914,14 +863,18 @@
         status: "Sẵn sàng."
       });
     } else {
-      if (state.ui?.panel) state.ui.panel.style.display = "none";
+      updateProgressUI({
+        completed: 0,
+        total: 0,
+        status: "Đang kiểm tra..."
+      });
     }
   }
 
   initRouteWatcher();
 
   if (DOC.readyState === "loading") {
-    DOC.addEventListener("DOMContentLoaded", () => boot());
+    DOC.addEventListener("DOMContentLoaded", boot);
   } else {
     boot();
   }

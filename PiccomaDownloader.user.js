@@ -2,7 +2,7 @@
 // @name         Piccoma Downloader
 // @version      1.0
 // @icon         https://www.google.com/s2/favicons?domain=piccoma.com&sz=128
-// @description  Tải truyện trên nền tảng Piccoma
+// @description  Tải truyện trên nền tảng Piccoma.
 // @author       anonymous & AI
 // @run-at       document-start
 // @grant        unsafeWindow

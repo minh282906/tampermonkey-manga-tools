@@ -3,7 +3,7 @@
 // @namespace    https://viewer.bookwalker.jp/
 // @version      1.0
 // @icon         https://bookwalker.jp//favicon.ico
-// @description  Tải truyện Manga từ BookWalker
+// @description  Tải truyện Manga từ BookWalker.
 // @match        https://viewer.bookwalker.jp/*/viewer.html*
 // @match        https://viewer-trial.bookwalker.jp/*/viewer.html*
 // @run-at       document-start

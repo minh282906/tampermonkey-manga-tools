@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         BookWalker Manga Downloader
+// @name         BookWalker Downloader
 // @namespace    https://viewer.bookwalker.jp/
 // @version      1.0
 // @icon         https://bookwalker.jp//favicon.ico

@@ -146,7 +146,7 @@
       completed: 0,
       total: 0,
       percent: 0,
-      status: "Đang chờ dữ liệu tập...",
+      status: "Đang kiểm tra...",
     },
   };
 
@@ -683,30 +683,90 @@
   function createUI() {
     if (state.ui || !DOC.body) return;
 
+    const PANEL_WIDTH = 220;
+    const TAB_WIDTH = 14;
+    let isCollapsed = localStorage.getItem("pocket-dl:collapsed") === '1';
+
     const panel = DOC.createElement("div");
     panel.id = "pocket-dl-panel";
     panel.style.cssText = [
       "all:initial",
       "position:fixed",
       "right:0px",
-      "top:62px",
+      "top:93px",
       "z-index:2147483647",
       "box-sizing:border-box",
-      "width:220px",
+      `width:${PANEL_WIDTH}px`,
       "padding:10px 14px",
-      "border:1px solid #4338ca",
-      "border-radius:10px",
-      "background:#0f172a",
+      "border:1px solid #b91c1c",
+      "border-right:none",
+      "border-radius:12px 0 0 12px",
+      "background:#450a0a",
       "color:#ffffff",
       'font:12px/1.3 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
       "user-select:none",
       "box-shadow:0 8px 24px rgba(0,0,0,0.85)",
+      "transition:transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)",
+      `transform:${isCollapsed ? `translateX(calc(100% - ${TAB_WIDTH}px))` : "translateX(0)"}`,
       "display:none",
+      "overflow:hidden"
     ].join(";");
+
+    const collapsedStrip = DOC.createElement("div");
+    collapsedStrip.style.cssText = [
+      "all:initial",
+      "position:absolute",
+      "left:0px",
+      "top:0px",
+      `width:${TAB_WIDTH}px`,
+      "height:100%",
+      "background:#dc2626",
+      "cursor:pointer",
+      "transition:opacity 0.15s, background 0.15s",
+      `opacity:${isCollapsed ? "1" : "0"}`,
+      `pointer-events:${isCollapsed ? "auto" : "none"}`
+    ].join(';');
+    collapsedStrip.title = "Bấm để mở bảng tải";
+    collapsedStrip.onmouseenter = () => { collapsedStrip.style.background = "#ef4444"; };
+    collapsedStrip.onmouseleave = () => { collapsedStrip.style.background = "#dc2626"; };
+
+    const mainContent = DOC.createElement("div");
+    mainContent.style.cssText = [
+      "all:initial",
+      "display:block",
+      "transition:opacity 0.2s",
+      `opacity:${isCollapsed ? "0" : "1"}`,
+      `pointer-events:${isCollapsed ? "none" : "auto"}`
+    ].join(';');
+
+    const collapseBtn = DOC.createElement("button");
+    collapseBtn.type = "button";
+    collapseBtn.textContent = "▶";
+    collapseBtn.title = "Thu gọn";
+    collapseBtn.style.cssText = [
+      "all:initial",
+      "position:absolute",
+      "left:0px",
+      "top:0px",
+      "width:24px",
+      "height:24px",
+      "display:flex",
+      "align-items:center",
+      "justify-content:center",
+      "border-radius:12px 0 8px 0",
+      "background:#dc2626",
+      "color:#ffffff",
+      "font:900 10px system-ui,sans-serif",
+      "cursor:pointer",
+      "transition:background 0.15s ease",
+      "z-index:2"
+    ].join(';');
+    collapseBtn.onmouseenter = () => { collapseBtn.style.background = "#ef4444"; };
+    collapseBtn.onmouseleave = () => { collapseBtn.style.background = "#dc2626"; };
 
     const title = DOC.createElement("div");
     title.textContent = "Pocket Downloader";
-    title.style.cssText = "all:initial;display:block;color:#818cf8;font:800 13px system-ui;margin-bottom:8px;text-align:center;";
+    title.style.cssText = "all:initial;display:block;color:#fca5a5;font:800 13px system-ui;margin-bottom:8px;text-align:center;padding-left:14px;";
 
     const btn = DOC.createElement("button");
     btn.type = "button";
@@ -719,12 +779,12 @@
       "padding:8px 0",
       "border:0",
       "border-radius:6px",
-      "background:#6366f1",
+      "background:#dc2626",
       "color:#ffffff",
       "font:700 14px/1.2 system-ui,sans-serif",
       "text-align:center",
       "cursor:pointer",
-      "box-shadow:0 3px 10px rgba(99, 102, 241, 0.35)",
+      "box-shadow:0 3px 10px rgba(220, 38, 38, 0.35)",
     ].join(";");
     btn.addEventListener("click", (e) => {
       e.preventDefault();
@@ -733,12 +793,12 @@
     });
 
     const label = DOC.createElement("label");
-    label.style.cssText = "all:initial;display:inline-flex;align-items:center;gap:6px;margin-top:8px;color:#d1d8eb;font:700 11px system-ui;cursor:pointer;";
+    label.style.cssText = "all:initial;display:inline-flex;align-items:center;gap:6px;margin-top:8px;color:#fecaca;font:700 11px system-ui;cursor:pointer;";
 
     const jpgInput = DOC.createElement("input");
     jpgInput.type = "checkbox";
     jpgInput.checked = state.convertJpeg;
-    jpgInput.style.cssText = "all:initial;appearance:auto;width:14px;height:14px;accent-color:#6366f1;cursor:pointer;";
+    jpgInput.style.cssText = "all:initial;appearance:auto;width:14px;height:14px;accent-color:#dc2626;cursor:pointer;";
     jpgInput.addEventListener("change", e => {
       e.stopPropagation();
       state.convertJpeg = jpgInput.checked;
@@ -747,7 +807,7 @@
 
     const spanJpg = DOC.createElement("span");
     spanJpg.textContent = "Xuất file JPG (mặc định PNG)";
-    spanJpg.style.cssText = "all:initial;color:#d1d8eb;font:700 11px system-ui;";
+    spanJpg.style.cssText = "all:initial;color:#fecaca;font:700 11px system-ui;";
     label.append(jpgInput, spanJpg);
 
     const progressRow = DOC.createElement("div");
@@ -764,17 +824,46 @@
     progressRow.append(countText, percentText);
 
     const track = DOC.createElement("div");
-    track.style.cssText = "all:initial;display:block;height:6px;overflow:hidden;border-radius:3px;background:#1e1b4b;margin-top:6px;";
+    track.style.cssText = "all:initial;display:block;height:6px;overflow:hidden;border-radius:3px;background:#7f1d1d;margin-top:6px;";
 
     const fill = DOC.createElement("div");
-    fill.style.cssText = "all:initial;display:block;width:100%;height:100%;background:#818cf8;transform:scaleX(0);transform-origin:left center;transition:transform .22s ease;";
+    fill.style.cssText = "all:initial;display:block;width:100%;height:100%;background:#f87171;transform:scaleX(0);transform-origin:left center;transition:transform .22s ease;";
     track.appendChild(fill);
 
     const statusText = DOC.createElement("div");
     statusText.textContent = state.lastProgress.status;
-    statusText.style.cssText = "all:initial;display:block;margin-top:8px;color:#c7d2fe;font:11px system-ui;word-break:break-word;";
+    statusText.style.cssText = "all:initial;display:block;margin-top:8px;color:#fecaca;font:11px system-ui;word-break:break-word;";
 
-    panel.append(title, btn, label, progressRow, track, statusText);
+    mainContent.append(collapseBtn, title, btn, label, progressRow, track, statusText);
+    panel.append(collapsedStrip, mainContent);
+
+    function setCollapsedState(collapsed) {
+      isCollapsed = collapsed;
+      localStorage.setItem("pocket-dl:collapsed", isCollapsed ? '1' : '0');
+
+      panel.style.transform = isCollapsed ? `translateX(calc(100% - ${TAB_WIDTH}px))` : "translateX(0)";
+      collapsedStrip.style.opacity = isCollapsed ? "1" : "0";
+      collapsedStrip.style.pointerEvents = isCollapsed ? "auto" : "none";
+      mainContent.style.opacity = isCollapsed ? "0" : "1";
+      mainContent.style.pointerEvents = isCollapsed ? "none" : "auto";
+    }
+
+    collapseBtn.addEventListener("click", e => {
+      e.preventDefault();
+      e.stopPropagation();
+      setCollapsedState(true);
+    });
+
+    panel.addEventListener("click", () => {
+      if (isCollapsed) setCollapsedState(false);
+    });
+
+    const attachUI = () => {
+      if (DOC.body && !DOC.getElementById("pocket-dl-panel")) {
+        DOC.body.appendChild(panel);
+      }
+    };
+    attachUI();
 
     state.ui = {
       panel,
@@ -786,7 +875,6 @@
       status: statusText,
     };
 
-    DOC.body.appendChild(panel);
     updateProgressUI(state.lastProgress);
   }
 

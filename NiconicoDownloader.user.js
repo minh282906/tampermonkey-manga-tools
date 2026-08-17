@@ -298,7 +298,9 @@
     canvas.width = width;
     canvas.height = height;
 
-    const ctx = canvas.getContext('2d', { alpha: true });
+    const ctx = canvas.getContext('2d', { alpha: false });
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, width, height);
     ctx.drawImage(img, 0, 0, width, height);
 
     const pngBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));

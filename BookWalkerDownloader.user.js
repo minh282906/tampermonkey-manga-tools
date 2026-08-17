@@ -451,13 +451,11 @@
     outCanvas.width = targetDim.width;
     outCanvas.height = targetDim.height;
 
-    const ctx = outCanvas.getContext("2d", { alpha: !isJpg });
+    const ctx = outCanvas.getContext("2d", { alpha: false });
     if (!ctx) throw new Error("Không thể tạo Context 2D.");
 
-    if (isJpg) {
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, outCanvas.width, outCanvas.height);
-    }
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, outCanvas.width, outCanvas.height);
 
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";

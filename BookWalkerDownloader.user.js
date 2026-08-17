@@ -559,7 +559,7 @@
       "all:initial",
       "position:fixed",
       "right:0px",
-      "top:45px",
+      "top:44px",
       "z-index:2147483647",
       "box-sizing:border-box",
       `width:${PANEL_WIDTH}px`,

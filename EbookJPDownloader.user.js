@@ -618,8 +618,8 @@
                 _0x51d31a(new Error("GM_xmlhttpRequest trả về ảnh raw rỗng."));
               }
             },
-            'onerror': () => _0x51d31a(new Error("GM_xmlhttpRequest lỗi khi tải ảnh raw.")),
-            'ontimeout': () => _0x51d31a(new Error("GM_xmlhttpRequest timeout khi tải ảnh raw."))
+            'onerror': () => _0x51d31a(new Error("GM_xmlhttpRequest lỗi khi tải ảnh.")),
+            'ontimeout': () => _0x51d31a(new Error("GM_xmlhttpRequest timeout khi tải ảnh."))
           });
           return;
         }

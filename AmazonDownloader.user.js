@@ -144,7 +144,7 @@
     running: false,
     convertJpeg: localStorage.getItem("amazon-dl:convert-jpeg") === '1',
     ui: null,
-    lastProgress: { completed: 0, total: 0, percent: 0, status: "Đang kiểm tra trang..." }
+    lastProgress: { completed: 0, total: 0, percent: 0, status: "Đang kiểm tra..." }
   };
 
   function saveJpegPref(val) {
@@ -686,11 +686,14 @@
    * 5. GIAO DIỆN UI (TÔNG MÀU AMAZON AMBER / SLATE)
    * ========================================================================= */
   function createUI() {
-    if (state.ui) return;
+    if (state.ui || !DOC.body) return;
+
+    const PANEL_WIDTH = 220;
+    const TAB_WIDTH = 14;
+    let isCollapsed = localStorage.getItem("amazon-dl:collapsed") === '1';
 
     const panel = DOC.createElement("div");
     panel.id = "amazon-dl-panel";
-
     panel.style.cssText = [
       "all:initial",
       "position:fixed",
@@ -698,21 +701,77 @@
       "top:98px",
       "z-index:2147483647",
       "box-sizing:border-box",
-      "width:220px",
+      `width:${PANEL_WIDTH}px`,
       "padding:10px 14px",
-      "border:1px solid #d97706",
-      "border-radius:10px",
-      "background:#0f172a",
+      "border:1px solid #ea580c",
+      "border-right:none",
+      "border-radius:12px 0 0 12px",
+      "background:#1c1917",
       "color:#ffffff",
       "font:12px/1.3 system-ui,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif",
       "user-select:none",
       "box-shadow:0 8px 24px rgba(0,0,0,0.85)",
-      "display:none"
+      "transition:transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)",
+      `transform:${isCollapsed ? `translateX(calc(100% - ${TAB_WIDTH}px))` : "translateX(0)"}`,
+      "display:none",
+      "overflow:hidden"
     ].join(';');
+
+    const collapsedStrip = DOC.createElement("div");
+    collapsedStrip.style.cssText = [
+      "all:initial",
+      "position:absolute",
+      "left:0px",
+      "top:0px",
+      `width:${TAB_WIDTH}px`,
+      "height:100%",
+      "background:#f97316",
+      "cursor:pointer",
+      "transition:opacity 0.15s, background 0.15s",
+      `opacity:${isCollapsed ? "1" : "0"}`,
+      `pointer-events:${isCollapsed ? "auto" : "none"}`
+    ].join(';');
+    collapsedStrip.title = "Bấm để mở bảng tải";
+    collapsedStrip.onmouseenter = () => { collapsedStrip.style.background = "#fb923c"; };
+    collapsedStrip.onmouseleave = () => { collapsedStrip.style.background = "#f97316"; };
+
+    const mainContent = DOC.createElement("div");
+    mainContent.style.cssText = [
+      "all:initial",
+      "display:block",
+      "transition:opacity 0.2s",
+      `opacity:${isCollapsed ? "0" : "1"}`,
+      `pointer-events:${isCollapsed ? "none" : "auto"}`
+    ].join(';');
+
+    const collapseBtn = DOC.createElement("button");
+    collapseBtn.type = "button";
+    collapseBtn.textContent = "▶";
+    collapseBtn.title = "Thu gọn";
+    collapseBtn.style.cssText = [
+      "all:initial",
+      "position:absolute",
+      "left:0px",
+      "top:0px",
+      "width:24px",
+      "height:24px",
+      "display:flex",
+      "align-items:center",
+      "justify-content:center",
+      "border-radius:12px 0 8px 0",
+      "background:#f97316",
+      "color:#0f172a",
+      "font:900 10px system-ui,sans-serif",
+      "cursor:pointer",
+      "transition:background 0.15s ease",
+      "z-index:2"
+    ].join(';');
+    collapseBtn.onmouseenter = () => { collapseBtn.style.background = "#fb923c"; };
+    collapseBtn.onmouseleave = () => { collapseBtn.style.background = "#f97316"; };
 
     const title = DOC.createElement("div");
     title.textContent = "Kindle Downloader";
-    title.style.cssText = "all:initial;display:block;color:#f59e0b;font:800 13px system-ui;margin-bottom:8px;text-align:center;";
+    title.style.cssText = "all:initial;display:block;color:#fdba74;font:800 13px system-ui;margin-bottom:8px;text-align:center;padding-left:14px;";
 
     const btn = DOC.createElement("button");
     btn.type = "button";
@@ -725,29 +784,27 @@
       "padding:8px 0",
       "border:0",
       "border-radius:6px",
-      "background:#f59e0b",
+      "background:#f97316",
       "color:#0f172a",
       "font:800 14px/1.2 system-ui,sans-serif",
       "text-align:center",
       "cursor:pointer",
-      "box-shadow:0 3px 10px rgba(245, 158, 11, 0.35)"
+      "box-shadow:0 3px 10px rgba(249, 115, 22, 0.35)"
     ].join(';');
 
     btn.addEventListener("click", e => {
       e.preventDefault();
       e.stopPropagation();
-      if (!state.running) {
-        startDownload();
-      }
+      if (!state.running) startDownload();
     });
 
     const label = DOC.createElement("label");
-    label.style.cssText = "all:initial;display:inline-flex;align-items:center;gap:6px;margin-top:8px;color:#d1d8eb;font:700 11px system-ui;cursor:pointer;";
+    label.style.cssText = "all:initial;display:inline-flex;align-items:center;gap:6px;margin-top:8px;color:#fed7aa;font:700 11px system-ui;cursor:pointer;";
 
     const jpgInput = DOC.createElement("input");
     jpgInput.type = "checkbox";
     jpgInput.checked = state.convertJpeg;
-    jpgInput.style.cssText = "all:initial;appearance:auto;width:14px;height:14px;accent-color:#f59e0b;cursor:pointer;";
+    jpgInput.style.cssText = "all:initial;appearance:auto;width:14px;height:14px;accent-color:#f97316;cursor:pointer;";
     jpgInput.addEventListener("change", () => {
       state.convertJpeg = jpgInput.checked;
       saveJpegPref(state.convertJpeg);
@@ -755,7 +812,7 @@
 
     const spanJpg = DOC.createElement("span");
     spanJpg.textContent = "Xuất file JPG (mặc định PNG)";
-    spanJpg.style.cssText = "all:initial;color:#d1d8eb;font:700 11px system-ui;";
+    spanJpg.style.cssText = "all:initial;color:#fed7aa;font:700 11px system-ui;";
     label.append(jpgInput, spanJpg);
 
     const progressRow = DOC.createElement("div");
@@ -772,17 +829,39 @@
     progressRow.append(countText, percentText);
 
     const track = DOC.createElement("div");
-    track.style.cssText = "all:initial;display:block;height:6px;overflow:hidden;border-radius:3px;background:#451a03;margin-top:6px;";
+    track.style.cssText = "all:initial;display:block;height:6px;overflow:hidden;border-radius:3px;background:#441a06;margin-top:6px;";
 
     const fill = DOC.createElement("div");
-    fill.style.cssText = "all:initial;display:block;width:100%;height:100%;background:#f59e0b;transform:scaleX(0);transform-origin:left center;transition:transform .22s ease;";
+    fill.style.cssText = "all:initial;display:block;width:100%;height:100%;background:#fb923c;transform:scaleX(0);transform-origin:left center;transition:transform .22s ease;";
     track.appendChild(fill);
 
     const statusText = DOC.createElement("div");
     statusText.textContent = state.lastProgress.status;
-    statusText.style.cssText = "all:initial;display:block;margin-top:8px;color:#fde68a;font:11px system-ui;word-break:break-word;";
+    statusText.style.cssText = "all:initial;display:block;margin-top:8px;color:#fed7aa;font:11px system-ui;word-break:break-word;";
 
-    panel.append(title, btn, label, progressRow, track, statusText);
+    mainContent.append(collapseBtn, title, btn, label, progressRow, track, statusText);
+    panel.append(collapsedStrip, mainContent);
+
+    function setCollapsedState(collapsed) {
+      isCollapsed = collapsed;
+      localStorage.setItem("amazon-dl:collapsed", isCollapsed ? '1' : '0');
+
+      panel.style.transform = isCollapsed ? `translateX(calc(100% - ${TAB_WIDTH}px))` : "translateX(0)";
+      collapsedStrip.style.opacity = isCollapsed ? "1" : "0";
+      collapsedStrip.style.pointerEvents = isCollapsed ? "auto" : "none";
+      mainContent.style.opacity = isCollapsed ? "0" : "1";
+      mainContent.style.pointerEvents = isCollapsed ? "none" : "auto";
+    }
+
+    collapseBtn.addEventListener("click", e => {
+      e.preventDefault();
+      e.stopPropagation();
+      setCollapsedState(true);
+    });
+
+    panel.addEventListener("click", () => {
+      if (isCollapsed) setCollapsedState(false);
+    });
 
     const attachUI = () => {
       if (DOC.body && !DOC.getElementById("amazon-dl-panel")) {

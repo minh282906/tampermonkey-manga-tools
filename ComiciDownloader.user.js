@@ -2,7 +2,7 @@
 // @name         Comici+ Universal Downloader
 // @version      1.1
 // @icon         https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRsiup9SmJ9ojX0g2pMImOaOXItgbPy-Ok8V0TurLbGKA&s=10
-// @description  Tải và giải mã chuẩn truyện trên nền tảng Comici+, có đóng gói ZIP, lưu tên trang theo số thứ tự tăng dần và một file txt lưu tên mã truyện tương ứng (Champion Cross, Comic Growl, Young Champion, Young Animal, Hana to Yume, Big Comics, Rimacomi+, HERO'S Web, Takecomic, Hayacomic, MAGKAN, COMIC MeDu, Comic PASH!, KimiComi, Comic Room Base, Comirela, BiBiBi Comic, Mangalt, Comici Comic).
+// @description  Tải truyện trên nền tảng Comici+, có đóng gói ZIP, lưu tên trang theo số thứ tự tăng dần và một file txt lưu tên mã truyện tương ứng (Champion Cross, Comic Growl, Young Champion, Young Animal, Hana to Yume, Big Comics, Rimacomi+, HERO'S Web, Takecomic, Hayacomic, MAGKAN, COMIC MeDu, Comic PASH!, KimiComi, Comic Room Base, Comirela, BiBiBi Comic, Mangalt, Comici Comic).
 // @author       anonymous & AI
 // @run-at       document-start
 // @grant        unsafeWindow

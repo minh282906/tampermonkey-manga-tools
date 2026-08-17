@@ -3,7 +3,7 @@
 // @namespace    https://yanmaga.jp/
 // @version      1.0
 // @icon         https://c-cmoa.akamaized.net/sol/pcc/images/webclipicon/icon_cmoa.png?v=
-// @description  Tải và giải mã chuẩn truyện trên Yanmaga Web và Cmoa.jp, đóng nén ZIP, tự tạo file txt ID, tải 4 luồng song song (MAX_CONCURRENT = 4), mặc định PNG có tùy chọn JPG.
+// @description  Tải truyện trên Yanmaga Web và Cmoa.jp, đóng nén ZIP.
 // @author       anonymous & AI
 // @match        https://yanmaga.jp/viewer/*
 // @match        https://www.cmoa.jp/bib/speedreader/*

@@ -2,7 +2,7 @@
 // @name         GigaViewer Universal Downloader
 // @version      1.0
 // @icon         https://files.catbox.moe/tpd5zq.png
-// @description  Tải và giải mã truyện từ 20 trang web GigaViewer (ShonenJump+, Tonari no Young Jump, Sunday Webry, Comic Days, Kurage Bunch, MAGCOMI, Comic Gardo, Comic Zenon, Web Action, Comic Trail, Feel Web, Comic Earth Star, Comic Border, COMIC OGYAAA!!, Comic Seasons, COMIC Y-OURS, Ichicomi, Manga Time Square, OUR FEEL, HERO'S Web), nén ZIP tên truyện, lưu ảnh theo thứ tự và tự động xuất file txt lưu mã truyện tương ứng.
+// @description  Tải truyện từ 20 trang web GigaViewer (ShonenJump+, Tonari no Young Jump, Sunday Webry, Comic Days, Kurage Bunch, MAGCOMI, Comic Gardo, Comic Zenon, Web Action, Comic Trail, Feel Web, Comic Earth Star, Comic Border, COMIC OGYAAA!!, Comic Seasons, COMIC Y-OURS, Ichicomi, Manga Time Square, OUR FEEL, HERO'S Web), nén ZIP tên truyện, lưu ảnh theo thứ tự và tự động xuất file txt lưu mã truyện tương ứng.
 // @author       anonymous & AI
 // @run-at       document-start
 // @grant        unsafeWindow

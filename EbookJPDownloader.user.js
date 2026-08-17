@@ -1217,27 +1217,89 @@
     function _0x2e488a() {
       if (_0x369466.ui || !_0x36383f.body) return;
 
+      const PANEL_WIDTH = 220;
+      const TAB_WIDTH = 14;
+      let isCollapsed = _0x291164.localStorage.getItem("ej-dl:collapsed") === '1';
+
       const panel = _0x36383f.createElement("div");
       panel.id = "ej-canvas-dl";
-
       panel.style.cssText = [
         "all:initial",
         "position:fixed",
-        "right:25px",
-        "top:50%",
-        "transform:translateY(-50%)",
+        "right:0px",
+        "top:55px",
         "z-index:2147483647",
         "box-sizing:border-box",
-        "width:260px",
-        "padding:14px 18px",
-        "border:1px solid #1a233d",
-        "border-radius:12px",
+        `width:${PANEL_WIDTH}px`,
+        "padding:10px 14px",
+        "border:1px solid #1d4ed8",
+        "border-right:none",
+        "border-radius:12px 0 0 12px",
         "background:#0d1222",
         "color:#ffffff",
-        "font:12px/1.35 system-ui,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif",
+        "font:12px/1.3 system-ui,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif",
         "user-select:none",
-        "box-shadow:0 10px 30px rgba(0,0,0,0.75)"
+        "box-shadow:0 8px 24px rgba(0,0,0,0.85)",
+        "transition:transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)",
+        `transform:${isCollapsed ? `translateX(calc(100% - ${TAB_WIDTH}px))` : "translateX(0)"}`,
+        "overflow:hidden"
       ].join(';');
+
+      const collapsedStrip = _0x36383f.createElement("div");
+      collapsedStrip.style.cssText = [
+        "all:initial",
+        "position:absolute",
+        "left:0px",
+        "top:0px",
+        `width:${TAB_WIDTH}px`,
+        "height:100%",
+        "background:#3b82f6",
+        "cursor:pointer",
+        "transition:opacity 0.15s, background 0.15s",
+        `opacity:${isCollapsed ? "1" : "0"}`,
+        `pointer-events:${isCollapsed ? "auto" : "none"}`
+      ].join(';');
+      collapsedStrip.title = "Bấm để mở bảng tải";
+      collapsedStrip.onmouseenter = () => { collapsedStrip.style.background = "#60a5fa"; };
+      collapsedStrip.onmouseleave = () => { collapsedStrip.style.background = "#3b82f6"; };
+
+      const mainContent = _0x36383f.createElement("div");
+      mainContent.style.cssText = [
+        "all:initial",
+        "display:block",
+        "transition:opacity 0.2s",
+        `opacity:${isCollapsed ? "0" : "1"}`,
+        `pointer-events:${isCollapsed ? "none" : "auto"}`
+      ].join(';');
+
+      const collapseBtn = _0x36383f.createElement("button");
+      collapseBtn.type = "button";
+      collapseBtn.textContent = "▶";
+      collapseBtn.title = "Thu gọn";
+      collapseBtn.style.cssText = [
+        "all:initial",
+        "position:absolute",
+        "left:0px",
+        "top:0px",
+        "width:24px",
+        "height:24px",
+        "display:flex",
+        "align-items:center",
+        "justify-content:center",
+        "border-radius:12px 0 8px 0",
+        "background:#3b82f6",
+        "color:#ffffff",
+        "font:900 10px system-ui,sans-serif",
+        "cursor:pointer",
+        "transition:background 0.15s ease",
+        "z-index:2"
+      ].join(';');
+      collapseBtn.onmouseenter = () => { collapseBtn.style.background = "#60a5fa"; };
+      collapseBtn.onmouseleave = () => { collapseBtn.style.background = "#3b82f6"; };
+
+      const title = _0x36383f.createElement("div");
+      title.textContent = "EbookJapan Downloader";
+      title.style.cssText = "all:initial;display:block;color:#60a5fa;font:800 13px system-ui;margin-bottom:8px;text-align:center;padding-left:14px;";
 
       const btn = _0x36383f.createElement("button");
       btn.type = "button";
@@ -1247,15 +1309,15 @@
         "display:block",
         "box-sizing:border-box",
         "width:100%",
-        "padding:10px 0",
+        "padding:8px 0",
         "border:0",
-        "border-radius:8px",
-        "background:#3b66f5",
+        "border-radius:6px",
+        "background:#3b82f6",
         "color:#ffffff",
-        "font:700 16px/1.2 system-ui,sans-serif",
+        "font:700 14px/1.2 system-ui,sans-serif",
         "text-align:center",
         "cursor:pointer",
-        "box-shadow:0 3px 10px rgba(59, 102, 245, 0.35)"
+        "box-shadow:0 3px 10px rgba(59, 130, 246, 0.35)"
       ].join(';');
 
       btn.addEventListener("click", e => {
@@ -1265,25 +1327,12 @@
       });
 
       const label = _0x36383f.createElement("label");
-      label.style.cssText = [
-        "all:initial",
-        "display:inline-flex",
-        "align-items:center",
-        "gap:8px",
-        "box-sizing:border-box",
-        "margin-top:12px",
-        "color:#d1d8eb",
-        "font:700 13px/1.2 system-ui,sans-serif",
-        "cursor:pointer",
-        "user-select:none"
-      ].join(';');
-
-      label.addEventListener("click", e => e.stopPropagation());
+      label.style.cssText = "all:initial;display:inline-flex;align-items:center;gap:6px;margin-top:8px;color:#bfdbfe;font:700 11px system-ui;cursor:pointer;";
 
       const jpgInput = _0x36383f.createElement("input");
       jpgInput.type = "checkbox";
       jpgInput.checked = _0x369466.convertJpeg;
-      jpgInput.style.cssText = "all:initial;appearance:auto;box-sizing:border-box;width:16px;height:16px;margin:0;accent-color:#3b66f5;cursor:pointer;";
+      jpgInput.style.cssText = "all:initial;appearance:auto;width:14px;height:14px;accent-color:#3b82f6;cursor:pointer;";
       jpgInput.addEventListener("change", e => {
         e.stopPropagation();
         _0x369466.convertJpeg = jpgInput.checked;
@@ -1291,35 +1340,58 @@
       });
 
       const spanJpg = _0x36383f.createElement("span");
-      spanJpg.textContent = "JPG";
-      spanJpg.style.cssText = "all:initial;color:#d1d8eb;font:700 13px/1.2 system-ui,sans-serif;";
+      spanJpg.textContent = "Xuất file JPG (mặc định PNG)";
+      spanJpg.style.cssText = "all:initial;color:#bfdbfe;font:700 11px system-ui;";
       label.append(jpgInput, spanJpg);
 
       const progressRow = _0x36383f.createElement("div");
-      progressRow.style.cssText = "all:initial;display:flex;justify-content:space-between;align-items:center;box-sizing:border-box;margin-top:14px;color:#ffffff;font:800 14px/1.2 system-ui,sans-serif;";
+      progressRow.style.cssText = "all:initial;display:flex;justify-content:space-between;align-items:center;margin-top:10px;color:#ffffff;font:800 12px system-ui;";
 
       const countText = _0x36383f.createElement("span");
       countText.textContent = "0/0";
-      countText.style.cssText = "all:initial;color:#ffffff;font:800 14px/1.2 system-ui,sans-serif;";
+      countText.style.cssText = "all:initial;color:#ffffff;font:800 12px system-ui;";
 
       const percentText = _0x36383f.createElement("span");
       percentText.textContent = "0%";
-      percentText.style.cssText = "all:initial;color:#ffffff;font:800 14px/1.2 system-ui,sans-serif;";
+      percentText.style.cssText = "all:initial;color:#ffffff;font:800 12px system-ui;";
 
       progressRow.append(countText, percentText);
 
       const track = _0x36383f.createElement("div");
-      track.style.cssText = "all:initial;display:block;box-sizing:border-box;height:8px;overflow:hidden;border-radius:4px;background:#1a233d;margin-top:8px;";
+      track.style.cssText = "all:initial;display:block;height:6px;overflow:hidden;border-radius:3px;background:#1e3a8a;margin-top:6px;";
 
       const fill = _0x36383f.createElement("div");
-      fill.style.cssText = "all:initial;display:block;width:100%;height:100%;background:#3b66f5;transform:scaleX(0);transform-origin:left center;transition:transform .22s ease;";
+      fill.style.cssText = "all:initial;display:block;width:100%;height:100%;background:#60a5fa;transform:scaleX(0);transform-origin:left center;transition:transform .22s ease;";
       track.appendChild(fill);
 
       const statusText = _0x36383f.createElement("div");
       statusText.textContent = _0x369466.lastProgress.status;
-      statusText.style.cssText = "all:initial;display:block;box-sizing:border-box;margin-top:12px;color:#8c99b8;font:13px/1.35 system-ui,sans-serif;";
+      statusText.style.cssText = "all:initial;display:block;margin-top:8px;color:#bfdbfe;font:11px system-ui;word-break:break-word;";
 
-      panel.append(btn, label, progressRow, track, statusText);
+      mainContent.append(collapseBtn, title, btn, label, progressRow, track, statusText);
+      panel.append(collapsedStrip, mainContent);
+
+      function setCollapsedState(collapsed) {
+        isCollapsed = collapsed;
+        _0x291164.localStorage.setItem("ej-dl:collapsed", isCollapsed ? '1' : '0');
+
+        panel.style.transform = isCollapsed ? `translateX(calc(100% - ${TAB_WIDTH}px))` : "translateX(0)";
+        collapsedStrip.style.opacity = isCollapsed ? "1" : "0";
+        collapsedStrip.style.pointerEvents = isCollapsed ? "auto" : "none";
+        mainContent.style.opacity = isCollapsed ? "0" : "1";
+        mainContent.style.pointerEvents = isCollapsed ? "none" : "auto";
+      }
+
+      collapseBtn.addEventListener("click", e => {
+        e.preventDefault();
+        e.stopPropagation();
+        setCollapsedState(true);
+      });
+
+      panel.addEventListener("click", () => {
+        if (isCollapsed) setCollapsedState(false);
+      });
+
       _0x36383f.body.appendChild(panel);
 
       _0x369466.ui = {
@@ -1328,7 +1400,6 @@
         jpgInput,
         count: countText,
         percent: percentText,
-        track,
         fill,
         status: statusText
       };

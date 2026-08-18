@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         Yanmaga & Cmoa Universal Downloader
 // @namespace    https://yanmaga.jp/
-// @version      1.0
+// @version      1.1
 // @icon         https://c-cmoa.akamaized.net/sol/pcc/images/webclipicon/icon_cmoa.png?v=
-// @description  Tải truyện trên Yanmaga Web và Cmoa.jp, đóng nén ZIP.
+// @description  Tải truyện trên Yanmaga Web và Cmoa.jp, tự động ghép mảnh Canvas SpeedBinb, đóng gói ZIP.
 // @author       anonymous & AI
-// @match        https://yanmaga.jp/viewer/*
+// @match        https://yanmaga.jp/*
 // @match        https://www.cmoa.jp/bib/speedreader/*
 // @run-at       document-start
 // @grant        unsafeWindow
@@ -27,7 +27,7 @@
   const DOC = WIN.document;
   const sleep = ms => new Promise(resolve => WIN.setTimeout(resolve, ms));
 
-  // Kiểm tra cửa sổ chính hay Iframe ẩn
+  // Kiểm tra chỉ chạy UI trên cửa sổ chính (bỏ qua nếu là Iframe ngầm)
   const isTopWindow = (() => {
     try { return WIN.top === WIN.self; } catch { return true; }
   })();
@@ -157,8 +157,13 @@
     running: false,
     convertJpeg: localStorage.getItem("speedbinb-dl:convert-jpeg") === '1',
     ui: null,
-    lastProgress: { completed: 0, total: 0, percent: 0, status: "Đang kiểm tra trang..." }
+    lastProgress: { completed: 0, total: 0, percent: 0, status: "Đang kiểm tra..." }
   };
+
+  function isEpisodeUrl() {
+    const p = WIN.location.pathname;
+    return /\/(?:viewer|comics)\//.test(p) || /\/bib\/speedreader\//.test(p);
+  }
 
   function saveJpegPref(val) {
     try {
@@ -166,20 +171,18 @@
     } catch {}
   }
 
-  // TẠO TÊN FILE ZIP CHUẨN: "Tên Truyện - Tên Chap"
   function getCleanMangaTitle() {
     try {
       let rawTitle = DOC.title || "";
       let clean = rawTitle.split('｜')[0].split('|')[0].trim();
       clean = clean.replace(/【[^】]*】/g, '').trim();
       clean = clean.replace(/[\\/*?:"<>|]/g, '').trim();
-      return clean || getCidPrefix() || "Yanmaga_Manga";
+      return clean || getCidPrefix() || "SpeedBinb_Manga";
     } catch (e) {
-      return getCidPrefix() || "Yanmaga_Manga";
+      return getCidPrefix() || "SpeedBinb_Manga";
     }
   }
 
-  // LẤY MÃ TRUYỆN ĐỂ TẠO FILE TXT
   function getCidPrefix() {
     try {
       const contentEl = DOC.getElementById('content');
@@ -194,7 +197,7 @@
     if (cid) return cid;
 
     const match = WIN.location.href.match(/([a-zA-Z0-9_-]{8,})/);
-    return match ? match[1] : "06A000000001030320X";
+    return match ? match[1] : "SpeedBinb_Episode";
   }
 
   function getReader() {
@@ -363,11 +366,6 @@
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, targetW, targetH);
 
-    if (isJpg) {
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, targetW, targetH);
-    }
-
     for (const item of sliceData) {
       const dx = Math.round((item.inset.left / 100) * targetW);
       const dy = Math.round((item.inset.top / 100) * targetH);
@@ -403,7 +401,7 @@
   }
 
   /* =========================================================================
-   * 5. TIẾN TRÌNH TẢI SONG SONG (RUN PARALLEL QUEUE 4 LUỒNG)
+   * 5. TIẾN TRÌNH TẢI SONG SONG
    * ========================================================================= */
   async function runParallelQueue(tasks, limit, onProgress) {
     const results = new Array(tasks.length);
@@ -442,6 +440,9 @@
     WIN.setTimeout(() => WIN.URL.revokeObjectURL(url), 60000);
   }
 
+  /* =========================================================================
+   * 6. GIAO DIỆN UI (THEME ĐỎ CRIMSON / RUBY #e11d48)
+   * ========================================================================= */
   function updateProgressUI(data = {}) {
     const total = Number.isFinite(data.total) ? data.total : state.lastProgress.total;
     const completed = Number.isFinite(data.completed) ? data.completed : state.lastProgress.completed;
@@ -457,9 +458,9 @@
     const ui = state.ui;
     if (!ui) return;
 
-    ui.count.textContent = completed + '/' + total;
+    ui.count.textContent = total ? Math.min(completed, total) + '/' + total : "0/0";
     ui.percent.textContent = pct + '%';
-    ui.fill.style.transform = "scaleX(" + pct / 100 + ')';
+    ui.fill.style.transform = "scaleX(" + (total > 0 ? pct / 100 : 0) + ')';
     ui.status.textContent = state.lastProgress.status;
   }
 
@@ -467,14 +468,207 @@
     const ui = state.ui;
     if (!ui) return;
     ui.button.disabled = Boolean(isBusy);
-    ui.button.textContent = isBusy ? "Đang xử lý..." : "Download";
+    ui.button.textContent = "Download";
     ui.button.style.opacity = isBusy ? "0.72" : '1';
     ui.button.style.cursor = isBusy ? "progress" : "pointer";
     ui.jpgInput.disabled = Boolean(isBusy);
   }
 
+  function createUI() {
+    if (state.ui || !DOC.body || DOC.getElementById("speedbinb-dl-panel")) return;
+
+    const PANEL_WIDTH = 220;
+    const TAB_WIDTH = 14;
+    let isCollapsed = localStorage.getItem("speedbinb-dl:collapsed") === '1';
+
+    const panel = DOC.createElement("div");
+    panel.id = "speedbinb-dl-panel";
+    panel.style.cssText = [
+      "all:initial",
+      "position:fixed",
+      "right:0px",
+      "top:92px",
+      "z-index:2147483647",
+      "box-sizing:border-box",
+      `width:${PANEL_WIDTH}px`,
+      "padding:10px 14px",
+      "border:1px solid #e11d48",
+      "border-right:none",
+      "border-radius:12px 0 0 12px",
+      "background:#1c0710",
+      "color:#ffffff",
+      "font:12px/1.3 system-ui,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif",
+      "user-select:none",
+      "box-shadow:0 8px 24px rgba(0,0,0,0.85)",
+      "transition:transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)",
+      `transform:${isCollapsed ? `translateX(calc(100% - ${TAB_WIDTH}px))` : "translateX(0)"}`,
+      "display:block",
+      "overflow:hidden"
+    ].join(';');
+
+    const collapsedStrip = DOC.createElement("div");
+    collapsedStrip.style.cssText = [
+      "all:initial",
+      "position:absolute",
+      "left:0px",
+      "top:0px",
+      `width:${TAB_WIDTH}px`,
+      "height:100%",
+      "background:#e11d48",
+      "cursor:pointer",
+      "transition:opacity 0.15s, background 0.15s",
+      `opacity:${isCollapsed ? "1" : "0"}`,
+      `pointer-events:${isCollapsed ? "auto" : "none"}`
+    ].join(';');
+    collapsedStrip.title = "Mở bảng tải";
+    collapsedStrip.onmouseenter = () => { collapsedStrip.style.background = "#f43f5e"; };
+    collapsedStrip.onmouseleave = () => { collapsedStrip.style.background = "#e11d48"; };
+
+    const mainContent = DOC.createElement("div");
+    mainContent.style.cssText = [
+      "all:initial",
+      "display:block",
+      "transition:opacity 0.2s",
+      `opacity:${isCollapsed ? "0" : "1"}`,
+      `pointer-events:${isCollapsed ? "none" : "auto"}`
+    ].join(';');
+
+    const collapseBtn = DOC.createElement("button");
+    collapseBtn.type = "button";
+    collapseBtn.textContent = "▶";
+    collapseBtn.title = "Thu gọn";
+    collapseBtn.style.cssText = [
+      "all:initial",
+      "position:absolute",
+      "left:0px",
+      "top:0px",
+      "width:24px",
+      "height:24px",
+      "display:flex",
+      "align-items:center",
+      "justify-content:center",
+      "border-radius:12px 0 8px 0",
+      "background:#e11d48",
+      "color:#ffffff",
+      "font:900 10px system-ui,sans-serif",
+      "cursor:pointer",
+      "transition:background 0.15s ease",
+      "z-index:2"
+    ].join(';');
+    collapseBtn.onmouseenter = () => { collapseBtn.style.background = "#f43f5e"; };
+    collapseBtn.onmouseleave = () => { collapseBtn.style.background = "#e11d48"; };
+
+    const title = DOC.createElement("div");
+    title.textContent = "SpeedBinb Downloader";
+    title.style.cssText = "all:initial;display:block;color:#fda4af;font:800 13px system-ui;margin-bottom:8px;text-align:center;padding-left:14px;";
+
+    const btn = DOC.createElement("button");
+    btn.type = "button";
+    btn.textContent = "Download";
+    btn.style.cssText = [
+      "all:initial",
+      "display:block",
+      "box-sizing:border-box",
+      "width:100%",
+      "padding:8px 0",
+      "border:0",
+      "border-radius:6px",
+      "background:#e11d48",
+      "color:#ffffff",
+      "font:800 14px/1.2 system-ui,sans-serif",
+      "text-align:center",
+      "cursor:pointer",
+      "box-shadow:0 3px 10px rgba(225, 29, 72, 0.35)"
+    ].join(';');
+
+    btn.addEventListener("click", e => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!state.running) startDownload();
+    });
+
+    const label = DOC.createElement("label");
+    label.style.cssText = "all:initial;display:inline-flex;align-items:center;gap:6px;margin-top:8px;color:#fecdd3;font:700 11px system-ui;cursor:pointer;";
+
+    const jpgInput = DOC.createElement("input");
+    jpgInput.type = "checkbox";
+    jpgInput.checked = state.convertJpeg;
+    jpgInput.style.cssText = "all:initial;appearance:auto;width:14px;height:14px;accent-color:#e11d48;cursor:pointer;";
+    jpgInput.addEventListener("change", () => {
+      state.convertJpeg = jpgInput.checked;
+      saveJpegPref(state.convertJpeg);
+    });
+
+    const spanJpg = DOC.createElement("span");
+    spanJpg.textContent = "Xuất file JPG (mặc định PNG)";
+    spanJpg.style.cssText = "all:initial;color:#fecdd3;font:700 11px system-ui;";
+    label.append(jpgInput, spanJpg);
+
+    const progressRow = DOC.createElement("div");
+    progressRow.style.cssText = "all:initial;display:flex;justify-content:space-between;align-items:center;margin-top:10px;color:#ffffff;font:800 12px system-ui;";
+
+    const countText = DOC.createElement("span");
+    countText.textContent = "0/0";
+    countText.style.cssText = "all:initial;color:#ffffff;font:800 12px system-ui;";
+
+    const percentText = DOC.createElement("span");
+    percentText.textContent = "0%";
+    percentText.style.cssText = "all:initial;color:#ffffff;font:800 12px system-ui;";
+
+    progressRow.append(countText, percentText);
+
+    const track = DOC.createElement("div");
+    track.style.cssText = "all:initial;display:block;height:6px;overflow:hidden;border-radius:3px;background:#4c0519;margin-top:6px;";
+
+    const fill = DOC.createElement("div");
+    fill.style.cssText = "all:initial;display:block;width:100%;height:100%;background:#fb7185;transform:scaleX(0);transform-origin:left center;transition:transform .22s ease;";
+    track.appendChild(fill);
+
+    const statusText = DOC.createElement("div");
+    statusText.textContent = state.lastProgress.status;
+    statusText.style.cssText = "all:initial;display:block;margin-top:8px;color:#fecdd3;font:11px system-ui;word-break:break-word;";
+
+    mainContent.append(collapseBtn, title, btn, label, progressRow, track, statusText);
+    panel.append(collapsedStrip, mainContent);
+
+    function setCollapsedState(collapsed) {
+      isCollapsed = collapsed;
+      localStorage.setItem("speedbinb-dl:collapsed", isCollapsed ? '1' : '0');
+
+      panel.style.transform = isCollapsed ? `translateX(calc(100% - ${TAB_WIDTH}px))` : "translateX(0)";
+      collapsedStrip.style.opacity = isCollapsed ? "1" : "0";
+      collapsedStrip.style.pointerEvents = isCollapsed ? "auto" : "none";
+      mainContent.style.opacity = isCollapsed ? "0" : "1";
+      mainContent.style.pointerEvents = isCollapsed ? "none" : "auto";
+    }
+
+    collapseBtn.addEventListener("click", e => {
+      e.preventDefault();
+      e.stopPropagation();
+      setCollapsedState(true);
+    });
+
+    panel.addEventListener("click", () => {
+      if (isCollapsed) setCollapsedState(false);
+    });
+
+    DOC.body.appendChild(panel);
+
+    state.ui = {
+      panel,
+      button: btn,
+      jpgInput,
+      count: countText,
+      percent: percentText,
+      fill,
+      status: statusText
+    };
+
+    updateProgressUI(state.lastProgress);
+  }
+
   /* =========================================================================
-   * 6. CHƯƠNG TRÌNH CHÍNH (KHÓA MUTEX AN TOÀN CHO CANVAS SPEEDBINB)
+   * 7. CHƯƠNG TRÌNH TẢI CHÍNH
    * ========================================================================= */
   let readerLock = Promise.resolve();
   function withReaderLock(fn) {
@@ -484,6 +678,7 @@
   }
 
   async function startDownload() {
+    if (state.running) return;
     state.running = true;
     setUiBusy(true);
     let silentFrameObj = null;
@@ -508,12 +703,10 @@
       const zip = new PureZipWriter();
       const cidPrefix = getCidPrefix();
 
-      // TẠO FILE TXT MÃ TRUYỆN ID
       zip.addFile(`${cidPrefix}.txt`, new Uint8Array(0));
 
       updateProgressUI({ completed: 0, total: totalPages, status: "Đang tải..." });
 
-      // KHỞI TẠO TIẾN TRÌNH TẢI 4 LUỒNG SONG SONG (MAX_CONCURRENT = 4)
       const tasks = pages.map((pageObj) => async () => {
         return withReaderLock(async () => {
           silentFrameObj.reader.moveTo(pageObj.index, false);
@@ -532,7 +725,7 @@
         updateProgressUI({ completed, total, status: "Đang tải..." });
       });
 
-      updateProgressUI({ completed: totalPages, total: totalPages, status: "Đang đóng gói ZIP..." });
+      updateProgressUI({ completed: totalPages, total: totalPages, status: "Đang đóng gói file ZIP..." });
       await sleep(50);
 
       let savedCount = 0;
@@ -551,11 +744,11 @@
       const zipFileName = `${getCleanMangaTitle()}.zip`;
       triggerDownload(zipBlob, zipFileName);
 
-      updateProgressUI({ completed: totalPages, total: totalPages, status: "Hoàn tất!" });
+      updateProgressUI({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
     } catch (err) {
       const msg = err?.message || String(err);
       updateProgressUI({ status: "Lỗi: " + msg });
-      console.error("[speedbinb-dl] Download failed", err);
+      console.error("[speedbinb-dl] Download failed:", err);
     } finally {
       if (silentFrameObj) silentFrameObj.cleanup();
 
@@ -573,126 +766,7 @@
   }
 
   /* =========================================================================
-   * 7. GIAO DIỆN UI (ĐỒNG BỘ 100% COMICI, ĐỔI TÔNG MÀU ROSE RED)
-   * ========================================================================= */
-  function createUI() {
-    if (state.ui) return;
-
-    const panel = DOC.createElement("div");
-    panel.id = "speedbinb-dl-panel";
-
-    panel.style.cssText = [
-      "all:initial",
-      "position:fixed",
-      "right:0px",
-      "top:75px",
-      "z-index:2147483647",
-      "box-sizing:border-box",
-      "width:220px",
-      "padding:10px 14px",
-      "border:1px solid #be123c",
-      "border-radius:10px",
-      "background:#4c0519",
-      "color:#ffffff",
-      "font:12px/1.3 system-ui,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif",
-      "user-select:none",
-      "box-shadow:0 8px 24px rgba(0,0,0,0.85)"
-    ].join(';');
-
-    const title = DOC.createElement("div");
-    title.textContent = "SpeedBinb Downloader";
-    title.style.cssText = "all:initial;display:block;color:#fb7185;font:800 13px system-ui;margin-bottom:8px;text-align:center;";
-
-    const btn = DOC.createElement("button");
-    btn.type = "button";
-    btn.textContent = "Download";
-    btn.style.cssText = [
-      "all:initial",
-      "display:block",
-      "box-sizing:border-box",
-      "width:100%",
-      "padding:8px 0",
-      "border:0",
-      "border-radius:6px",
-      "background:#e11d48",
-      "color:#ffffff",
-      "font:700 14px/1.2 system-ui,sans-serif",
-      "text-align:center",
-      "cursor:pointer",
-      "box-shadow:0 3px 10px rgba(225, 29, 72, 0.3)"
-    ].join(';');
-
-    btn.addEventListener("click", e => {
-      e.preventDefault();
-      e.stopPropagation();
-      startDownload();
-    });
-
-    const label = DOC.createElement("label");
-    label.style.cssText = "all:initial;display:inline-flex;align-items:center;gap:6px;margin-top:8px;color:#d1d8eb;font:700 11px system-ui;cursor:pointer;";
-
-    const jpgInput = DOC.createElement("input");
-    jpgInput.type = "checkbox";
-    jpgInput.checked = state.convertJpeg;
-    jpgInput.style.cssText = "all:initial;appearance:auto;width:14px;height:14px;accent-color:#e11d48;cursor:pointer;";
-    jpgInput.addEventListener("change", e => {
-      state.convertJpeg = jpgInput.checked;
-      saveJpegPref(state.convertJpeg);
-    });
-
-    const spanJpg = DOC.createElement("span");
-    spanJpg.textContent = "Xuất file JPG (mặc định PNG)";
-    spanJpg.style.cssText = "all:initial;color:#d1d8eb;font:700 11px system-ui;";
-    label.append(jpgInput, spanJpg);
-
-    const progressRow = DOC.createElement("div");
-    progressRow.style.cssText = "all:initial;display:flex;justify-content:space-between;align-items:center;margin-top:10px;color:#ffffff;font:800 12px system-ui;";
-
-    const countText = DOC.createElement("span");
-    countText.textContent = "0/0";
-    countText.style.cssText = "all:initial;color:#ffffff;font:800 12px system-ui;";
-
-    const percentText = DOC.createElement("span");
-    percentText.textContent = "0%";
-    percentText.style.cssText = "all:initial;color:#ffffff;font:800 12px system-ui;";
-
-    progressRow.append(countText, percentText);
-
-    const track = DOC.createElement("div");
-    track.style.cssText = "all:initial;display:block;height:6px;overflow:hidden;border-radius:3px;background:#881337;margin-top:6px;";
-
-    const fill = DOC.createElement("div");
-    fill.style.cssText = "all:initial;display:block;width:100%;height:100%;background:#fb7185;transform:scaleX(0);transform-origin:left center;transition:transform .22s ease;";
-    track.appendChild(fill);
-
-    const statusText = DOC.createElement("div");
-    statusText.textContent = state.lastProgress.status;
-    statusText.style.cssText = "all:initial;display:block;margin-top:8px;color:#fecdd3;font:11px system-ui;word-break:break-word;";
-
-    panel.append(title, btn, label, progressRow, track, statusText);
-
-    const attachUI = () => {
-      if (DOC.body && !DOC.getElementById("speedbinb-dl-panel")) {
-        DOC.body.appendChild(panel);
-      }
-    };
-    attachUI();
-
-    state.ui = {
-      panel,
-      button: btn,
-      jpgInput,
-      count: countText,
-      percent: percentText,
-      fill,
-      status: statusText
-    };
-
-    updateProgressUI(state.lastProgress);
-  }
-
-  /* =========================================================================
-   * 8. ROUTE WATCHER (LẮNG NGHE CHUYỂN TẬP TỰ ĐỘNG SPA)
+   * 8. ROUTE WATCHER & BOOT
    * ========================================================================= */
   function initRouteWatcher() {
     let lastUrl = WIN.location.href;
@@ -726,19 +800,28 @@
 
   async function boot() {
     while (!DOC.body) {
-      await sleep(120);
+      await sleep(100);
     }
+    createUI();
+
+    if (!isEpisodeUrl()) {
+      if (state.ui?.panel) state.ui.panel.style.display = "none";
+      return;
+    }
+
+    if (state.ui?.panel) state.ui.panel.style.display = "block";
+
+    updateProgressUI({ completed: 0, total: 0, status: "Đang kiểm tra..." });
+
     try {
       const reader = await waitForReader();
       const pages = getPageList(reader);
-      createUI();
       updateProgressUI({
         completed: 0,
         total: pages.length,
         status: "Sẵn sàng."
       });
     } catch (err) {
-      createUI();
       updateProgressUI({
         completed: 0,
         total: 0,
@@ -750,7 +833,7 @@
   initRouteWatcher();
 
   if (DOC.readyState === "loading") {
-    DOC.addEventListener("DOMContentLoaded", () => boot());
+    DOC.addEventListener("DOMContentLoaded", boot);
   } else {
     boot();
   }

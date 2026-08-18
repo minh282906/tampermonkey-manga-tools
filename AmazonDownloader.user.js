@@ -3,7 +3,7 @@
 // @namespace    https://read.amazon.co.jp/
 // @version      1.0
 // @icon         https://www.amazon.co.jp/favicon.ico
-// @description  Tải và nén ZIP truyện Manga trên Amazon Kindle Web Reader.
+// @description  Tải manga trên Amazon Kindle Web Reader.
 // @author       anonymous & AI
 // @match        https://read.amazon.co.jp/manga/*
 // @match        https://read.amazon.com/manga/*
@@ -22,13 +22,13 @@
    * CẤU HÌNH HỆ THỐNG AMAZON KINDLE
    * ========================================================================= */
   const CONFIG = {
-    RENDER_WAIT_MS: 550, // Thời gian chờ Kindle vẽ xong trang ảnh (ms)
-    MIN_IMAGE_DIM: 300 // Kích thước tối thiểu (px) để lọc bỏ icon UI
+    RENDER_WAIT_MS: 480, // Thời gian chờ Kindle vẽ xong trang ảnh (ms)
+    MIN_IMAGE_DIM: 300   // Kích thước tối thiểu (px) để lọc bỏ icon UI
   };
 
   const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;
   const DOC = WIN.document;
-  const sleep = ms => new Promise(resolve => WIN.setTimeout(resolve, ms));
+  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
   /* =========================================================================
    * 1. BỘ ĐÓNG GÓI ZIP NGUYÊN BẢN (PURE ZIP WRITER)
@@ -143,6 +143,7 @@
   const state = {
     running: false,
     convertJpeg: localStorage.getItem("amazon-dl:convert-jpeg") === '1',
+    lastVerifiedPageWidth: 0,
     ui: null,
     lastProgress: { completed: 0, total: 0, percent: 0, status: "Đang kiểm tra..." }
   };
@@ -166,7 +167,7 @@
       const titleEl = DOC.getElementById('readerChromeTitle') || DOC.querySelector('.kw-rd-chrome-book-title');
       if (titleEl && titleEl.textContent) {
         let t = titleEl.textContent.trim();
-        t = t.replace(/[\\/*?:"<>|]/g, '').trim();
+        t = t.replace(/【[^】]*】/g, '').replace(/[\\/*?:"<>|]/g, '').trim();
         if (t) return t;
       }
     } catch (e) {}
@@ -175,7 +176,7 @@
       let title = DOC.title || "";
       title = title.replace(/^Kindle\s*-\s*/i, '');
       title = title.split('｜')[0].split('|')[0].trim();
-      title = title.replace(/[\\/*?:"<>|]/g, '').trim();
+      title = title.replace(/【[^】]*】/g, '').replace(/[\\/*?:"<>|]/g, '').trim();
       if (title) return title;
     } catch (e) {}
 
@@ -189,10 +190,10 @@
     const curEl = DOC.getElementById('pageInfoCurrentPage');
     const totEl = DOC.getElementById('pageInfoTotalPage');
 
-    if (totEl && totEl.textContent) {
+    if (totEl?.textContent) {
       total = parseInt(totEl.textContent.trim(), 10) || 0;
     }
-    if (curEl && curEl.textContent) {
+    if (curEl?.textContent) {
       current = parseInt(curEl.textContent.trim(), 10) || 0;
     }
 
@@ -221,6 +222,26 @@
     }
   }
 
+  let wasFullscreen = false;
+  async function handleFullscreenStart() {
+    wasFullscreen = Boolean(DOC.fullscreenElement);
+    if (!wasFullscreen && typeof DOC.documentElement.requestFullscreen === "function") {
+      try {
+        await DOC.documentElement.requestFullscreen();
+        await sleep(500);
+      } catch (e) {}
+    }
+  }
+
+  async function handleFullscreenEnd() {
+    if (!wasFullscreen && DOC.fullscreenElement && typeof DOC.exitFullscreen === "function") {
+      try {
+        await DOC.exitFullscreen();
+        await sleep(250);
+      } catch (e) {}
+    }
+  }
+
   function sendKey(keyName, keyCode) {
     const opts = { key: keyName, code: keyName, keyCode: keyCode, which: keyCode, bubbles: true, cancelable: true, composed: true };
     const targets = [DOC.activeElement, DOC.body, WIN, DOC.getElementById('bookContainer'), DOC.getElementById('readerContainer')].filter(Boolean);
@@ -246,9 +267,7 @@
       slider.dispatchEvent(new Event('change', opts));
       slider.dispatchEvent(new MouseEvent('pointerup', opts));
       slider.dispatchEvent(new MouseEvent('mouseup', opts));
-    } catch (e) {
-      console.error("[amazon-dl] Slider jump error:", e);
-    }
+    } catch (e) {}
   }
 
   function dispatchFullClick(el) {
@@ -267,12 +286,10 @@
 
     let retries = 0;
     while (retries < 35) {
-      const curEl = DOC.getElementById('pageInfoCurrentPage');
-      const curNum = curEl ? parseInt(curEl.textContent.trim(), 10) : 0;
-
-      if (curNum === 1) {
+      const curInfo = getPageInfo();
+      if (curInfo.current === 1) {
         updateProgressUI({ status: "Đang tải..." });
-        await sleep(800);
+        await sleep(600);
         setInteractionLock(true);
         return true;
       }
@@ -280,7 +297,7 @@
       const slider = DOC.getElementById('sliderBar');
       if (slider && retries === 0) {
         triggerSliderJump(slider, 1);
-        await sleep(500);
+        await sleep(400);
       }
 
       const rightChevron = DOC.querySelector('.kr-chevron-container-right');
@@ -290,12 +307,11 @@
         sendKey("ArrowRight", 39);
       }
 
-      await sleep(250);
+      await sleep(200);
       retries++;
     }
-
     setInteractionLock(true);
-    return false;
+    return getPageInfo().current === 1;
   }
 
   async function stepToNextPage() {
@@ -351,108 +367,249 @@
   }
 
   /* =========================================================================
-   * 3. LOGIC XỬ LÝ ẢNH CHUẨN (CẮT LỀ ĐEN VÀ CHIA ĐÔI 50/50 TOÁN HỌC)
+   * 3. THUẬT TOÁN DÒ VẠCH PHÂN CHIA TƯƠNG PHẢN & XÉN MÉP NGOÀI
    * ========================================================================= */
+  function isColumnPureBlack(x, w, h, data) {
+    for (let y = Math.floor(h * 0.05); y < Math.floor(h * 0.95); y += 3) {
+      const idx = (y * w + x) * 4;
+      const r = data[idx];
+      const g = data[idx + 1];
+      const b = data[idx + 2];
+      const a = data[idx + 3];
+      if ((r > 2 || g > 2 || b > 2) && a > 10) {
+        return false;
+      }
+    }
+    return true;
+  }
 
-  function smartCropMangaCanvas(srcCanvas) {
+  // Dò vạch phân chia tương phản giữa 2 trang quanh tâm Canvas
+  function findContrastSeamX(canvas, searchRadius = 25, minContrast = 25) {
+    const w = canvas.width;
+    const h = canvas.height;
+    const midX = Math.floor(w / 2);
+    const ctx = canvas.getContext('2d');
+    const startSearch = Math.max(1, midX - searchRadius);
+    const endSearch = Math.min(w - 2, midX + searchRadius);
+
+    try {
+      const imgData = ctx.getImageData(startSearch - 1, 0, endSearch - startSearch + 3, h);
+      const data = imgData.data;
+      const dataW = endSearch - startSearch + 3;
+
+      let bestX = midX;
+      let maxScore = 0;
+
+      for (let x = startSearch; x <= endSearch; x++) {
+        let totalDiff = 0;
+        let count = 0;
+
+        for (let y = Math.floor(h * 0.05); y < Math.floor(h * 0.95); y += 4) {
+          const localX1 = x - startSearch + 1;
+          const localX2 = localX1 + 1;
+
+          const idx1 = (y * dataW + localX1) * 4;
+          const idx2 = (y * dataW + localX2) * 4;
+
+          const lum1 = 0.299 * data[idx1] + 0.587 * data[idx1 + 1] + 0.114 * data[idx1 + 2];
+          const lum2 = 0.299 * data[idx2] + 0.587 * data[idx2 + 1] + 0.114 * data[idx2 + 2];
+
+          totalDiff += Math.abs(lum1 - lum2);
+          count++;
+        }
+
+        const avgScore = count > 0 ? totalDiff / count : 0;
+        if (avgScore > maxScore) {
+          maxScore = avgScore;
+          bestX = x;
+        }
+      }
+
+      if (maxScore >= minContrast) {
+        return bestX + 1;
+      }
+    } catch (e) {}
+
+    return midX;
+  }
+
+  // 1. Xử lý Nửa Trang Trái
+  function cropLeftHalf(leftCanvas, h) {
+    const w = leftCanvas.width;
+    const ctx = leftCanvas.getContext('2d');
+    const imgData = ctx.getImageData(0, 0, w, h);
+    const data = imgData.data;
+
+    let firstNonBlackX = -1;
+    for (let x = 0; x < w; x++) {
+      if (!isColumnPureBlack(x, w, h, data)) {
+        firstNonBlackX = x;
+        break;
+      }
+    }
+
+    let cropStartX = 0;
+    let isValid = false;
+
+    if (firstNonBlackX !== -1) {
+      const candidateX = firstNonBlackX + 1; // Bỏ cột mờ (+1)
+      const pageW = w - candidateX;
+      if (pageW >= Math.floor(w * 0.4) && pageW <= w) {
+        cropStartX = candidateX;
+        isValid = true;
+      }
+    }
+
+    if (!isValid) {
+      if (state.lastVerifiedPageWidth && state.lastVerifiedPageWidth <= w) {
+        cropStartX = w - state.lastVerifiedPageWidth;
+      } else {
+        cropStartX = 0;
+      }
+    } else {
+      state.lastVerifiedPageWidth = w - cropStartX;
+    }
+
+    const outW = w - cropStartX;
+    const outCanvas = DOC.createElement('canvas');
+    outCanvas.width = outW;
+    outCanvas.height = h;
+    const outCtx = outCanvas.getContext('2d', { alpha: false });
+    outCtx.fillStyle = '#ffffff';
+    outCtx.fillRect(0, 0, outW, h);
+    outCtx.drawImage(leftCanvas, cropStartX, 0, outW, h, 0, 0, outW, h);
+    return outCanvas;
+  }
+
+  // 2. Xử lý Nửa Trang Phải
+  function cropRightHalf(rightCanvas, h) {
+    const w = rightCanvas.width;
+    const ctx = rightCanvas.getContext('2d');
+    const imgData = ctx.getImageData(0, 0, w, h);
+    const data = imgData.data;
+
+    let lastNonBlackX = -1;
+    for (let x = w - 1; x >= 0; x--) {
+      if (!isColumnPureBlack(x, w, h, data)) {
+        lastNonBlackX = x;
+        break;
+      }
+    }
+
+    let cropEndX = w - 1;
+    let isValid = false;
+
+    if (lastNonBlackX !== -1) {
+      const candidateX = lastNonBlackX - 1; // Bỏ cột mờ (-1)
+      const pageW = candidateX + 1;
+      if (pageW >= Math.floor(w * 0.4) && pageW <= w) {
+        cropEndX = candidateX;
+        isValid = true;
+      }
+    }
+
+    if (!isValid) {
+      if (state.lastVerifiedPageWidth && state.lastVerifiedPageWidth <= w) {
+        cropEndX = state.lastVerifiedPageWidth - 1;
+      } else {
+        cropEndX = w - 1;
+      }
+    } else {
+      state.lastVerifiedPageWidth = Math.max(state.lastVerifiedPageWidth || 0, cropEndX + 1);
+    }
+
+    const outW = cropEndX + 1;
+    const outCanvas = DOC.createElement('canvas');
+    outCanvas.width = outW;
+    outCanvas.height = h;
+    const outCtx = outCanvas.getContext('2d', { alpha: false });
+    outCtx.fillStyle = '#ffffff';
+    outCtx.fillRect(0, 0, outW, h);
+    outCtx.drawImage(rightCanvas, 0, 0, outW, h, 0, 0, outW, h);
+    return outCanvas;
+  }
+
+  // 3. Xử lý Trang Bìa / Trang Đơn
+  function cropSingleCoverPage(srcCanvas, h) {
     const w = srcCanvas.width;
-    const h = srcCanvas.height;
     const ctx = srcCanvas.getContext('2d');
     const imgData = ctx.getImageData(0, 0, w, h);
     const data = imgData.data;
 
-    function isColumnContent(x) {
-      let minLum = 255, maxLum = 0;
-      for (let y = Math.floor(h * 0.05); y < Math.floor(h * 0.95); y += 3) {
-        const idx = (y * w + x) * 4;
-        const lum = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
-        if (lum < minLum) minLum = lum;
-        if (lum > maxLum) maxLum = lum;
-        if (lum > 22) return true;
-      }
-      return (maxLum - minLum) > 12;
-    }
-
-    let minX = 0;
+    let firstNonBlackX = 0;
     for (let x = 0; x < w; x++) {
-      if (isColumnContent(x)) { minX = x; break; }
-    }
-
-    let maxX = w - 1;
-    for (let x = w - 1; x >= minX; x--) {
-      if (isColumnContent(x)) { maxX = x; break; }
-    }
-
-    function isRowContent(y) {
-      for (let x = minX; x <= maxX; x += 4) {
-        const idx = (y * w + x) * 4;
-        const lum = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
-        if (lum > 22) return true;
+      if (!isColumnPureBlack(x, w, h, data)) {
+        firstNonBlackX = x;
+        break;
       }
-      return false;
     }
 
-    let minY = 0;
-    for (let y = 0; y < h; y++) {
-      if (isRowContent(y)) { minY = y; break; }
+    let lastNonBlackX = w - 1;
+    for (let x = w - 1; x >= firstNonBlackX; x--) {
+      if (!isColumnPureBlack(x, w, h, data)) {
+        lastNonBlackX = x;
+        break;
+      }
     }
 
-    let maxY = h - 1;
-    for (let y = h - 1; y >= minY; y--) {
-      if (isRowContent(y)) { maxY = y; break; }
-    }
+    const startX = Math.min(w - 1, firstNonBlackX + 1);
+    const endX = Math.max(startX, lastNonBlackX - 1);
+    const outW = endX - startX + 1;
 
-    const cropW = maxX - minX + 1;
-    const cropH = maxY - minY + 1;
-
-    if (cropW < CONFIG.MIN_IMAGE_DIM || cropH < CONFIG.MIN_IMAGE_DIM) {
-      return srcCanvas;
-    }
+    if (outW < CONFIG.MIN_IMAGE_DIM) return srcCanvas;
 
     const outCanvas = DOC.createElement('canvas');
-    outCanvas.width = cropW;
-    outCanvas.height = cropH;
+    outCanvas.width = outW;
+    outCanvas.height = h;
     const outCtx = outCanvas.getContext('2d', { alpha: false });
-    outCtx.fillStyle = '#000000';
-    outCtx.fillRect(0, 0, cropW, cropH);
-    outCtx.drawImage(srcCanvas, minX, minY, cropW, cropH, 0, 0, cropW, cropH);
-
+    outCtx.fillStyle = '#ffffff';
+    outCtx.fillRect(0, 0, outW, h);
+    outCtx.drawImage(srcCanvas, startX, 0, outW, h, 0, 0, outW, h);
     return outCanvas;
   }
 
-  async function processAndSplitCanvas(croppedCanvas, useJpeg) {
-    const w = croppedCanvas.width;
-    const h = croppedCanvas.height;
-    const ratio = w / h;
-
+  async function processAndSplitCanvas(srcCanvas, useJpeg) {
+    const w = srcCanvas.width;
+    const h = srcCanvas.height;
     const results = [];
     const mimeType = useJpeg ? 'image/jpeg' : 'image/png';
     const quality = useJpeg ? 0.95 : undefined;
 
-    if (ratio > 1.1) {
-      // DÙNG PHÉP CHIA CHÍNH GIỮA 50/50 TOÁN HỌC THUẦN TÚY (CHUẨN tuyệt đối 100%)
-      const splitX = Math.floor(w / 2);
+    // Đo sơ bộ bề rộng nét vẽ
+    const ctx = srcCanvas.getContext('2d');
+    const imgData = ctx.getImageData(0, 0, w, h);
+    const data = imgData.data;
+    let minX = 0, maxX = w - 1;
+    for (let x = 0; x < w; x++) {
+      if (!isColumnPureBlack(x, w, h, data)) { minX = x; break; }
+    }
+    for (let x = w - 1; x >= minX; x--) {
+      if (!isColumnPureBlack(x, w, h, data)) { maxX = x; break; }
+    }
+    const contentW = maxX - minX + 1;
+    const contentRatio = contentW / h;
 
-      const rightW = w - splitX;
-      const rightCanvas = DOC.createElement('canvas');
-      rightCanvas.width = rightW;
-      rightCanvas.height = h;
-      const rCtx = rightCanvas.getContext('2d', { alpha: false });
-      rCtx.fillStyle = '#000000';
-      rCtx.fillRect(0, 0, rightW, h);
-      rCtx.drawImage(croppedCanvas, splitX, 0, rightW, h, 0, 0, rightW, h);
+    if (contentRatio >= 1.05) {
+      // 1. TRANG ĐÔI: Dò vạch phân chia tương phản (hoặc chia đôi tâm W/2)
+      const splitX = findContrastSeamX(srcCanvas, 25, 25);
 
-      const leftW = splitX;
-      const leftCanvas = DOC.createElement('canvas');
-      leftCanvas.width = leftW;
-      leftCanvas.height = h;
-      const lCtx = leftCanvas.getContext('2d', { alpha: false });
-      lCtx.fillStyle = '#000000';
-      lCtx.fillRect(0, 0, leftW, h);
-      lCtx.drawImage(croppedCanvas, 0, 0, leftW, h, 0, 0, leftW, h);
+      const leftRawCanvas = DOC.createElement('canvas');
+      leftRawCanvas.width = splitX;
+      leftRawCanvas.height = h;
+      const lCtx = leftRawCanvas.getContext('2d', { alpha: false });
+      lCtx.drawImage(srcCanvas, 0, 0, splitX, h, 0, 0, splitX, h);
 
-      const rightBlob = await new Promise(res => rightCanvas.toBlob(res, mimeType, quality));
-      const leftBlob = await new Promise(res => leftCanvas.toBlob(res, mimeType, quality));
+      const rightRawCanvas = DOC.createElement('canvas');
+      rightRawCanvas.width = w - splitX;
+      rightRawCanvas.height = h;
+      const rCtx = rightRawCanvas.getContext('2d', { alpha: false });
+      rCtx.drawImage(srcCanvas, splitX, 0, w - splitX, h, 0, 0, w - splitX, h);
+
+      const rightFinalCanvas = cropRightHalf(rightRawCanvas, h);
+      const leftFinalCanvas = cropLeftHalf(leftRawCanvas, h);
+
+      const rightBlob = await new Promise(res => rightFinalCanvas.toBlob(res, mimeType, quality));
+      const leftBlob = await new Promise(res => leftFinalCanvas.toBlob(res, mimeType, quality));
 
       if (rightBlob) {
         results.push({
@@ -467,7 +624,9 @@
         });
       }
     } else {
-      const blob = await new Promise(res => croppedCanvas.toBlob(res, mimeType, quality));
+      // 2. TRANG ĐƠN (Trang bìa): Xén 2 bên mép, KHÔNG CẮT ĐÔI
+      const singleFinalCanvas = cropSingleCoverPage(srcCanvas, h);
+      const blob = await new Promise(res => singleFinalCanvas.toBlob(res, mimeType, quality));
       if (blob) {
         results.push({
           uint8Array: new Uint8Array(await blob.arrayBuffer()),
@@ -483,13 +642,17 @@
     const container = DOC.getElementById('bookContainer') || DOC.getElementById('readerContainer') || DOC.body;
     if (!container) return [];
 
-    const elements = Array.from(container.querySelectorAll('.kg-full-page-img img, img[src^="blob:"], canvas'));
+    // Chỉ bắt đúng canvas hoặc ảnh trang truyện của Kindle (loại bỏ quảng cáo/popup cuối sách)
+    const elements = Array.from(container.querySelectorAll('.kg-full-page-img img, img[src^="blob:"], #bookContainer canvas, .kw-rd-view canvas'));
     const visibleElements = [];
 
     const viewW = WIN.innerWidth;
     const viewH = WIN.innerHeight;
 
     for (const el of elements) {
+      // Bỏ qua các phần tử thuộc popup quảng cáo/gợi ý cuối sách
+      if (el.closest('.sponsored, [class*="recommend"], [class*="ad-"], #kr-end-actions-container')) continue;
+
       const rect = el.getBoundingClientRect();
       const w = el.naturalWidth || el.width || rect.width;
       const h = el.naturalHeight || el.height || rect.height;
@@ -519,25 +682,22 @@
           }
         }
 
-        let rawCanvas;
-        if (item.el.tagName.toLowerCase() === 'canvas') {
-          rawCanvas = item.el;
-        } else {
-          rawCanvas = DOC.createElement('canvas');
-          rawCanvas.width = item.el.naturalWidth || item.w;
-          rawCanvas.height = item.el.naturalHeight || item.h;
-          const ctx = rawCanvas.getContext('2d', { alpha: false });
-          ctx.fillStyle = '#000000';
-          ctx.fillRect(0, 0, rawCanvas.width, rawCanvas.height);
-          ctx.drawImage(item.el, 0, 0, rawCanvas.width, rawCanvas.height);
-        }
+        // Luôn chuyển sang Canvas 2D mới để sao chép chuẩn 100% (bất kể WebGL hay IMG)
+        const rawCanvas = DOC.createElement('canvas');
+        const elemW = item.el.naturalWidth || item.el.width || item.w;
+        const elemH = item.el.naturalHeight || item.el.height || item.h;
+        rawCanvas.width = elemW;
+        rawCanvas.height = elemH;
 
-        const croppedCanvas = smartCropMangaCanvas(rawCanvas);
-        const splitPages = await processAndSplitCanvas(croppedCanvas, useJpeg);
+        const ctx = rawCanvas.getContext('2d', { alpha: false });
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, elemW, elemH);
+        ctx.drawImage(item.el, 0, 0, elemW, elemH);
+
+        const splitPages = await processAndSplitCanvas(rawCanvas, useJpeg);
         for (const sp of splitPages) {
           capturedBlobs.push(sp);
         }
-
       } catch (e) {
         console.error("[amazon-dl] Error processing canvas:", e);
       }
@@ -556,9 +716,12 @@
     DOC.documentElement.appendChild(a);
     a.click();
     a.remove();
-    WIN.setTimeout(() => WIN.URL.revokeObjectURL(url), 60000);
+    setTimeout(() => WIN.URL.revokeObjectURL(url), 60000);
   }
 
+  /* =========================================================================
+   * 4. GIAO DIỆN UI (TÔNG MÀU CAM AMAZON #f97316)
+   * ========================================================================= */
   function updateProgressUI(data = {}) {
     const total = Number.isFinite(data.total) ? data.total : state.lastProgress.total;
     const completed = Number.isFinite(data.completed) ? data.completed : state.lastProgress.completed;
@@ -584,109 +747,14 @@
     const ui = state.ui;
     if (!ui) return;
     ui.button.disabled = Boolean(isBusy);
-    ui.button.textContent = isBusy ? "Đang xử lý..." : "Download";
+    ui.button.textContent = "Download";
     ui.button.style.opacity = isBusy ? "0.72" : '1';
     ui.button.style.cursor = isBusy ? "progress" : "pointer";
     ui.jpgInput.disabled = Boolean(isBusy);
   }
 
-  /* =========================================================================
-   * 4. CHƯƠNG TRÌNH TẢI CHÍNH
-   * ========================================================================= */
-  async function startDownload() {
-    state.running = true;
-    setUiBusy(true);
-
-    const initialInfo = getPageInfo();
-    const initialPage = initialInfo.current || 1;
-    const totalPages = initialInfo.total;
-
-    if (!totalPages) {
-      updateProgressUI({ status: "Lỗi: Không lấy được số trang." });
-      setUiBusy(false);
-      state.running = false;
-      return;
-    }
-
-    const useJpeg = Boolean(state.convertJpeg);
-    const zip = new PureZipWriter();
-    const hashesSet = new Set();
-    let savedCount = 0;
-
-    try {
-      const asin = getAsin();
-      zip.addFile(`${asin}.txt`, new Uint8Array(0));
-
-      await ensureAtPage1();
-
-      updateProgressUI({ completed: 0, total: totalPages, status: "Đang tải..." });
-
-      let attempts = 0;
-      const maxAttempts = totalPages * 3;
-
-      while (state.running && attempts < maxAttempts) {
-        attempts++;
-        const curInfo = getPageInfo();
-
-        const pageImages = await captureActivePageElements(useJpeg);
-
-        for (const imgObj of pageImages) {
-          const hash = calculateBufferHash(imgObj.uint8Array);
-          if (!hashesSet.has(hash)) {
-            hashesSet.add(hash);
-            savedCount++;
-            zip.addFile(`${savedCount}.${imgObj.ext}`, imgObj.uint8Array);
-          }
-        }
-
-        updateProgressUI({
-          completed: Math.min(curInfo.current, totalPages),
-          total: totalPages,
-          status: "Đang tải..."
-        });
-
-        if (curInfo.current >= totalPages) {
-          break;
-        }
-
-        await stepToNextPage();
-        await sleep(CONFIG.RENDER_WAIT_MS);
-      }
-
-      if (savedCount === 0) {
-        throw new Error("Không thể bóc tách trang truyện.");
-      }
-
-      updateProgressUI({ completed: totalPages, total: totalPages, status: "Đang đóng gói ZIP..." });
-      await sleep(60);
-
-      const zipBlob = zip.generateBlob();
-      const zipFileName = `${getCleanTitle()}.zip`;
-      triggerDownload(zipBlob, zipFileName);
-
-      updateProgressUI({ completed: totalPages, total: totalPages, status: "Hoàn tất!" });
-
-    } catch (err) {
-      const msg = err?.message || String(err);
-      updateProgressUI({ status: "Lỗi: " + msg });
-      console.error("[amazon-dl] Download failed:", err);
-    } finally {
-      try {
-        await jumpToPage(initialPage);
-      } catch (e) {}
-
-      setInteractionLock(false);
-      state.running = false;
-      setUiBusy(false);
-      updateProgressUI(state.lastProgress);
-    }
-  }
-
-  /* =========================================================================
-   * 5. GIAO DIỆN UI (TÔNG MÀU AMAZON AMBER / SLATE)
-   * ========================================================================= */
   function createUI() {
-    if (state.ui || !DOC.body) return;
+    if (state.ui || !DOC.body || DOC.getElementById("amazon-dl-panel")) return;
 
     const PANEL_WIDTH = 220;
     const TAB_WIDTH = 14;
@@ -713,7 +781,7 @@
       "box-shadow:0 8px 24px rgba(0,0,0,0.85)",
       "transition:transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)",
       `transform:${isCollapsed ? `translateX(calc(100% - ${TAB_WIDTH}px))` : "translateX(0)"}`,
-      "display:none",
+      "display:block",
       "overflow:hidden"
     ].join(';');
 
@@ -731,7 +799,7 @@
       `opacity:${isCollapsed ? "1" : "0"}`,
       `pointer-events:${isCollapsed ? "auto" : "none"}`
     ].join(';');
-    collapsedStrip.title = "Bấm để mở bảng tải";
+    collapsedStrip.title = "Mở bảng tải";
     collapsedStrip.onmouseenter = () => { collapsedStrip.style.background = "#fb923c"; };
     collapsedStrip.onmouseleave = () => { collapsedStrip.style.background = "#f97316"; };
 
@@ -863,12 +931,7 @@
       if (isCollapsed) setCollapsedState(false);
     });
 
-    const attachUI = () => {
-      if (DOC.body && !DOC.getElementById("amazon-dl-panel")) {
-        DOC.body.appendChild(panel);
-      }
-    };
-    attachUI();
+    DOC.body.appendChild(panel);
 
     state.ui = {
       panel,
@@ -884,13 +947,139 @@
   }
 
   /* =========================================================================
-   * 6. KHỞI TẠO VÀ CHỜ XÁC NHẬN TỔNG SỐ TRANG MỚI HIỂN THỊ UI
+   * 5. CHƯƠNG TRÌNH TẢI CHÍNH (CHẠY TRÊN TAB CHÍNH + AUTO FULLSCREEN)
+   * ========================================================================= */
+  async function startDownload() {
+    if (state.running) return;
+    state.running = true;
+    setUiBusy(true);
+
+    const initialInfo = getPageInfo();
+    const initialPage = initialInfo.current || 1;
+    const totalPages = initialInfo.total;
+
+    if (!totalPages) {
+      updateProgressUI({ status: "Lỗi: Không lấy được số trang." });
+      setUiBusy(false);
+      state.running = false;
+      return;
+    }
+
+    // 1. Tự động chuyển Fullscreen (nếu chưa bật)
+    await handleFullscreenStart();
+
+    const useJpeg = Boolean(state.convertJpeg);
+    const zip = new PureZipWriter();
+    const hashesSet = new Set();
+    let savedCount = 0;
+
+    try {
+      const asin = getAsin();
+      zip.addFile(`${asin}.txt`, new Uint8Array(0));
+
+      // 2. Quay về trang đầu (tự động khóa chuột sau khi về trang 1)
+      await ensureAtPage1();
+
+      // 3. Reset bộ đệm
+      hashesSet.clear();
+      savedCount = 0;
+      state.lastVerifiedPageWidth = 0;
+      await sleep(CONFIG.RENDER_WAIT_MS + 200);
+
+      updateProgressUI({ completed: 0, total: totalPages, status: "Đang tải..." });
+
+      let attempts = 0;
+      const maxAttempts = totalPages * 3;
+
+      while (state.running && attempts < maxAttempts) {
+        attempts++;
+        const curInfo = getPageInfo();
+
+        const pageImages = await captureActivePageElements(useJpeg);
+
+        for (const imgObj of pageImages) {
+          const hash = calculateBufferHash(imgObj.uint8Array);
+          if (!hashesSet.has(hash)) {
+            hashesSet.add(hash);
+            savedCount++;
+            zip.addFile(`${savedCount}.${imgObj.ext}`, imgObj.uint8Array);
+          }
+        }
+
+        updateProgressUI({
+          completed: Math.min(curInfo.current, totalPages),
+          total: totalPages,
+          status: "Đang tải..."
+        });
+
+        // ĐÃ ĐẾN TRANG CUỐI CÙNG -> THOÁT NGAY ĐỂ ĐÓNG GÓI, KHÔNG LẬT TIẾP VÀO POPUP QUẢNG CÁO
+        if (curInfo.current >= totalPages) {
+          break;
+        }
+
+        const hasNext = await stepToNextPage();
+        // Nếu không thể lật tiếp và đang ở trang áp chót/trang cuối
+        if (!hasNext && curInfo.current >= totalPages - 1) {
+          // Chụp vét lần cuối rồi thoát
+          const lastImages = await captureActivePageElements(useJpeg);
+          for (const imgObj of lastImages) {
+            const hash = calculateBufferHash(imgObj.uint8Array);
+            if (!hashesSet.has(hash)) {
+              hashesSet.add(hash);
+              savedCount++;
+              zip.addFile(`${savedCount}.${imgObj.ext}`, imgObj.uint8Array);
+            }
+          }
+          break;
+        }
+
+        await sleep(CONFIG.RENDER_WAIT_MS);
+      }
+
+      if (savedCount === 0) {
+        throw new Error("Không thể bóc tách trang truyện.");
+      }
+
+      updateProgressUI({ completed: totalPages, total: totalPages, status: "Đang đóng gói file ZIP..." });
+      await sleep(60);
+
+      const zipBlob = zip.generateBlob();
+      const zipFileName = `${getCleanTitle()}.zip`;
+      triggerDownload(zipBlob, zipFileName);
+
+      updateProgressUI({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
+
+    } catch (err) {
+      const msg = err?.message || String(err);
+      updateProgressUI({ status: "Lỗi: " + msg });
+      console.error("[amazon-dl] Download failed:", err);
+    } finally {
+      // 1. Đưa người dùng về lại trang cũ
+      try {
+        await jumpToPage(initialPage);
+      } catch (e) {}
+
+      // 2. Mở khóa chuột
+      setInteractionLock(false);
+
+      // 3. Thoát Fullscreen (nếu ban đầu chưa bật)
+      await handleFullscreenEnd();
+
+      state.running = false;
+      setUiBusy(false);
+      updateProgressUI(state.lastProgress);
+    }
+  }
+
+  /* =========================================================================
+   * 6. KHỞI TẠO VÀ BOOT
    * ========================================================================= */
   async function boot() {
     while (!DOC.body) {
       await sleep(100);
     }
     createUI();
+    updateProgressUI({ completed: 0, total: 0, status: "Đang kiểm tra..." });
 
     let retries = 0;
     while (retries < 50) {
@@ -901,10 +1090,6 @@
           total: info.total,
           status: "Sẵn sàng."
         });
-
-        if (state.ui && state.ui.panel) {
-          state.ui.panel.style.display = "block";
-        }
         return;
       }
       await sleep(200);
@@ -913,7 +1098,7 @@
   }
 
   if (DOC.readyState === "loading") {
-    DOC.addEventListener("DOMContentLoaded", () => boot());
+    DOC.addEventListener("DOMContentLoaded", boot);
   } else {
     boot();
   }

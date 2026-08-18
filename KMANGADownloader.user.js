@@ -673,7 +673,7 @@
   }
 
   /* =========================================================================
-   * 6. GIAO DIỆN UI (TÔNG XANH NAVY KODANSHA #2563eb / #0b1739 - CHUẨN PICCOMA)
+   * 6. GIAO DIỆN UI (TÔNG XANH NAVY KODANSHA #2563eb / #0b1739)
    * ========================================================================= */
   function updateProgressUI(data = {}) {
     const total = Number.isFinite(data.total) ? data.total : state.lastProgress.total;

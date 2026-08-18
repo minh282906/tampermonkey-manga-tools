@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         Niconico Manga Universal Downloader
+// @name         Niconico Manga Downloader
 // @namespace    https://sp.manga.nicovideo.jp/
-// @version      2.3
+// @version      1.0
 // @icon         https://sp.manga.nicovideo.jp/favicon.ico
-// @description  Tải truyện Niconico Manga (sp.manga.nicovideo.jp)
+// @description  Tải truyện Niconico Manga
 // @author       anonymous & AI
 // @match        https://sp.manga.nicovideo.jp/watch/*
 // @run-at       document-start
@@ -27,7 +27,7 @@
 
   const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;
   const DOC = WIN.document;
-  const sleep = ms => new Promise(resolve => WIN.setTimeout(resolve, ms));
+  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
   /* =========================================================================
    * 1. BỘ ĐÓNG GÓI ZIP NGUYÊN BẢN TRONG RAM (PURE ZIP WRITER)
@@ -144,7 +144,7 @@
     convertJpeg: localStorage.getItem("nico-dl:convert-jpeg") === '1',
     cachedPages: [],
     ui: null,
-    lastProgress: { completed: 0, total: 0, percent: 0, status: "Đang kiểm tra trang..." }
+    lastProgress: { completed: 0, total: 0, percent: 0, status: "Đang kiểm tra..." }
   };
 
   function isEpisodeUrl() {
@@ -172,6 +172,7 @@
       let raw = DOC.title || "";
       raw = raw.replace(/\s*[-|｜]\s*ニコニコ漫画.*/i, '').trim();
       raw = raw.split(/\s*\/\s*原作/)[0].trim();
+      raw = raw.replace(/【[^】]*】/g, '').trim();
 
       const episodeMatch = raw.match(/(第\s*\d+[\d\w\.\s\-話③②①④⑤⑥⑦⑧⑨⑩]*|\b\d+話\b.*)/);
       if (episodeMatch) {
@@ -245,7 +246,6 @@
   /* =========================================================================
    * 3. THUẬT TOÁN GIẢI MÃ DRM NICONICO (CYCLIC 8-BYTE XOR DECRYPTION)
    * ========================================================================= */
-  // Lấy chuỗi drm_hash trực tiếp từ URL (dạng .../image/HASH_CODE/...p?)
   function extractDrmHashFromUrl(url) {
     if (!url) return null;
     const match = url.match(/\/image\/([a-f0-9]+_\d+|[a-f0-9]{30,})/i);
@@ -258,7 +258,6 @@
     }
 
     try {
-      // 🔑 Lấy 16 ký tự Hex đầu tiên -> Chuyển thành 8 bytes key
       const hexKey = drmHash.substring(0, 16);
       const keyBytes = new Uint8Array(8);
       for (let i = 0; i < 8; i++) {
@@ -267,7 +266,6 @@
 
       if (isNaN(keyBytes[0])) return uint8Array;
 
-      // Giải mã XOR toàn bộ mảng byte với key 8-byte xoay vòng (modulo 8)
       const decrypted = new Uint8Array(uint8Array.length);
       for (let i = 0; i < uint8Array.length; i++) {
         decrypted[i] = uint8Array[i] ^ keyBytes[i % 8];
@@ -312,29 +310,21 @@
   }
 
   async function processImageBytes(rawUint8Array, isJpgRequested, drmHashFromObj, imgUrl) {
-    // 1. Xác định drmHash (từ API hoặc từ đường dẫn URL)
     const finalHash = drmHashFromObj || extractDrmHashFromUrl(imgUrl);
-
-    // 2. Thực hiện giải mã XOR
     let decryptedBytes = decryptNiconicoXor(rawUint8Array, finalHash);
-
-    // 3. Kiểm tra Magic Bytes để xác định định dạng gốc
     const isNativeJpg = (decryptedBytes[0] === 0xFF && decryptedBytes[1] === 0xD8 && decryptedBytes[2] === 0xFF);
 
     if (isJpgRequested) {
-      // Xuất file JPG gốc
       return {
         uint8Array: decryptedBytes,
         ext: 'jpg'
       };
     } else {
-      // Mặc định xuất PNG: Nếu ảnh gốc là JPG thì convert qua Canvas sang PNG thực sự
       if (isNativeJpg) {
         try {
           const pngBytes = await convertToGenuinePng(decryptedBytes);
           return { uint8Array: pngBytes, ext: 'png' };
         } catch (e) {
-          // Dự phòng nếu Canvas lỗi, lưu luôn file JPG đã giải mã
           return { uint8Array: decryptedBytes, ext: 'jpg' };
         }
       }
@@ -488,6 +478,9 @@
     WIN.setTimeout(() => WIN.URL.revokeObjectURL(url), 60000);
   }
 
+  /* =========================================================================
+   * 6. GIAO DIỆN UI (TÔNG MÀU XANH LÁ NICONICO #78b334)
+   * ========================================================================= */
   function updateProgressUI(data = {}) {
     const total = Number.isFinite(data.total) ? data.total : state.lastProgress.total;
     const completed = Number.isFinite(data.completed) ? data.completed : state.lastProgress.completed;
@@ -505,7 +498,7 @@
 
     ui.count.textContent = completed + '/' + total;
     ui.percent.textContent = pct + '%';
-    ui.fill.style.transform = "scaleX(" + pct / 100 + ')';
+    ui.fill.style.transform = "scaleX(" + (total > 0 ? pct / 100 : 0) + ')';
     ui.status.textContent = state.lastProgress.status;
   }
 
@@ -513,21 +506,215 @@
     const ui = state.ui;
     if (!ui) return;
     ui.button.disabled = Boolean(isBusy);
-    ui.button.textContent = isBusy ? "Đang xử lý..." : "Download";
+    ui.button.textContent = "Download";
     ui.button.style.opacity = isBusy ? "0.72" : '1';
     ui.button.style.cursor = isBusy ? "progress" : "pointer";
     ui.jpgInput.disabled = Boolean(isBusy);
   }
 
+  function createUI() {
+    if (state.ui || !DOC.body || DOC.getElementById("nico-dl-panel")) return;
+
+    const PANEL_WIDTH = 220;
+    const TAB_WIDTH = 14;
+    let isCollapsed = localStorage.getItem("nico-dl:collapsed") === '1';
+
+    const panel = DOC.createElement("div");
+    panel.id = "nico-dl-panel";
+    panel.style.cssText = [
+      "all:initial",
+      "position:fixed",
+      "right:0px",
+      "top:48px",
+      "z-index:2147483647",
+      "box-sizing:border-box",
+      `width:${PANEL_WIDTH}px`,
+      "padding:10px 14px",
+      "border:1px solid #84cc16",
+      "border-right:none",
+      "border-radius:12px 0 0 12px",
+      "background: #d0e4a3",
+      "color:#14532d",
+      "font:12px/1.3 system-ui,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif",
+      "user-select:none",
+      "box-shadow:0 8px 24px rgba(0,0,0,0.15)",
+      "transition:transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)",
+      `transform:${isCollapsed ? `translateX(calc(100% - ${TAB_WIDTH}px))` : "translateX(0)"}`,
+      "display:none",
+      "overflow:hidden"
+    ].join(';');
+
+    const collapsedStrip = DOC.createElement("div");
+    collapsedStrip.style.cssText = [
+      "all:initial",
+      "position:absolute",
+      "left:0px",
+      "top:0px",
+      `width:${TAB_WIDTH}px`,
+      "height:100%",
+      "background:#78b334",
+      "cursor:pointer",
+      "transition:opacity 0.15s, background 0.15s",
+      `opacity:${isCollapsed ? "1" : "0"}`,
+      `pointer-events:${isCollapsed ? "auto" : "none"}`
+    ].join(';');
+    collapsedStrip.title = "Mở bảng tải";
+    collapsedStrip.onmouseenter = () => { collapsedStrip.style.background = "#84cc16"; };
+    collapsedStrip.onmouseleave = () => { collapsedStrip.style.background = "#78b334"; };
+
+    const mainContent = DOC.createElement("div");
+    mainContent.style.cssText = [
+      "all:initial",
+      "display:block",
+      "transition:opacity 0.2s",
+      `opacity:${isCollapsed ? "0" : "1"}`,
+      `pointer-events:${isCollapsed ? "none" : "auto"}`
+    ].join(';');
+
+    const collapseBtn = DOC.createElement("button");
+    collapseBtn.type = "button";
+    collapseBtn.textContent = "▶";
+    collapseBtn.title = "Thu gọn";
+    collapseBtn.style.cssText = [
+      "all:initial",
+      "position:absolute",
+      "left:0px",
+      "top:0px",
+      "width:24px",
+      "height:24px",
+      "display:flex",
+      "align-items:center",
+      "justify-content:center",
+      "border-radius:12px 0 8px 0",
+      "background:#78b334",
+      "color:#ffffff",
+      "font:900 10px system-ui,sans-serif",
+      "cursor:pointer",
+      "transition:background 0.15s ease",
+      "z-index:2"
+    ].join(';');
+    collapseBtn.onmouseenter = () => { collapseBtn.style.background = "#84cc16"; };
+    collapseBtn.onmouseleave = () => { collapseBtn.style.background = "#78b334"; };
+
+    const title = DOC.createElement("div");
+    title.textContent = "Niconico Downloader";
+    title.style.cssText = "all:initial;display:block;color:#365314;font:800 13px system-ui;margin-bottom:8px;text-align:center;padding-left:14px;";
+
+    const btn = DOC.createElement("button");
+    btn.type = "button";
+    btn.textContent = "Download";
+    btn.style.cssText = [
+      "all:initial",
+      "display:block",
+      "box-sizing:border-box",
+      "width:100%",
+      "padding:8px 0",
+      "border:0",
+      "border-radius:6px",
+      "background:#78b334",
+      "color:#ffffff",
+      "font:800 14px/1.2 system-ui,sans-serif",
+      "text-align:center",
+      "cursor:pointer",
+      "box-shadow:0 3px 10px rgba(120, 179, 52, 0.35)"
+    ].join(';');
+
+    btn.addEventListener("click", e => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!state.running) startDownload();
+    });
+
+    const label = DOC.createElement("label");
+    label.style.cssText = "all:initial;display:inline-flex;align-items:center;gap:6px;margin-top:8px;color:#3f6212;font:700 11px system-ui;cursor:pointer;";
+
+    const jpgInput = DOC.createElement("input");
+    jpgInput.type = "checkbox";
+    jpgInput.checked = state.convertJpeg;
+    jpgInput.style.cssText = "all:initial;appearance:auto;width:14px;height:14px;accent-color:#78b334;cursor:pointer;";
+    jpgInput.addEventListener("change", () => {
+      state.convertJpeg = jpgInput.checked;
+      saveJpegPref(state.convertJpeg);
+    });
+
+    const spanJpg = DOC.createElement("span");
+    spanJpg.textContent = "Xuất file JPG (mặc định PNG)";
+    spanJpg.style.cssText = "all:initial;color:#3f6212;font:700 11px system-ui;";
+    label.append(jpgInput, spanJpg);
+
+    const progressRow = DOC.createElement("div");
+    progressRow.style.cssText = "all:initial;display:flex;justify-content:space-between;align-items:center;margin-top:10px;color:#14532d;font:800 12px system-ui;";
+
+    const countText = DOC.createElement("span");
+    countText.textContent = "0/0";
+    countText.style.cssText = "all:initial;color:#14532d;font:800 12px system-ui;";
+
+    const percentText = DOC.createElement("span");
+    percentText.textContent = "0%";
+    percentText.style.cssText = "all:initial;color:#14532d;font:800 12px system-ui;";
+
+    progressRow.append(countText, percentText);
+
+    const track = DOC.createElement("div");
+    track.style.cssText = "all:initial;display:block;height:6px;overflow:hidden;border-radius:3px;background:#d9f99d;margin-top:6px;";
+
+    const fill = DOC.createElement("div");
+    fill.style.cssText = "all:initial;display:block;width:100%;height:100%;background:#65a30d;transform:scaleX(0);transform-origin:left center;transition:transform .22s ease;";
+    track.appendChild(fill);
+
+    const statusText = DOC.createElement("div");
+    statusText.textContent = state.lastProgress.status;
+    statusText.style.cssText = "all:initial;display:block;margin-top:8px;color:#4d7c0f;font:11px system-ui;word-break:break-word;";
+
+    mainContent.append(collapseBtn, title, btn, label, progressRow, track, statusText);
+    panel.append(collapsedStrip, mainContent);
+
+    function setCollapsedState(collapsed) {
+      isCollapsed = collapsed;
+      localStorage.setItem("nico-dl:collapsed", isCollapsed ? '1' : '0');
+
+      panel.style.transform = isCollapsed ? `translateX(calc(100% - ${TAB_WIDTH}px))` : "translateX(0)";
+      collapsedStrip.style.opacity = isCollapsed ? "1" : "0";
+      collapsedStrip.style.pointerEvents = isCollapsed ? "auto" : "none";
+      mainContent.style.opacity = isCollapsed ? "0" : "1";
+      mainContent.style.pointerEvents = isCollapsed ? "none" : "auto";
+    }
+
+    collapseBtn.addEventListener("click", e => {
+      e.preventDefault();
+      e.stopPropagation();
+      setCollapsedState(true);
+    });
+
+    panel.addEventListener("click", () => {
+      if (isCollapsed) setCollapsedState(false);
+    });
+
+    DOC.body.appendChild(panel);
+
+    state.ui = {
+      panel,
+      button: btn,
+      jpgInput,
+      count: countText,
+      percent: percentText,
+      fill,
+      status: statusText
+    };
+
+    updateProgressUI(state.lastProgress);
+  }
+
   /* =========================================================================
-   * 6. CHƯƠNG TRÌNH CHÍNH
+   * 7. CHƯƠNG TRÌNH TẢI CHÍNH
    * ========================================================================= */
   async function startDownload() {
+    if (state.running) return;
     state.running = true;
     setUiBusy(true);
 
     try {
-      updateProgressUI({ completed: 0, total: 0, status: "Đang đọc API..." });
+      updateProgressUI({ completed: 0, total: 0, status: "Đang tải..." });
 
       const pages = await fetchNiconicoApiPages();
       const totalPages = pages.length;
@@ -540,7 +727,7 @@
       const zip = new PureZipWriter();
       const episodeId = getEpisodeId();
 
-      // TỰ TẠO FILE TXT ID BÊN TRONG ZIP
+      // Đính kèm file txt định danh ID tập
       zip.addFile(`${episodeId}.txt`, new Uint8Array(0));
 
       updateProgressUI({ completed: 0, total: totalPages, status: "Đang tải..." });
@@ -574,7 +761,7 @@
         });
       });
 
-      updateProgressUI({ completed: totalPages, total: totalPages, status: "Đang đóng gói ZIP..." });
+      updateProgressUI({ completed: totalPages, total: totalPages, status: "Đang đóng gói file ZIP..." });
       await sleep(50);
 
       let savedCount = 0;
@@ -593,7 +780,7 @@
       const zipFileName = `${getCleanMangaTitle()}.zip`;
       triggerDownload(zipBlob, zipFileName);
 
-      updateProgressUI({ completed: totalPages, total: totalPages, status: "Hoàn tất!" });
+      updateProgressUI({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
     } catch (err) {
       const msg = err?.message || String(err);
       updateProgressUI({ status: "Lỗi: " + msg });
@@ -603,126 +790,6 @@
       setUiBusy(false);
       updateProgressUI(state.lastProgress);
     }
-  }
-
-  /* =========================================================================
-   * 7. GIAO DIỆN UI (TÔNG MÀU TÍM VIOLET)
-   * ========================================================================= */
-  function createUI() {
-    if (state.ui) return;
-
-    const panel = DOC.createElement("div");
-    panel.id = "nico-dl-panel";
-
-    panel.style.cssText = [
-      "all:initial",
-      "position:fixed",
-      "right:0px",
-      "top:62px",
-      "z-index:2147483647",
-      "box-sizing:border-box",
-      "width:220px",
-      "padding:10px 14px",
-      "border:1px solid #7c3aed",
-      "border-radius:10px",
-      "background:#2e1065",
-      "color:#ffffff",
-      "font:12px/1.3 system-ui,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif",
-      "user-select:none",
-      "box-shadow:0 8px 24px rgba(0,0,0,0.85)",
-      "display:none"
-    ].join(';');
-
-    const title = DOC.createElement("div");
-    title.textContent = "Niconico Downloader";
-    title.style.cssText = "all:initial;display:block;color:#a78bfa;font:800 13px system-ui;margin-bottom:8px;text-align:center;";
-
-    const btn = DOC.createElement("button");
-    btn.type = "button";
-    btn.textContent = "Download";
-    btn.style.cssText = [
-      "all:initial",
-      "display:block",
-      "box-sizing:border-box",
-      "width:100%",
-      "padding:8px 0",
-      "border:0",
-      "border-radius:6px",
-      "background:#8b5cf6",
-      "color:#ffffff",
-      "font:700 14px/1.2 system-ui,sans-serif",
-      "text-align:center",
-      "cursor:pointer",
-      "box-shadow:0 3px 10px rgba(139, 92, 246, 0.35)"
-    ].join(';');
-
-    btn.addEventListener("click", e => {
-      e.preventDefault();
-      e.stopPropagation();
-      startDownload();
-    });
-
-    const label = DOC.createElement("label");
-    label.style.cssText = "all:initial;display:inline-flex;align-items:center;gap:6px;margin-top:8px;color:#d1d8eb;font:700 11px system-ui;cursor:pointer;";
-
-    const jpgInput = DOC.createElement("input");
-    jpgInput.type = "checkbox";
-    jpgInput.checked = state.convertJpeg;
-    jpgInput.style.cssText = "all:initial;appearance:auto;width:14px;height:14px;accent-color:#8b5cf6;cursor:pointer;";
-    jpgInput.addEventListener("change", e => {
-      state.convertJpeg = jpgInput.checked;
-      saveJpegPref(state.convertJpeg);
-    });
-
-    const spanJpg = DOC.createElement("span");
-    spanJpg.textContent = "Xuất file JPG (mặc định PNG)";
-    spanJpg.style.cssText = "all:initial;color:#d1d8eb;font:700 11px system-ui;";
-    label.append(jpgInput, spanJpg);
-
-    const progressRow = DOC.createElement("div");
-    progressRow.style.cssText = "all:initial;display:flex;justify-content:space-between;align-items:center;margin-top:10px;color:#ffffff;font:800 12px system-ui;";
-
-    const countText = DOC.createElement("span");
-    countText.textContent = "0/0";
-    countText.style.cssText = "all:initial;color:#ffffff;font:800 12px system-ui;";
-
-    const percentText = DOC.createElement("span");
-    percentText.textContent = "0%";
-    percentText.style.cssText = "all:initial;color:#ffffff;font:800 12px system-ui;";
-
-    progressRow.append(countText, percentText);
-
-    const track = DOC.createElement("div");
-    track.style.cssText = "all:initial;display:block;height:6px;overflow:hidden;border-radius:3px;background:#4c1d95;margin-top:6px;";
-
-    const fill = DOC.createElement("div");
-    fill.style.cssText = "all:initial;display:block;width:100%;height:100%;background:#a78bfa;transform:scaleX(0);transform-origin:left center;transition:transform .22s ease;";
-    track.appendChild(fill);
-
-    const statusText = DOC.createElement("div");
-    statusText.textContent = state.lastProgress.status;
-    statusText.style.cssText = "all:initial;display:block;margin-top:8px;color:#ddd6fe;font:11px system-ui;word-break:break-word;";
-
-    panel.append(title, btn, label, progressRow, track, statusText);
-
-    const attachUI = () => {
-      if (DOC.body && !DOC.getElementById("nico-dl-panel")) {
-        DOC.body.appendChild(panel);
-      }
-    };
-    attachUI();
-
-    state.ui = {
-      panel,
-      button: btn,
-      jpgInput,
-      count: countText,
-      percent: percentText,
-      fill,
-      status: statusText
-    };
-
-    updateProgressUI(state.lastProgress);
   }
 
   /* =========================================================================
@@ -768,17 +835,17 @@
     createUI();
 
     if (!isEpisodeUrl()) {
-      if (state.ui && state.ui.panel) {
+      if (state.ui?.panel) {
         state.ui.panel.style.display = "none";
       }
       return;
     }
 
-    if (state.ui && state.ui.panel) {
+    if (state.ui?.panel) {
       state.ui.panel.style.display = "block";
     }
 
-    updateProgressUI({ completed: 0, total: 0, status: "Đang kiểm tra trang..." });
+    updateProgressUI({ completed: 0, total: 0, status: "Đang kiểm tra..." });
 
     let pages = [];
     let retries = 0;
@@ -806,7 +873,7 @@
       updateProgressUI({
         completed: 0,
         total: 0,
-        status: lastError ? `${lastError.message || lastError}` : "Không nạp được trang."
+        status: lastError ? `${lastError.message || lastError}` : "Đang kiểm tra..."
       });
     }
   }
@@ -814,7 +881,7 @@
   initRouteWatcher();
 
   if (DOC.readyState === "loading") {
-    DOC.addEventListener("DOMContentLoaded", () => boot());
+    DOC.addEventListener("DOMContentLoaded", boot);
   } else {
     boot();
   }

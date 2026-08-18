@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         GigaViewer Universal Downloader
-// @version      1.0
+// @version      1.1
 // @icon         https://files.catbox.moe/tpd5zq.png
-// @description  Tải truyện từ 20 trang web GigaViewer (ShonenJump+, Tonari no Young Jump, Sunday Webry, Comic Days, Kurage Bunch, MAGCOMI, Comic Gardo, Comic Zenon, Web Action, Comic Trail, Feel Web, Comic Earth Star, Comic Border, COMIC OGYAAA!!, Comic Seasons, COMIC Y-OURS, Ichicomi, Manga Time Square, OUR FEEL, HERO'S Web), nén ZIP tên truyện, lưu ảnh theo thứ tự và tự động xuất file txt lưu mã truyện tương ứng.
+// @description  Tải truyện từ hơn 20 trang web GigaViewer (ShonenJump+, Tonari no Young Jump, Sunday Webry, Comic Days, Kurage Bunch, MAGCOMI, Comic Gardo, Comic Zenon, Web Action, Comic Trail, Feel Web, Comic Earth Star, Comic Border, COMIC OGYAAA!!, Comic Seasons, COMIC Y-OURS, Ichicomi, Manga Time Square, OUR FEEL, HERO'S Web), nén ZIP tên truyện, lưu ảnh theo thứ tự và tự động xuất file txt lưu mã truyện tương ứng.
 // @author       anonymous & AI
 // @run-at       document-start
 // @grant        unsafeWindow
@@ -63,7 +63,7 @@
 
   const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;
   const DOC = WIN.document;
-  const sleep = ms => new Promise(resolve => WIN.setTimeout(resolve, ms));
+  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
   /* =========================================================================
    * 1. BỘ ĐÓNG GÓI ZIP NGUYÊN BẢN (PURE ZIP WRITER)
@@ -179,7 +179,7 @@
     running: false,
     convertJpeg: localStorage.getItem("giga-dl:convert-jpeg") === '1',
     ui: null,
-    lastProgress: { completed: 0, total: 0, percent: 0, status: "Đang kiểm tra trang..." }
+    lastProgress: { completed: 0, total: 0, percent: 0, status: "Đang kiểm tra..." }
   };
 
   function isEpisodeUrl() {
@@ -227,12 +227,11 @@
       }
       return JSON.parse(raw);
     } catch (e) {
-      console.error("[giga-dl] JSON Parse Error", e);
+      console.error("[giga-dl] JSON Parse Error:", e);
       return null;
     }
   }
 
-  // TẠO TÊN FILE ZIP ĐÚNG ĐỊNH DẠNG: "Tên Truyện - Tên Chap"
   function getCleanMangaTitle() {
     try {
       const json = getParsedEpisodeJson();
@@ -257,8 +256,8 @@
         if (eEl) episodeTitle = eEl.textContent.trim();
       }
 
-      seriesTitle = seriesTitle.replace(/[\\/*?:"<>|]/g, '').trim();
-      episodeTitle = episodeTitle.replace(/[\\/*?:"<>|]/g, '').trim();
+      seriesTitle = seriesTitle.replace(/【[^】]*】/g, '').replace(/[\\/*?:"<>|]/g, '').trim();
+      episodeTitle = episodeTitle.replace(/【[^】]*】/g, '').replace(/[\\/*?:"<>|]/g, '').trim();
 
       if (seriesTitle && episodeTitle) {
         return `${seriesTitle} - ${episodeTitle}`;
@@ -279,7 +278,6 @@
     return `GigaViewer_${getEpisodeId()}`;
   }
 
-  // Quét LẤY TẤT CẢ các trang Bìa Mở Đầu / PR (front-page1, front-page2...) từ DOM
   function getFrontCoverImages() {
     const selectors = [
       '.js-front-link-page .link-slot img',
@@ -301,7 +299,6 @@
     return srcList;
   }
 
-  // Quét tìm Ảnh Quảng Cáo/Bìa Cuối Trang từ DOM
   function getEndAdImages() {
     const selectors = [
       '.js-viewer-end img',
@@ -327,18 +324,17 @@
     return found;
   }
 
-  // Quét TOÀN BỘ trang ảnh (Tất cả Ảnh PR Mở đầu + Truyện chính + Ảnh PR Cuối)
   function getEpisodePages() {
     try {
       const json = getParsedEpisodeJson();
       if (!json) return [];
       const rawPages = json?.readableProduct?.pageStructure?.pages || json?.pageStructure?.pages || [];
-      
+
       const resultPages = [];
       let prCount = 0;
       let mainPageNo = 1;
 
-      // 1. Quét LẤY TẤT CẢ Ảnh Bìa Mở Đầu từ DOM (front-page1, front-page2...)
+      // 1. Ảnh Bìa Mở Đầu từ DOM
       const frontSrcs = getFrontCoverImages();
       for (const fSrc of frontSrcs) {
         prCount++;
@@ -350,38 +346,35 @@
         });
       }
 
-      // 2. Duyệt từng trang từ JSON
+      // 2. Trang từ JSON
       for (const p of rawPages) {
         const imgSrc = p.src || p.banner?.src || p.image?.src || p.url || '';
         if (!imgSrc) continue;
 
-        // Tránh lặp trang bìa mở đầu đã lấy ở DOM
         const alreadyInFront = frontSrcs.some(fs => imgSrc.includes(fs.split('?')[0]));
         if (alreadyInFront) continue;
 
-        // BẢN CHẤT GIGAVIEWER: Nếu p.type !== 'main' hoặc link-slot/banner -> Là ảnh PR/Quảng cáo
         const isPRType = (p.type && p.type !== 'main') || imgSrc.includes('/link-slot/') || imgSrc.includes('/public/link-slot-series/') || imgSrc.includes('/banner/');
 
         if (isPRType) {
           prCount++;
           resultPages.push({
             isPR: true,
-            isRaw: true, // Ảnh thường không đảo ma trận 4x4
+            isRaw: true,
             prNo: prCount,
             src: imgSrc
           });
         } else {
-          // BẮT BUỘC LUÔN GIẢI MÃ 4x4 DÀNH CHO TRUYỆN CHÍNH
           resultPages.push({
             isPR: false,
-            isRaw: false, // Trang chính mã hóa 4x4
-            pageNo: mainPageNo++, // Đánh số trang 1, 2, 3...
+            isRaw: false,
+            pageNo: mainPageNo++,
             src: imgSrc
           });
         }
       }
 
-      // 3. Quét bổ sung Ảnh Quảng Cáo/Bìa Cuối từ DOM nếu JSON chưa có
+      // 3. Ảnh Quảng Cáo Cuối từ DOM
       const endAdSrcs = getEndAdImages();
       for (const adSrc of endAdSrcs) {
         const alreadyAdded = resultPages.some(item => item.src.includes(adSrc.split('?')[0]));
@@ -396,7 +389,6 @@
         }
       }
 
-      // Đánh dấu thuộc tính singlePR nếu chỉ có đúng 1 ảnh PR trong cả tập
       resultPages.forEach(p => {
         if (p.isPR) {
           p.singlePR = (prCount === 1);
@@ -421,18 +413,18 @@
             if (res.status >= 200 && res.status < 300 && res.response) {
               resolve(res.response);
             } else {
-              reject(new Error(`HTTP ${res.status}`));
+              reject(new Error(`HTTP ${res.status}.`));
             }
           },
-          onerror: () => reject(new Error("Lỗi mạng")),
-          ontimeout: () => reject(new Error("Timeout"))
+          onerror: () => reject(new Error("Lỗi mạng.")),
+          ontimeout: () => reject(new Error("Timeout tải ảnh."))
         });
         return;
       }
 
       fetch(url, { credentials: "include" })
         .then(res => {
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          if (!res.ok) throw new Error(`HTTP ${res.status}.`);
           return res.blob();
         })
         .then(resolve)
@@ -450,7 +442,7 @@
 
     await new Promise((resolve, reject) => {
       img.onload = resolve;
-      img.onerror = () => reject(new Error("Lỗi nạp ảnh"));
+      img.onerror = () => reject(new Error("Lỗi nạp ảnh."));
       img.src = objUrl;
     });
     WIN.URL.revokeObjectURL(objUrl);
@@ -462,15 +454,12 @@
     canvas.width = width;
     canvas.height = height;
 
-    // TỐI ƯU: Tắt alpha để xuất 24-bit RGB PNG
     const ctx = canvas.getContext('2d', { alpha: false });
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, width, height);
 
     const cellWidth = Math.floor(width / (CONFIG.DIVIDE_NUM * CONFIG.MULTIPLE)) * CONFIG.MULTIPLE;
     const cellHeight = Math.floor(height / (CONFIG.DIVIDE_NUM * CONFIG.MULTIPLE)) * CONFIG.MULTIPLE;
-
-    // ĐÃ XÓA LỆNH ctx.drawImage(img...) DƯ THỪA Ở ĐÂY
 
     for (let e = 0; e < CONFIG.DIVIDE_NUM * CONFIG.DIVIDE_NUM; e++) {
       const srcRow = Math.floor(e / CONFIG.DIVIDE_NUM);
@@ -519,7 +508,7 @@
         try {
           results[currentIndex] = await tasks[currentIndex]();
         } catch (err) {
-          console.error(`Lỗi tải trang ${currentIndex + 1}:`, err);
+          console.error(`[giga-dl] Lỗi trang ${currentIndex + 1}:`, err);
           results[currentIndex] = null;
         } finally {
           completed++;
@@ -545,6 +534,9 @@
     WIN.setTimeout(() => WIN.URL.revokeObjectURL(url), 60000);
   }
 
+  /* =========================================================================
+   * 5. GIAO DIỆN UI (TÔNG MÀU ĐỎ SAN HÔ GIGAVIEWER #eb544b - CHUẨN PICCOMA)
+   * ========================================================================= */
   function updateProgressUI(data = {}) {
     const total = Number.isFinite(data.total) ? data.total : state.lastProgress.total;
     const completed = Number.isFinite(data.completed) ? data.completed : state.lastProgress.completed;
@@ -562,7 +554,7 @@
 
     ui.count.textContent = completed + '/' + total;
     ui.percent.textContent = pct + '%';
-    ui.fill.style.transform = "scaleX(" + pct / 100 + ')';
+    ui.fill.style.transform = "scaleX(" + (total > 0 ? pct / 100 : 0) + ')';
     ui.status.textContent = state.lastProgress.status;
   }
 
@@ -570,22 +562,216 @@
     const ui = state.ui;
     if (!ui) return;
     ui.button.disabled = Boolean(isBusy);
-    ui.button.textContent = isBusy ? "Đang xử lý..." : "Download";
+    ui.button.textContent = "Download";
     ui.button.style.opacity = isBusy ? "0.72" : '1';
     ui.button.style.cursor = isBusy ? "progress" : "pointer";
     ui.jpgInput.disabled = Boolean(isBusy);
-    ui.jpgInput.style.cursor = isBusy ? "default" : "pointer";
+  }
+
+  function createUI() {
+    if (state.ui || !DOC.body || DOC.getElementById("giga-dl-panel")) return;
+
+    const PANEL_WIDTH = 220;
+    const TAB_WIDTH = 14;
+    let isCollapsed = localStorage.getItem("giga-dl:collapsed") === '1';
+
+    const panel = DOC.createElement("div");
+    panel.id = "giga-dl-panel";
+    panel.style.cssText = [
+      "all:initial",
+      "position:fixed",
+      "right:0px",
+      "top:90px",
+      "z-index:2147483647",
+      "box-sizing:border-box",
+      `width:${PANEL_WIDTH}px`,
+      "padding:10px 14px",
+      "border:1px solid #eb544b",
+      "border-right:none",
+      "border-radius:12px 0 0 12px",
+      "background:#1c0d0e",
+      "color:#ffffff",
+      "font:12px/1.3 system-ui,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif",
+      "user-select:none",
+      "box-shadow:0 8px 24px rgba(0,0,0,0.85)",
+      "transition:transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)",
+      `transform:${isCollapsed ? `translateX(calc(100% - ${TAB_WIDTH}px))` : "translateX(0)"}`,
+      "display:none",
+      "overflow:hidden"
+    ].join(';');
+
+    const collapsedStrip = DOC.createElement("div");
+    collapsedStrip.style.cssText = [
+      "all:initial",
+      "position:absolute",
+      "left:0px",
+      "top:0px",
+      `width:${TAB_WIDTH}px`,
+      "height:100%",
+      "background:#eb544b",
+      "cursor:pointer",
+      "transition:opacity 0.15s, background 0.15s",
+      `opacity:${isCollapsed ? "1" : "0"}`,
+      `pointer-events:${isCollapsed ? "auto" : "none"}`
+    ].join(';');
+    collapsedStrip.title = "Mở bảng tải";
+    collapsedStrip.onmouseenter = () => { collapsedStrip.style.background = "#f0645c"; };
+    collapsedStrip.onmouseleave = () => { collapsedStrip.style.background = "#eb544b"; };
+
+    const mainContent = DOC.createElement("div");
+    mainContent.style.cssText = [
+      "all:initial",
+      "display:block",
+      "transition:opacity 0.2s",
+      `opacity:${isCollapsed ? "0" : "1"}`,
+      `pointer-events:${isCollapsed ? "none" : "auto"}`
+    ].join(';');
+
+    const collapseBtn = DOC.createElement("button");
+    collapseBtn.type = "button";
+    collapseBtn.textContent = "▶";
+    collapseBtn.title = "Thu gọn";
+    collapseBtn.style.cssText = [
+      "all:initial",
+      "position:absolute",
+      "left:0px",
+      "top:0px",
+      "width:24px",
+      "height:24px",
+      "display:flex",
+      "align-items:center",
+      "justify-content:center",
+      "border-radius:12px 0 8px 0",
+      "background:#eb544b",
+      "color:#ffffff",
+      "font:900 10px system-ui,sans-serif",
+      "cursor:pointer",
+      "transition:background 0.15s ease",
+      "z-index:2"
+    ].join(';');
+    collapseBtn.onmouseenter = () => { collapseBtn.style.background = "#f0645c"; };
+    collapseBtn.onmouseleave = () => { collapseBtn.style.background = "#eb544b"; };
+
+    const title = DOC.createElement("div");
+    title.textContent = "GigaViewer Downloader";
+    title.style.cssText = "all:initial;display:block;color:#fca5a5;font:800 13px system-ui;margin-bottom:8px;text-align:center;padding-left:14px;";
+
+    const btn = DOC.createElement("button");
+    btn.type = "button";
+    btn.textContent = "Download";
+    btn.style.cssText = [
+      "all:initial",
+      "display:block",
+      "box-sizing:border-box",
+      "width:100%",
+      "padding:8px 0",
+      "border:0",
+      "border-radius:6px",
+      "background:#eb544b",
+      "color:#ffffff",
+      "font:800 14px/1.2 system-ui,sans-serif",
+      "text-align:center",
+      "cursor:pointer",
+      "box-shadow:0 3px 10px rgba(235, 84, 75, 0.35)"
+    ].join(';');
+
+    btn.addEventListener("click", e => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!state.running) startDownload();
+    });
+
+    const label = DOC.createElement("label");
+    label.style.cssText = "all:initial;display:inline-flex;align-items:center;gap:6px;margin-top:8px;color:#fecaca;font:700 11px system-ui;cursor:pointer;";
+
+    const jpgInput = DOC.createElement("input");
+    jpgInput.type = "checkbox";
+    jpgInput.checked = state.convertJpeg;
+    jpgInput.style.cssText = "all:initial;appearance:auto;width:14px;height:14px;accent-color:#eb544b;cursor:pointer;";
+    jpgInput.addEventListener("change", e => {
+      e.stopPropagation();
+      state.convertJpeg = jpgInput.checked;
+      saveJpegPref(state.convertJpeg);
+    });
+
+    const spanJpg = DOC.createElement("span");
+    spanJpg.textContent = "Xuất file JPG (mặc định PNG)";
+    spanJpg.style.cssText = "all:initial;color:#fecaca;font:700 11px system-ui;";
+    label.append(jpgInput, spanJpg);
+
+    const progressRow = DOC.createElement("div");
+    progressRow.style.cssText = "all:initial;display:flex;justify-content:space-between;align-items:center;margin-top:10px;color:#ffffff;font:800 12px system-ui;";
+
+    const countText = DOC.createElement("span");
+    countText.textContent = "0/0";
+    countText.style.cssText = "all:initial;color:#ffffff;font:800 12px system-ui;";
+
+    const percentText = DOC.createElement("span");
+    percentText.textContent = "0%";
+    percentText.style.cssText = "all:initial;color:#ffffff;font:800 12px system-ui;";
+
+    progressRow.append(countText, percentText);
+
+    const track = DOC.createElement("div");
+    track.style.cssText = "all:initial;display:block;height:6px;overflow:hidden;border-radius:3px;background:#451a1a;margin-top:6px;";
+
+    const fill = DOC.createElement("div");
+    fill.style.cssText = "all:initial;display:block;width:100%;height:100%;background:#f87171;transform:scaleX(0);transform-origin:left center;transition:transform .22s ease;";
+    track.appendChild(fill);
+
+    const statusText = DOC.createElement("div");
+    statusText.textContent = state.lastProgress.status;
+    statusText.style.cssText = "all:initial;display:block;margin-top:8px;color:#fecaca;font:11px system-ui;word-break:break-word;";
+
+    mainContent.append(collapseBtn, title, btn, label, progressRow, track, statusText);
+    panel.append(collapsedStrip, mainContent);
+
+    function setCollapsedState(collapsed) {
+      isCollapsed = collapsed;
+      localStorage.setItem("giga-dl:collapsed", isCollapsed ? '1' : '0');
+
+      panel.style.transform = isCollapsed ? `translateX(calc(100% - ${TAB_WIDTH}px))` : "translateX(0)";
+      collapsedStrip.style.opacity = isCollapsed ? "1" : "0";
+      collapsedStrip.style.pointerEvents = isCollapsed ? "auto" : "none";
+      mainContent.style.opacity = isCollapsed ? "0" : "1";
+      mainContent.style.pointerEvents = isCollapsed ? "none" : "auto";
+    }
+
+    collapseBtn.addEventListener("click", e => {
+      e.preventDefault();
+      e.stopPropagation();
+      setCollapsedState(true);
+    });
+
+    panel.addEventListener("click", () => {
+      if (isCollapsed) setCollapsedState(false);
+    });
+
+    DOC.body.appendChild(panel);
+
+    state.ui = {
+      panel,
+      button: btn,
+      jpgInput,
+      count: countText,
+      percent: percentText,
+      fill,
+      status: statusText
+    };
+
+    updateProgressUI(state.lastProgress);
   }
 
   /* =========================================================================
-   * 5. CHƯƠNG TRÌNH CHÍNH
+   * 6. CHƯƠNG TRÌNH CHÍNH
    * ========================================================================= */
   async function startDownload() {
+    if (state.running) return;
     state.running = true;
     setUiBusy(true);
 
     try {
-      updateProgressUI({ completed: 0, total: 0, status: "Đang đọc dữ liệu..." });
+      updateProgressUI({ completed: 0, total: 0, status: "Đang tải..." });
 
       const epPages = getEpisodePages();
       const totalPages = epPages.length;
@@ -605,7 +791,6 @@
       const tasks = epPages.map((pageObj) => async () => {
         const rawBlob = await fetchImageBlob(pageObj.src);
 
-        // 1. Ảnh PR / Bìa / Quảng cáo: Giữ nguyên định dạng gốc, đặt tên PR.ext hoặc PR_1.ext, PR_2.ext
         if (pageObj.isRaw || pageObj.isPR) {
           let ext = getExtensionFromUrl(pageObj.src);
           if (!ext && rawBlob.type) {
@@ -619,7 +804,6 @@
           };
         }
 
-        // 2. Trang truyện chính (1.png, 2.png...): LUÔN GIẢI MÃ MA TRẬN 4x4
         const decoded = await unscrambleBlob(rawBlob, useJpeg);
         return {
           fileName: `${pageObj.pageNo}.${decoded.ext}`,
@@ -635,151 +819,35 @@
         });
       });
 
-      updateProgressUI({ completed: totalPages, total: totalPages, status: "Đang đóng gói ZIP..." });
+      updateProgressUI({ completed: totalPages, total: totalPages, status: "Đang đóng gói file ZIP..." });
       await sleep(50);
 
+      let savedCount = 0;
       for (const res of results) {
         if (res && res.data) {
           zip.addFile(res.fileName, res.data);
+          savedCount++;
         }
+      }
+
+      if (savedCount === 0) {
+        throw new Error("Lỗi nạp file vào ZIP.");
       }
 
       const zipBlob = zip.generateBlob();
       const zipFileName = `${getCleanMangaTitle()}.zip`;
       triggerDownload(zipBlob, zipFileName);
 
-      updateProgressUI({ completed: totalPages, total: totalPages, status: "Hoàn tất!" });
+      updateProgressUI({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
     } catch (err) {
       const msg = err?.message || String(err);
       updateProgressUI({ status: "Lỗi: " + msg });
-      console.error("[giga-dl] Download failed", err);
+      console.error("[giga-dl] Download failed:", err);
     } finally {
       state.running = false;
       setUiBusy(false);
       updateProgressUI(state.lastProgress);
     }
-  }
-
-  /* =========================================================================
-   * 6. GIAO DIỆN UI (TÔNG MÀU XANH INDIGO)
-   * ========================================================================= */
-  function createUI() {
-    if (state.ui || !DOC.body) return;
-
-    const panel = DOC.createElement("div");
-    panel.id = "giga-dl-panel";
-
-    panel.style.cssText = [
-      "all:initial",
-      "position:fixed",
-      "right:0px",
-      "top:62px",
-      "z-index:2147483647",
-      "box-sizing:border-box",
-      "width:220px",
-      "padding:10px 14px",
-      "border:1px solid #4338ca",
-      "border-radius:10px",
-      "background:#0f172a",
-      "color:#ffffff",
-      "font:12px/1.3 system-ui,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif",
-      "user-select:none",
-      "box-shadow:0 8px 24px rgba(0,0,0,0.85)",
-      "display:none"
-    ].join(';');
-
-    const title = DOC.createElement("div");
-    title.textContent = "GigaViewer Downloader";
-    title.style.cssText = "all:initial;display:block;color:#818cf8;font:800 13px system-ui;margin-bottom:8px;text-align:center;";
-
-    const btn = DOC.createElement("button");
-    btn.type = "button";
-    btn.textContent = "Download";
-    btn.style.cssText = [
-      "all:initial",
-      "display:block",
-      "box-sizing:border-box",
-      "width:100%",
-      "padding:8px 0",
-      "border:0",
-      "border-radius:6px",
-      "background:#6366f1",
-      "color:#ffffff",
-      "font:700 14px/1.2 system-ui,sans-serif",
-      "text-align:center",
-      "cursor:pointer",
-      "box-shadow:0 3px 10px rgba(99, 102, 241, 0.35)"
-    ].join(';');
-
-    btn.addEventListener("click", e => {
-      e.preventDefault();
-      e.stopPropagation();
-      startDownload();
-    });
-
-    const label = DOC.createElement("label");
-    label.style.cssText = "all:initial;display:inline-flex;align-items:center;gap:6px;margin-top:8px;color:#d1d8eb;font:700 11px system-ui;cursor:pointer;";
-
-    const jpgInput = DOC.createElement("input");
-    jpgInput.type = "checkbox";
-    jpgInput.checked = state.convertJpeg;
-    jpgInput.style.cssText = "all:initial;appearance:auto;width:14px;height:14px;accent-color:#6366f1;cursor:pointer;";
-    jpgInput.addEventListener("change", e => {
-      e.stopPropagation();
-      state.convertJpeg = jpgInput.checked;
-      saveJpegPref(state.convertJpeg);
-    });
-
-    const spanJpg = DOC.createElement("span");
-    spanJpg.textContent = "Xuất file JPG (mặc định PNG)";
-    spanJpg.style.cssText = "all:initial;color:#d1d8eb;font:700 11px system-ui;";
-    label.append(jpgInput, spanJpg);
-
-    const progressRow = DOC.createElement("div");
-    progressRow.style.cssText = "all:initial;display:flex;justify-content:space-between;align-items:center;margin-top:10px;color:#ffffff;font:800 12px system-ui;";
-
-    const countText = DOC.createElement("span");
-    countText.textContent = "0/0";
-    countText.style.cssText = "all:initial;color:#ffffff;font:800 12px system-ui;";
-
-    const percentText = DOC.createElement("span");
-    percentText.textContent = "0%";
-    percentText.style.cssText = "all:initial;color:#ffffff;font:800 12px system-ui;";
-
-    progressRow.append(countText, percentText);
-
-    const track = DOC.createElement("div");
-    track.style.cssText = "all:initial;display:block;height:6px;overflow:hidden;border-radius:3px;background:#1e1b4b;margin-top:6px;";
-
-    const fill = DOC.createElement("div");
-    fill.style.cssText = "all:initial;display:block;width:100%;height:100%;background:#818cf8;transform:scaleX(0);transform-origin:left center;transition:transform .22s ease;";
-    track.appendChild(fill);
-
-    const statusText = DOC.createElement("div");
-    statusText.textContent = state.lastProgress.status;
-    statusText.style.cssText = "all:initial;display:block;margin-top:8px;color:#c7d2fe;font:11px system-ui;word-break:break-word;";
-
-    panel.append(title, btn, label, progressRow, track, statusText);
-
-    const attachUI = () => {
-      if (DOC.body && !DOC.getElementById("giga-dl-panel")) {
-        DOC.body.appendChild(panel);
-      }
-    };
-    attachUI();
-
-    state.ui = {
-      panel,
-      button: btn,
-      jpgInput,
-      count: countText,
-      percent: percentText,
-      track,
-      fill,
-      status: statusText
-    };
-
-    updateProgressUI(state.lastProgress);
   }
 
   /* =========================================================================
@@ -792,10 +860,8 @@
       const currentUrl = WIN.location.href;
       if (currentUrl !== lastUrl) {
         lastUrl = currentUrl;
-
         state.running = false;
         setUiBusy(false);
-
         boot();
       }
     };
@@ -824,17 +890,17 @@
     createUI();
 
     if (!isEpisodeUrl()) {
-      if (state.ui && state.ui.panel) {
+      if (state.ui?.panel) {
         state.ui.panel.style.display = "none";
       }
       return;
     }
 
-    if (state.ui && state.ui.panel) {
+    if (state.ui?.panel) {
       state.ui.panel.style.display = "block";
     }
 
-    updateProgressUI({ completed: 0, total: 0, status: "Đang kiểm tra trang..." });
+    updateProgressUI({ completed: 0, total: 0, status: "Đang kiểm tra..." });
 
     let epPages = [];
     let retries = 0;
@@ -856,7 +922,7 @@
       updateProgressUI({
         completed: 0,
         total: 0,
-        status: "Chờ dữ liệu trang..."
+        status: "Đang kiểm tra..."
       });
     }
   }
@@ -864,7 +930,7 @@
   initRouteWatcher();
 
   if (DOC.readyState === "loading") {
-    DOC.addEventListener("DOMContentLoaded", () => boot());
+    DOC.addEventListener("DOMContentLoaded", boot);
   } else {
     boot();
   }

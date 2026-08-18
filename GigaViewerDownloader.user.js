@@ -2,7 +2,7 @@
 // @name         GigaViewer Universal Downloader
 // @version      1.1
 // @icon         https://files.catbox.moe/tpd5zq.png
-// @description  Tải truyện từ hơn 20 trang web GigaViewer (ShonenJump+, Tonari no Young Jump, Sunday Webry, Comic Days, Kurage Bunch, MAGCOMI, Comic Gardo, Comic Zenon, Web Action, Comic Trail, Feel Web, Comic Earth Star, Comic Border, COMIC OGYAAA!!, Comic Seasons, COMIC Y-OURS, Ichicomi, Manga Time Square, OUR FEEL, HERO'S Web), nén ZIP tên truyện, lưu ảnh theo thứ tự và tự động xuất file txt lưu mã truyện tương ứng.
+// @description  Tải truyện từ hơn 20 trang web GigaViewer & Shonen Jump Rookie (ShonenJump+, Tonari no Young Jump, Jump Rookie, Sunday Webry, Comic Days, Kurage Bunch, MAGCOMI, Comic Gardo, Comic Zenon, Web Action, Comic Trail, Feel Web, Comic Earth Star, Comic Border, COMIC OGYAAA!!, Comic Seasons, COMIC Y-OURS, Ichicomi, Manga Time Square, OUR FEEL, HERO'S Web), nén ZIP tên truyện, lưu ảnh theo thứ tự và tự động xuất file txt lưu mã truyện.
 // @author       anonymous & AI
 // @run-at       document-start
 // @grant        unsafeWindow
@@ -27,6 +27,8 @@
 // @connect      *.shonenjumpplus.com
 // @connect      *.tonarinoyj.jp
 // @connect      *.sunday-webry.com
+// @connect      rookie.shonenjump.com
+// @connect      cdn-img.rookie.shonenjump.com
 
 // @match        https://comic-action.com/*
 // @match        https://comic-days.com/*
@@ -47,6 +49,7 @@
 // @match        https://shonenjumpplus.com/*
 // @match        https://tonarinoyj.jp/*
 // @match        https://www.sunday-webry.com/*
+// @match        https://rookie.shonenjump.com/series/*
 // ==/UserScript==
 
 (function gigaViewerUniversalDownloader() {
@@ -182,7 +185,12 @@
     lastProgress: { completed: 0, total: 0, percent: 0, status: "Đang kiểm tra..." }
   };
 
+  const isRookie = WIN.location.hostname === 'rookie.shonenjump.com';
+
   function isEpisodeUrl() {
+    if (isRookie) {
+      return /\/series\/[a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+/.test(WIN.location.pathname);
+    }
     return /\/episode\/\d+/.test(WIN.location.pathname);
   }
 
@@ -194,10 +202,31 @@
 
   function getEpisodeId() {
     try {
+      if (isRookie) {
+        const match = WIN.location.pathname.match(/\/series\/[a-zA-Z0-9_-]+\/([a-zA-Z0-9_-]+)/);
+        if (match && match[1]) return match[1];
+        const sec = DOC.querySelector('section[data-episode-id]');
+        if (sec) {
+          const epId = sec.getAttribute('data-episode-id');
+          if (epId) return epId;
+        }
+        return "Rookie_Episode";
+      }
+
       const match = WIN.location.pathname.match(/\/episode\/(\d+)/);
       if (match && match[1]) return match[1];
     } catch (e) {}
     return "GigaViewer_Episode";
+  }
+
+  function cleanString(str) {
+    if (!str) return "";
+    return str
+      .replace(/[\r\n\t]+/g, ' ')
+      .replace(/\s{2,}/g, ' ')
+      .replace(/【[^】]*】/g, '')
+      .replace(/[\\/*?:"<>|]/g, '')
+      .trim();
   }
 
   function getExtensionFromUrl(url, defaultExt = 'jpg') {
@@ -232,50 +261,75 @@
     }
   }
 
+  // TẠO TÊN FILE ZIP CHUẨN: "Tên Truyện - Tên Chap"
   function getCleanMangaTitle() {
     try {
-      const json = getParsedEpisodeJson();
       let seriesTitle = "";
       let episodeTitle = "";
 
-      if (json) {
-        const ep = json.readableProduct || json.episode || {};
-        const series = json.series || ep.series || {};
-
-        seriesTitle = series.title || series.name || "";
-        episodeTitle = ep.title || ep.name || "";
-      }
-
-      if (!seriesTitle) {
-        const sEl = DOC.querySelector('.series-header-title, .series-title, [class*="series-title"], .series-title-text');
+      if (isRookie) {
+        const sEl = DOC.querySelector('.series-title, .header-series-title, [class*="series-title"], .js-series-title');
         if (sEl) seriesTitle = sEl.textContent.trim();
-      }
 
-      if (!episodeTitle) {
-        const eEl = DOC.querySelector('.episode-header-title, .episode-title, [class*="episode-title"], .episode-header-title-text');
+        const eEl = DOC.querySelector('.episode-title, .header-episode-title, [class*="episode-title"], .js-episode-title');
         if (eEl) episodeTitle = eEl.textContent.trim();
+
+        if ((!seriesTitle || !episodeTitle) && DOC.title) {
+          let raw = DOC.title.replace(/\s*[-|｜]\s*ジャンプルーキー！.*/i, '').trim();
+          const parts = raw.split(/[/\-|｜・]/);
+          if (parts.length >= 2) {
+            if (!episodeTitle) episodeTitle = parts[0].trim();
+            if (!seriesTitle) seriesTitle = parts[1].trim();
+          } else if (raw) {
+            if (!seriesTitle) seriesTitle = raw;
+          }
+        }
+      } else {
+        const json = getParsedEpisodeJson();
+        if (json) {
+          const ep = json.readableProduct || json.episode || {};
+          const series = json.series || ep.series || {};
+          seriesTitle = series.title || series.name || "";
+          episodeTitle = ep.title || ep.name || "";
+        }
+
+        if (!seriesTitle) {
+          const sEl = DOC.querySelector('.series-header-title, .series-title, [class*="series-title"], .series-title-text');
+          if (sEl) seriesTitle = sEl.textContent.trim();
+        }
+
+        if (!episodeTitle) {
+          const eEl = DOC.querySelector('.episode-header-title, .episode-title, [class*="episode-title"], .episode-header-title-text');
+          if (eEl) episodeTitle = eEl.textContent.trim();
+        }
+
+        if ((!seriesTitle || !episodeTitle) && DOC.title) {
+          let t = DOC.title.split('｜')[0].split('|')[0].trim();
+          const parts = t.split(/[/\-|・]/);
+          if (parts.length >= 2) {
+            if (!seriesTitle) seriesTitle = parts[0].trim();
+            if (!episodeTitle) episodeTitle = parts[1].trim();
+          } else if (t) {
+            if (!seriesTitle) seriesTitle = t;
+          }
+        }
       }
 
-      seriesTitle = seriesTitle.replace(/【[^】]*】/g, '').replace(/[\\/*?:"<>|]/g, '').trim();
-      episodeTitle = episodeTitle.replace(/【[^】]*】/g, '').replace(/[\\/*?:"<>|]/g, '').trim();
+      seriesTitle = cleanString(seriesTitle);
+      episodeTitle = cleanString(episodeTitle);
 
       if (seriesTitle && episodeTitle) {
+        if (episodeTitle.includes(seriesTitle)) return episodeTitle;
+        if (seriesTitle.includes(episodeTitle)) return seriesTitle;
         return `${seriesTitle} - ${episodeTitle}`;
-      } else if (episodeTitle) {
-        return episodeTitle;
       } else if (seriesTitle) {
         return seriesTitle;
+      } else if (episodeTitle) {
+        return episodeTitle;
       }
     } catch (e) {}
 
-    try {
-      let t = DOC.title || '';
-      t = t.split('｜')[0].split('|')[0].replace(/【[^】]*】/g, '').trim();
-      t = t.replace(/[\\/*?:"<>|]/g, '').trim();
-      if (t) return t;
-    } catch (e) {}
-
-    return `GigaViewer_${getEpisodeId()}`;
+    return isRookie ? `Rookie_${getEpisodeId()}` : `GigaViewer_${getEpisodeId()}`;
   }
 
   function getFrontCoverImages() {
@@ -291,9 +345,7 @@
       let src = img.getAttribute('data-src') || img.getAttribute('src') || '';
       if (src && !src.startsWith('data:')) {
         if (src.startsWith('//')) src = 'https:' + src;
-        if (!srcList.includes(src)) {
-          srcList.push(src);
-        }
+        if (!srcList.includes(src)) srcList.push(src);
       }
     }
     return srcList;
@@ -324,8 +376,43 @@
     return found;
   }
 
+  /* =========================================================================
+   * 3. BÓC TÁCH DANH SÁCH TRANG (GIGAVIEWER & JUMP ROOKIE)
+   * ========================================================================= */
   function getEpisodePages() {
     try {
+      // -------------------------------------------------------------
+      // NHÁNH 1: SHONEN JUMP ROOKIE (Ảnh gốc không bị xáo trộn 4x4)
+      // -------------------------------------------------------------
+      if (isRookie) {
+        const imgEls = Array.from(DOC.querySelectorAll('.js-page-image, .image-container img, .page-area img'));
+        const resultPages = [];
+        const seenUrls = new Set();
+        let pageNo = 1;
+
+        for (const img of imgEls) {
+          let src = img.getAttribute('src') || img.getAttribute('data-src') || '';
+          if (!src || src.startsWith('data:')) continue;
+          if (src.startsWith('//')) src = 'https:' + src;
+
+          if (img.closest('#page-favorite-ad-area, .js-ad-area, .js-back-matter-area')) continue;
+
+          if (!seenUrls.has(src)) {
+            seenUrls.add(src);
+            resultPages.push({
+              isPR: false,
+              isRaw: true, // Jump Rookie là ảnh gốc, bỏ qua Canvas giải mã
+              pageNo: pageNo++,
+              src: src
+            });
+          }
+        }
+        return resultPages;
+      }
+
+      // -------------------------------------------------------------
+      // NHÁNH 2: GIGAVIEWER THƯƠNG MẠI (Giải mã ma trận 4x4)
+      // -------------------------------------------------------------
       const json = getParsedEpisodeJson();
       if (!json) return [];
       const rawPages = json?.readableProduct?.pageStructure?.pages || json?.pageStructure?.pages || [];
@@ -346,7 +433,7 @@
         });
       }
 
-      // 2. Trang từ JSON
+      // 2. Trang truyện từ JSON
       for (const p of rawPages) {
         const imgSrc = p.src || p.banner?.src || p.image?.src || p.url || '';
         if (!imgSrc) continue;
@@ -390,9 +477,7 @@
       }
 
       resultPages.forEach(p => {
-        if (p.isPR) {
-          p.singlePR = (prCount === 1);
-        }
+        if (p.isPR) p.singlePR = (prCount === 1);
       });
 
       return resultPages;
@@ -433,7 +518,7 @@
   }
 
   /* =========================================================================
-   * 3. THUẬT TOÁN GIẢI MÃ MA TRẬN CHUYỂN VỊ (MATRIX TRANSPOSE 4x4)
+   * 4. THUẬT TOÁN GIẢI MÃ MA TRẬN CHUYỂN VỊ (MATRIX TRANSPOSE 4x4)
    * ========================================================================= */
   async function unscrambleBlob(rawBlob, isJpg) {
     const objUrl = WIN.URL.createObjectURL(rawBlob);
@@ -495,7 +580,7 @@
   }
 
   /* =========================================================================
-   * 4. TIẾN TRÌNH TẢI SONG SONG
+   * 5. TIẾN TRÌNH TẢI SONG SONG
    * ========================================================================= */
   async function runParallelQueue(tasks, limit, onProgress) {
     const results = new Array(tasks.length);
@@ -535,7 +620,7 @@
   }
 
   /* =========================================================================
-   * 5. GIAO DIỆN UI (TÔNG MÀU ĐỎ SAN HÔ GIGAVIEWER #eb544b)
+   * 6. GIAO DIỆN UI (TÔNG MÀU ĐỎ SAN HÔ GIGAVIEWER #eb544b)
    * ========================================================================= */
   function updateProgressUI(data = {}) {
     const total = Number.isFinite(data.total) ? data.total : state.lastProgress.total;
@@ -552,7 +637,7 @@
     const ui = state.ui;
     if (!ui) return;
 
-    ui.count.textContent = completed + '/' + total;
+    ui.count.textContent = total ? Math.min(completed, total) + '/' + total : "0/0";
     ui.percent.textContent = pct + '%';
     ui.fill.style.transform = "scaleX(" + (total > 0 ? pct / 100 : 0) + ')';
     ui.status.textContent = state.lastProgress.status;
@@ -596,7 +681,7 @@
       "box-shadow:0 8px 24px rgba(0,0,0,0.85)",
       "transition:transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)",
       `transform:${isCollapsed ? `translateX(calc(100% - ${TAB_WIDTH}px))` : "translateX(0)"}`,
-      "display:none",
+      "display:block",
       "overflow:hidden"
     ].join(';');
 
@@ -653,7 +738,7 @@
     collapseBtn.onmouseleave = () => { collapseBtn.style.background = "#eb544b"; };
 
     const title = DOC.createElement("div");
-    title.textContent = "GigaViewer Downloader";
+    title.textContent = isRookie ? "JumpRookie Downloader" : "GigaViewer Downloader";
     title.style.cssText = "all:initial;display:block;color:#fca5a5;font:800 13px system-ui;margin-bottom:8px;text-align:center;padding-left:14px;";
 
     const btn = DOC.createElement("button");
@@ -763,7 +848,7 @@
   }
 
   /* =========================================================================
-   * 6. CHƯƠNG TRÌNH CHÍNH
+   * 7. CHƯƠNG TRÌNH TẢI CHÍNH
    * ========================================================================= */
   async function startDownload() {
     if (state.running) return;
@@ -791,19 +876,21 @@
       const tasks = epPages.map((pageObj) => async () => {
         const rawBlob = await fetchImageBlob(pageObj.src);
 
+        // Ảnh gốc / Ảnh PR / Jump Rookie: Giữ nguyên 100% byte gốc từ CDN
         if (pageObj.isRaw || pageObj.isPR) {
           let ext = getExtensionFromUrl(pageObj.src);
           if (!ext && rawBlob.type) {
             ext = rawBlob.type.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg';
           }
           const arrayBuffer = await rawBlob.arrayBuffer();
-          const fileName = pageObj.singlePR ? `PR.${ext}` : `PR_${pageObj.prNo}.${ext}`;
+          const fileName = pageObj.singlePR ? `PR.${ext}` : (pageObj.isPR ? `PR_${pageObj.prNo}.${ext}` : `${pageObj.pageNo}.${ext}`);
           return {
             fileName: fileName,
             data: new Uint8Array(arrayBuffer)
           };
         }
 
+        // Trang truyện GigaViewer chuẩn: Giải mã ma trận 4x4
         const decoded = await unscrambleBlob(rawBlob, useJpeg);
         return {
           fileName: `${pageObj.pageNo}.${decoded.ext}`,
@@ -831,7 +918,7 @@
       }
 
       if (savedCount === 0) {
-        throw new Error("Lỗi nạp file vào ZIP.");
+        throw new Error("Lỗi đưa ảnh vào file ZIP.");
       }
 
       const zipBlob = zip.generateBlob();
@@ -851,7 +938,7 @@
   }
 
   /* =========================================================================
-   * 7. BỘ LẮNG NGHE CHUYỂN CHAP TỰ ĐỘNG (SPA ROUTE WATCHER)
+   * 8. BỘ LẮNG NGHE CHUYỂN TRANG (SPA ROUTE WATCHER) & BOOT
    * ========================================================================= */
   function initRouteWatcher() {
     let lastUrl = WIN.location.href;
@@ -890,15 +977,11 @@
     createUI();
 
     if (!isEpisodeUrl()) {
-      if (state.ui?.panel) {
-        state.ui.panel.style.display = "none";
-      }
+      if (state.ui?.panel) state.ui.panel.style.display = "none";
       return;
     }
 
-    if (state.ui?.panel) {
-      state.ui.panel.style.display = "block";
-    }
+    if (state.ui?.panel) state.ui.panel.style.display = "block";
 
     updateProgressUI({ completed: 0, total: 0, status: "Đang kiểm tra..." });
 

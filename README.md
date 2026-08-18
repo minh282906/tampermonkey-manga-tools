@@ -19,13 +19,14 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 | **Comici+ Downloader**     | Champion Cross, Comic Growl, Young Champion, Young Animal, Rimacomi+, HERO'S Web..._(20+ sites)_       | 🟢 Hoạt động |       [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/Comici+Downloader.user.js)        |
 | **GigaViewer Downloader**  | ShonenJump+, Sunday Webry, Comic Days, Kurage Bunch, MAGCOMI, Comic Gardo, Comic Zenon..._(20+ sites)_ | 🟢 Hoạt động |      [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/GigaViewerDownloader.user.js)      |
 | **EbookJapan Downloader**  | EbookJapan (`ebookjapan.yahoo.co.jp`)                                                                  | 🟢 Hoạt động |       [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/EbookJPDownloader.user.js)        |
-| **SpeedBinder Downloader** | Comic C'moA và Yanmaga Web                                                                             | 🟢 Hoạt động |     [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/SpeedBinderDownloader.user.js)      |
-| **Pocket Downloader**      | MagaPoke (`pocket.shonenmagazine.com`)                                                                 | 🟢 Hoạt động | [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/PocketShonenMagazineDownloader.user.js) |
-| **Amazon Downloader**      | (`amazon.co.jp`)                                                                                       | 🟢 Hoạt động |        [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/AmazonDownloader.user.js)        |
-| **Niconico Downloader**    | (`sp.manga.nicovideo.jp`)                                                                              | 🟢 Hoạt động |       [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/NicoNicoDownloader.user.js)       |
-| **Gaugau Downloader**      | (`gaugau.futabanet.jp`)                                                                                | 🟢 Hoạt động |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/GaugauFutabanetDownloader.user.js)    |
+| **CmoaJP Downloader** | Comic C'moA (`cmoa.jp`)                                                                             | 🟢 Hoạt động |     [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/CmoaJPDownloader.user.js)      |
 | **BookWalker Downloader**  | (`bookwalker.jp`)                                                                                      | 🟢 Hoạt động |      [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/BookWalkerDownloader.user.js)      |
-| **ComiciJP Downloader**    | (`comici.jp`)                                                                                          | 🟢 Hoạt động |       [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/ComiciJPDownloader.user.js)       |
+| **MagaPoke Downloader**      | MagaPoke (`pocket.shonenmagazine.com`)                                                                 | 🟢 Hoạt động | [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/PocketShonenMagazineDownloader.user.js) |
+| **Yanmaga Downloader** | Yanmaga Web (`yanmaga.jp`)                                                                             | 🟢 Hoạt động |     [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/YanmagaDownloader.user.js)      |
+| **Amazon Downloader**      | (`amazon.co.jp`)                                                                                       | 🟢 Hoạt động |        [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/AmazonDownloader.user.js)        |
+| **Niconico Downloader**    | (`sp.manga.nicovideo.jp`)                                                                              | 🟢 Hoạt động |       [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/NiconicoDownloader.user.js)       |
+| **GaugauFutabanet Downloader**      | (`gaugau.futabanet.jp`)                                                                                | 🟢 Hoạt động |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/GaugauFutabanetDownloader.user.js)    |
+| **Piccoma Downloader**  | (`piccoma.com`)                                                                                      | 🟢 Hoạt động |      [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/PiccomaDownloader.user.js)      |
 
 ---
 
@@ -67,6 +68,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 - BiBiBi Comic (`bibibi-comic.com`)
 - Mangalt (`mangalt.jp`)
 - Comici Comic (`comics.comici.jp`)
+- ComiciJP (`comici.jp`)
 
 </details>
 
@@ -92,6 +94,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 - Ichicomi (`ichicomi.com`)
 - Manga Time Square (`mangatime-square.com`)
 - OUR FEEL (`ourfeel.jp`)
+- Jump Rookie (`rookie.shonenjump.com`)
 
 </details>
 
@@ -103,7 +106,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 - Niconico Manga (`manga.nicovideo.jp`)
 - Gaugau Futabanet Manga (`gaugau.futabanet.jp`)
 - BookWalker Manga (`bookwalker.jp`)
-- ComiciJP (`comici.jp`)
+- Piccoma Manga (`piccoma.com`)
 
 </details>
 

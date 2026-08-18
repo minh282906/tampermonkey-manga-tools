@@ -12,7 +12,7 @@ Bộ công cụ **Tampermonkey Userscripts** hỗ trợ tải ngầm, giải mã
 
 _(Yêu cầu trình duyệt đã cài đặt tiện ích mở rộng [Tampermonkey](https://www.tampermonkey.net/))_
 
-Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp vào Tampermonkey (hoặc bạn có thể bấm vào [đây](https://github.com/minh282906/tampermonkey-manga-tools/releases/latest/download/MangaDownloader.user.js) để có toàn bộ):
+Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp từng bên vào Tampermonkey (hoặc bạn có thể bấm vào [đây](https://github.com/minh282906/tampermonkey-manga-tools/releases/latest/download/MangaDownloader.user.js) để có toàn bộ):
 
 | Script                     | Các trang hỗ trợ                                                                                       |  Trạng thái  |                                                      Cài Đặt (1-Click)                                                       |
 | :------------------------- | :----------------------------------------------------------------------------------------------------- | :----------: | :--------------------------------------------------------------------------------------------------------------------------: |

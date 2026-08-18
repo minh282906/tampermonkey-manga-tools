@@ -2,8 +2,8 @@
 // @name         Gaugau Futabanet Downloader
 // @namespace    https://gaugau.futabanet.jp/
 // @version      1.0
-// @icon         https://gaugau.futabanet.jp/favicon.ico
-// @description  Tải truyện trên Gaugau Futabanet, tự động ghép mảnh CSS inset, đóng gói ZIP. (chạy SpeedBind)
+// @icon         https://www.google.com/s2/favicons?domain=gaugau.futabanet.jp/&sz=128
+// @description  Tải truyện trên Gaugau Futabanet, tự động ghép mảnh CSS inset, đóng gói ZIP.
 // @author       anonymous & AI
 // @match        https://gaugau.futabanet.jp/*
 // @run-at       document-start
@@ -25,9 +25,9 @@
 
   const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;
   const DOC = WIN.document;
-  const sleep = ms => new Promise(resolve => WIN.setTimeout(resolve, ms));
+  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-  // Kiểm tra cửa sổ chính hay Iframe ẩn
+  // Kiểm tra chỉ chạy UI trên cửa sổ chính (bỏ qua nếu là Iframe ngầm)
   const isTopWindow = (() => {
     try { return WIN.top === WIN.self; } catch { return true; }
   })();
@@ -157,7 +157,7 @@
     running: false,
     convertJpeg: localStorage.getItem("gaugau-dl:convert-jpeg") === '1',
     ui: null,
-    lastProgress: { completed: 0, total: 0, percent: 0, status: "Đang kiểm tra trang..." }
+    lastProgress: { completed: 0, total: 0, percent: 0, status: "Đang kiểm tra..." }
   };
 
   function saveJpegPref(val) {
@@ -166,13 +166,11 @@
     } catch {}
   }
 
-  // TẠO TÊN FILE ZIP CHUẨN: LỌC BỎ CHỮ "公式" HOẶC "公式-"
   function getCleanMangaTitle() {
     try {
       let rawTitle = DOC.title || "";
       let clean = rawTitle.split('｜')[0].split('|')[0].trim();
       
-      // Xóa chữ "公式" hoặc "公式-" ở đầu
       clean = clean.replace(/^公式\s*[-－_]?\s*/i, '').trim();
       clean = clean.replace(/【[^】]*】/g, '').trim();
       clean = clean.replace(/[\\/*?:"<>|]/g, '').trim();
@@ -183,7 +181,6 @@
     }
   }
 
-  // LẤY MÃ TRUYỆN ĐỂ TẠO FILE TXT (VÍ DỤ: 094_gmp_galnakamura)
   function getCidPrefix() {
     try {
       const contentEl = DOC.getElementById('content');
@@ -298,12 +295,11 @@
   }
 
   /* =========================================================================
-   * 4. THUẬT TOÁN BÓC TÁCH & PHÂN TÍCH CSS INSET THÔNG MINH
+   * 4. THUẬT TOÁN BÓC TÁCH & PHÂN TÍCH CSS INSET
    * ========================================================================= */
   function parseSliceRect(styleStr) {
     if (!styleStr) return { top: 0, right: 0, bottom: 0, left: 0 };
 
-    // Bắt chuỗi inset chuẩn CSS (Hỗ trợ 1, 2, 3 và 4 tham số)
     const insetMatch = styleStr.match(/inset:\s*([^;]+)/i);
     if (insetMatch) {
       const parts = insetMatch[1].trim().split(/\s+/).map(v => parseFloat(v) || 0);
@@ -327,7 +323,6 @@
       return { top, right, bottom, left };
     }
 
-    // Dự phòng trường hợp viết dạng top, right, bottom, left riêng lẻ
     let top = 0, right = 0, bottom = 0, left = 0;
     const topMatch = styleStr.match(/top:\s*([\d\.-]+)/i);
     const rightMatch = styleStr.match(/right:\s*([\d\.-]+)/i);
@@ -389,11 +384,6 @@
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, targetW, targetH);
 
-    if (isJpg) {
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, targetW, targetH);
-    }
-
     for (const item of sliceData) {
       const dx = Math.round((item.inset.left / 100) * targetW);
       const dy = Math.round((item.inset.top / 100) * targetH);
@@ -429,7 +419,7 @@
   }
 
   /* =========================================================================
-   * 5. TIẾN TRÌNH TẢI SONG SONG (RUN PARALLEL QUEUE 4 LUỒNG)
+   * 5. TIẾN TRÌNH TẢI SONG SONG
    * ========================================================================= */
   async function runParallelQueue(tasks, limit, onProgress) {
     const results = new Array(tasks.length);
@@ -468,6 +458,9 @@
     WIN.setTimeout(() => WIN.URL.revokeObjectURL(url), 60000);
   }
 
+  /* =========================================================================
+   * 6. GIAO DIỆN UI (TÔNG MÀU CYAN #06b6d4 - CHUẨN PICCOMA)
+   * ========================================================================= */
   function updateProgressUI(data = {}) {
     const total = Number.isFinite(data.total) ? data.total : state.lastProgress.total;
     const completed = Number.isFinite(data.completed) ? data.completed : state.lastProgress.completed;
@@ -485,7 +478,7 @@
 
     ui.count.textContent = completed + '/' + total;
     ui.percent.textContent = pct + '%';
-    ui.fill.style.transform = "scaleX(" + pct / 100 + ')';
+    ui.fill.style.transform = "scaleX(" + (total > 0 ? pct / 100 : 0) + ')';
     ui.status.textContent = state.lastProgress.status;
   }
 
@@ -493,14 +486,207 @@
     const ui = state.ui;
     if (!ui) return;
     ui.button.disabled = Boolean(isBusy);
-    ui.button.textContent = isBusy ? "Đang xử lý..." : "Download";
+    ui.button.textContent = "Download";
     ui.button.style.opacity = isBusy ? "0.72" : '1';
     ui.button.style.cursor = isBusy ? "progress" : "pointer";
     ui.jpgInput.disabled = Boolean(isBusy);
   }
 
+  function createUI() {
+    if (state.ui || !DOC.body || DOC.getElementById("gaugau-dl-panel")) return;
+
+    const PANEL_WIDTH = 220;
+    const TAB_WIDTH = 14;
+    let isCollapsed = localStorage.getItem("gaugau-dl:collapsed") === '1';
+
+    const panel = DOC.createElement("div");
+    panel.id = "gaugau-dl-panel";
+    panel.style.cssText = [
+      "all:initial",
+      "position:fixed",
+      "right:0px",
+      "top:97px",
+      "z-index:2147483647",
+      "box-sizing:border-box",
+      `width:${PANEL_WIDTH}px`,
+      "padding:10px 14px",
+      "border:1px solid #0891b2",
+      "border-right:none",
+      "border-radius:12px 0 0 12px",
+      "background:#083344",
+      "color:#ffffff",
+      "font:12px/1.3 system-ui,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif",
+      "user-select:none",
+      "box-shadow:0 8px 24px rgba(0,0,0,0.85)",
+      "transition:transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)",
+      `transform:${isCollapsed ? `translateX(calc(100% - ${TAB_WIDTH}px))` : "translateX(0)"}`,
+      "display:block",
+      "overflow:hidden"
+    ].join(';');
+
+    const collapsedStrip = DOC.createElement("div");
+    collapsedStrip.style.cssText = [
+      "all:initial",
+      "position:absolute",
+      "left:0px",
+      "top:0px",
+      `width:${TAB_WIDTH}px`,
+      "height:100%",
+      "background:#06b6d4",
+      "cursor:pointer",
+      "transition:opacity 0.15s, background 0.15s",
+      `opacity:${isCollapsed ? "1" : "0"}`,
+      `pointer-events:${isCollapsed ? "auto" : "none"}`
+    ].join(';');
+    collapsedStrip.title = "Mở bảng tải";
+    collapsedStrip.onmouseenter = () => { collapsedStrip.style.background = "#22d3ee"; };
+    collapsedStrip.onmouseleave = () => { collapsedStrip.style.background = "#06b6d4"; };
+
+    const mainContent = DOC.createElement("div");
+    mainContent.style.cssText = [
+      "all:initial",
+      "display:block",
+      "transition:opacity 0.2s",
+      `opacity:${isCollapsed ? "0" : "1"}`,
+      `pointer-events:${isCollapsed ? "none" : "auto"}`
+    ].join(';');
+
+    const collapseBtn = DOC.createElement("button");
+    collapseBtn.type = "button";
+    collapseBtn.textContent = "▶";
+    collapseBtn.title = "Thu gọn";
+    collapseBtn.style.cssText = [
+      "all:initial",
+      "position:absolute",
+      "left:0px",
+      "top:0px",
+      "width:24px",
+      "height:24px",
+      "display:flex",
+      "align-items:center",
+      "justify-content:center",
+      "border-radius:12px 0 8px 0",
+      "background:#06b6d4",
+      "color:#083344",
+      "font:900 10px system-ui,sans-serif",
+      "cursor:pointer",
+      "transition:background 0.15s ease",
+      "z-index:2"
+    ].join(';');
+    collapseBtn.onmouseenter = () => { collapseBtn.style.background = "#22d3ee"; };
+    collapseBtn.onmouseleave = () => { collapseBtn.style.background = "#06b6d4"; };
+
+    const title = DOC.createElement("div");
+    title.textContent = "Gaugau Downloader";
+    title.style.cssText = "all:initial;display:block;color:#67e8f9;font:800 13px system-ui;margin-bottom:8px;text-align:center;padding-left:14px;";
+
+    const btn = DOC.createElement("button");
+    btn.type = "button";
+    btn.textContent = "Download";
+    btn.style.cssText = [
+      "all:initial",
+      "display:block",
+      "box-sizing:border-box",
+      "width:100%",
+      "padding:8px 0",
+      "border:0",
+      "border-radius:6px",
+      "background:#06b6d4",
+      "color:#083344",
+      "font:800 14px/1.2 system-ui,sans-serif",
+      "text-align:center",
+      "cursor:pointer",
+      "box-shadow:0 3px 10px rgba(6, 182, 212, 0.35)"
+    ].join(';');
+
+    btn.addEventListener("click", e => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!state.running) startDownload();
+    });
+
+    const label = DOC.createElement("label");
+    label.style.cssText = "all:initial;display:inline-flex;align-items:center;gap:6px;margin-top:8px;color:#cffaff;font:700 11px system-ui;cursor:pointer;";
+
+    const jpgInput = DOC.createElement("input");
+    jpgInput.type = "checkbox";
+    jpgInput.checked = state.convertJpeg;
+    jpgInput.style.cssText = "all:initial;appearance:auto;width:14px;height:14px;accent-color:#06b6d4;cursor:pointer;";
+    jpgInput.addEventListener("change", () => {
+      state.convertJpeg = jpgInput.checked;
+      saveJpegPref(state.convertJpeg);
+    });
+
+    const spanJpg = DOC.createElement("span");
+    spanJpg.textContent = "Xuất file JPG (mặc định PNG)";
+    spanJpg.style.cssText = "all:initial;color:#cffaff;font:700 11px system-ui;";
+    label.append(jpgInput, spanJpg);
+
+    const progressRow = DOC.createElement("div");
+    progressRow.style.cssText = "all:initial;display:flex;justify-content:space-between;align-items:center;margin-top:10px;color:#ffffff;font:800 12px system-ui;";
+
+    const countText = DOC.createElement("span");
+    countText.textContent = "0/0";
+    countText.style.cssText = "all:initial;color:#ffffff;font:800 12px system-ui;";
+
+    const percentText = DOC.createElement("span");
+    percentText.textContent = "0%";
+    percentText.style.cssText = "all:initial;color:#ffffff;font:800 12px system-ui;";
+
+    progressRow.append(countText, percentText);
+
+    const track = DOC.createElement("div");
+    track.style.cssText = "all:initial;display:block;height:6px;overflow:hidden;border-radius:3px;background:#164e63;margin-top:6px;";
+
+    const fill = DOC.createElement("div");
+    fill.style.cssText = "all:initial;display:block;width:100%;height:100%;background:#22d3ee;transform:scaleX(0);transform-origin:left center;transition:transform .22s ease;";
+    track.appendChild(fill);
+
+    const statusText = DOC.createElement("div");
+    statusText.textContent = state.lastProgress.status;
+    statusText.style.cssText = "all:initial;display:block;margin-top:8px;color:#cffaff;font:11px system-ui;word-break:break-word;";
+
+    mainContent.append(collapseBtn, title, btn, label, progressRow, track, statusText);
+    panel.append(collapsedStrip, mainContent);
+
+    function setCollapsedState(collapsed) {
+      isCollapsed = collapsed;
+      localStorage.setItem("gaugau-dl:collapsed", isCollapsed ? '1' : '0');
+
+      panel.style.transform = isCollapsed ? `translateX(calc(100% - ${TAB_WIDTH}px))` : "translateX(0)";
+      collapsedStrip.style.opacity = isCollapsed ? "1" : "0";
+      collapsedStrip.style.pointerEvents = isCollapsed ? "auto" : "none";
+      mainContent.style.opacity = isCollapsed ? "0" : "1";
+      mainContent.style.pointerEvents = isCollapsed ? "none" : "auto";
+    }
+
+    collapseBtn.addEventListener("click", e => {
+      e.preventDefault();
+      e.stopPropagation();
+      setCollapsedState(true);
+    });
+
+    panel.addEventListener("click", () => {
+      if (isCollapsed) setCollapsedState(false);
+    });
+
+    DOC.body.appendChild(panel);
+
+    state.ui = {
+      panel,
+      button: btn,
+      jpgInput,
+      count: countText,
+      percent: percentText,
+      fill,
+      status: statusText
+    };
+
+    updateProgressUI(state.lastProgress);
+  }
+
   /* =========================================================================
-   * 6. CHƯƠNG TRÌNH CHÍNH
+   * 7. CHƯƠNG TRÌNH TẢI CHÍNH
    * ========================================================================= */
   let readerLock = Promise.resolve();
   function withReaderLock(fn) {
@@ -510,6 +696,7 @@
   }
 
   async function startDownload() {
+    if (state.running) return;
     state.running = true;
     setUiBusy(true);
     let silentFrameObj = null;
@@ -518,7 +705,7 @@
     const initialPageIndex = getCurrentPageIndex(mainReader);
 
     try {
-      updateProgressUI({ completed: 0, status: "Đang tải..." });
+      updateProgressUI({ completed: 0, total: 0, status: "Đang tải..." });
       await waitForReader();
       silentFrameObj = await createSilentFrame();
 
@@ -534,12 +721,10 @@
       const zip = new PureZipWriter();
       const cidPrefix = getCidPrefix();
 
-      // TẠO FILE TXT MÃ TRUYỆN ID
       zip.addFile(`${cidPrefix}.txt`, new Uint8Array(0));
 
       updateProgressUI({ completed: 0, total: totalPages, status: "Đang tải..." });
 
-      // KHỞI TẠO TIẾN TRÌNH TẢI 4 LUỒNG SONG SONG
       const tasks = pages.map((pageObj) => async () => {
         return withReaderLock(async () => {
           silentFrameObj.reader.moveTo(pageObj.index, false);
@@ -558,7 +743,7 @@
         updateProgressUI({ completed, total, status: "Đang tải..." });
       });
 
-      updateProgressUI({ completed: totalPages, total: totalPages, status: "Đang đóng gói ZIP..." });
+      updateProgressUI({ completed: totalPages, total: totalPages, status: "Đang đóng gói file ZIP..." });
       await sleep(50);
 
       let savedCount = 0;
@@ -577,7 +762,7 @@
       const zipFileName = `${getCleanMangaTitle()}.zip`;
       triggerDownload(zipBlob, zipFileName);
 
-      updateProgressUI({ completed: totalPages, total: totalPages, status: "Hoàn tất!" });
+      updateProgressUI({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
     } catch (err) {
       const msg = err?.message || String(err);
       updateProgressUI({ status: "Lỗi: " + msg });
@@ -599,126 +784,7 @@
   }
 
   /* =========================================================================
-   * 7. GIAO DIỆN UI (THEME MÀU CYAN / XANH NGỌC SANG TRỌNG)
-   * ========================================================================= */
-  function createUI() {
-    if (state.ui) return;
-
-    const panel = DOC.createElement("div");
-    panel.id = "gaugau-dl-panel";
-
-    panel.style.cssText = [
-      "all:initial",
-      "position:fixed",
-      "right:0px",
-      "top:97px",
-      "z-index:2147483647",
-      "box-sizing:border-box",
-      "width:220px",
-      "padding:10px 14px",
-      "border:1px solid #0891b2",
-      "border-radius:10px",
-      "background:#083344",
-      "color:#ffffff",
-      "font:12px/1.3 system-ui,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif",
-      "user-select:none",
-      "box-shadow:0 8px 24px rgba(0,0,0,0.85)"
-    ].join(';');
-
-    const title = DOC.createElement("div");
-    title.textContent = "Gaugau Downloader";
-    title.style.cssText = "all:initial;display:block;color:#67e8f9;font:800 13px system-ui;margin-bottom:8px;text-align:center;";
-
-    const btn = DOC.createElement("button");
-    btn.type = "button";
-    btn.textContent = "Download";
-    btn.style.cssText = [
-      "all:initial",
-      "display:block",
-      "box-sizing:border-box",
-      "width:100%",
-      "padding:8px 0",
-      "border:0",
-      "border-radius:6px",
-      "background:#06b6d4",
-      "color:#ffffff",
-      "font:700 14px/1.2 system-ui,sans-serif",
-      "text-align:center",
-      "cursor:pointer",
-      "box-shadow:0 3px 10px rgba(6, 182, 212, 0.35)"
-    ].join(';');
-
-    btn.addEventListener("click", e => {
-      e.preventDefault();
-      e.stopPropagation();
-      startDownload();
-    });
-
-    const label = DOC.createElement("label");
-    label.style.cssText = "all:initial;display:inline-flex;align-items:center;gap:6px;margin-top:8px;color:#d1d8eb;font:700 11px system-ui;cursor:pointer;";
-
-    const jpgInput = DOC.createElement("input");
-    jpgInput.type = "checkbox";
-    jpgInput.checked = state.convertJpeg;
-    jpgInput.style.cssText = "all:initial;appearance:auto;width:14px;height:14px;accent-color:#06b6d4;cursor:pointer;";
-    jpgInput.addEventListener("change", e => {
-      state.convertJpeg = jpgInput.checked;
-      saveJpegPref(state.convertJpeg);
-    });
-
-    const spanJpg = DOC.createElement("span");
-    spanJpg.textContent = "Xuất file JPG (mặc định PNG)";
-    spanJpg.style.cssText = "all:initial;color:#d1d8eb;font:700 11px system-ui;";
-    label.append(jpgInput, spanJpg);
-
-    const progressRow = DOC.createElement("div");
-    progressRow.style.cssText = "all:initial;display:flex;justify-content:space-between;align-items:center;margin-top:10px;color:#ffffff;font:800 12px system-ui;";
-
-    const countText = DOC.createElement("span");
-    countText.textContent = "0/0";
-    countText.style.cssText = "all:initial;color:#ffffff;font:800 12px system-ui;";
-
-    const percentText = DOC.createElement("span");
-    percentText.textContent = "0%";
-    percentText.style.cssText = "all:initial;color:#ffffff;font:800 12px system-ui;";
-
-    progressRow.append(countText, percentText);
-
-    const track = DOC.createElement("div");
-    track.style.cssText = "all:initial;display:block;height:6px;overflow:hidden;border-radius:3px;background:#164e63;margin-top:6px;";
-
-    const fill = DOC.createElement("div");
-    fill.style.cssText = "all:initial;display:block;width:100%;height:100%;background:#67e8f9;transform:scaleX(0);transform-origin:left center;transition:transform .22s ease;";
-    track.appendChild(fill);
-
-    const statusText = DOC.createElement("div");
-    statusText.textContent = state.lastProgress.status;
-    statusText.style.cssText = "all:initial;display:block;margin-top:8px;color:#cffaff;font:11px system-ui;word-break:break-word;";
-
-    panel.append(title, btn, label, progressRow, track, statusText);
-
-    const attachUI = () => {
-      if (DOC.body && !DOC.getElementById("gaugau-dl-panel")) {
-        DOC.body.appendChild(panel);
-      }
-    };
-    attachUI();
-
-    state.ui = {
-      panel,
-      button: btn,
-      jpgInput,
-      count: countText,
-      percent: percentText,
-      fill,
-      status: statusText
-    };
-
-    updateProgressUI(state.lastProgress);
-  }
-
-  /* =========================================================================
-   * 8. ROUTE WATCHER (LẮNG NGHE CHUYỂN TẬP TỰ ĐỘNG SPA)
+   * 8. KHỞI TẠO VÀ BOOT
    * ========================================================================= */
   function initRouteWatcher() {
     let lastUrl = WIN.location.href;
@@ -752,19 +818,20 @@
 
   async function boot() {
     while (!DOC.body) {
-      await sleep(120);
+      await sleep(100);
     }
+    createUI();
+    updateProgressUI({ completed: 0, total: 0, status: "Đang kiểm tra..." });
+
     try {
       const reader = await waitForReader();
       const pages = getPageList(reader);
-      createUI();
       updateProgressUI({
         completed: 0,
         total: pages.length,
         status: "Sẵn sàng."
       });
     } catch (err) {
-      createUI();
       updateProgressUI({
         completed: 0,
         total: 0,
@@ -776,7 +843,7 @@
   initRouteWatcher();
 
   if (DOC.readyState === "loading") {
-    DOC.addEventListener("DOMContentLoaded", () => boot());
+    DOC.addEventListener("DOMContentLoaded", boot);
   } else {
     boot();
   }

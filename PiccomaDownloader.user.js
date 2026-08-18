@@ -526,7 +526,7 @@
     const ui = state.ui;
     if (!ui) return;
     ui.button.disabled = Boolean(isBusy);
-    ui.button.textContent = isBusy ? "Đang xử lý..." : "Download";
+    ui.button.textContent = "Download"; // Luôn giữ chữ Download
     ui.button.style.opacity = isBusy ? "0.72" : '1';
     ui.button.style.cursor = isBusy ? "progress" : "pointer";
     ui.jpgInput.disabled = Boolean(isBusy);
@@ -577,7 +577,7 @@
         });
       });
 
-      updateProgressUI({ completed: totalPages, total: totalPages, status: "Đang đóng gói ZIP..." });
+      updateProgressUI({ completed: totalPages, total: totalPages, status: "Đang đóng gói file ZIP..." });
       await sleep(50);
 
       let savedCount = 0;
@@ -596,7 +596,7 @@
       const zipFileName = `${getCleanTitle()}.zip`;
       triggerDownload(zipBlob, zipFileName);
 
-      updateProgressUI({ completed: totalPages, total: totalPages, status: `Hoàn tất!` });
+      updateProgressUI({ completed: totalPages, total: totalPages, status: `Hoàn tất.` });
     } catch (err) {
       const msg = err?.message || String(err);
       updateProgressUI({ status: "Lỗi: " + msg });
@@ -657,7 +657,7 @@
       `opacity:${isCollapsed ? "1" : "0"}`,
       `pointer-events:${isCollapsed ? "auto" : "none"}`
     ].join(';');
-    collapsedStrip.title = "Bấm để mở bảng tải";
+    collapsedStrip.title = "Mở bảng tải";
     collapsedStrip.onmouseenter = () => { collapsedStrip.style.background = "#facc15"; };
     collapsedStrip.onmouseleave = () => { collapsedStrip.style.background = "#eab308"; };
 

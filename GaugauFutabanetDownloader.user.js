@@ -459,7 +459,7 @@
   }
 
   /* =========================================================================
-   * 6. GIAO DIỆN UI (TÔNG MÀU CYAN #06b6d4 - CHUẨN PICCOMA)
+   * 6. GIAO DIỆN UI (TÔNG MÀU CYAN #06b6d4)
    * ========================================================================= */
   function updateProgressUI(data = {}) {
     const total = Number.isFinite(data.total) ? data.total : state.lastProgress.total;

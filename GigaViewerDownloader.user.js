@@ -535,7 +535,7 @@
   }
 
   /* =========================================================================
-   * 5. GIAO DIỆN UI (TÔNG MÀU ĐỎ SAN HÔ GIGAVIEWER #eb544b - CHUẨN PICCOMA)
+   * 5. GIAO DIỆN UI (TÔNG MÀU ĐỎ SAN HÔ GIGAVIEWER #eb544b)
    * ========================================================================= */
   function updateProgressUI(data = {}) {
     const total = Number.isFinite(data.total) ? data.total : state.lastProgress.total;

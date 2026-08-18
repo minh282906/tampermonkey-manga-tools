@@ -1,15 +1,16 @@
 // ==UserScript==
-// @name         Pocket Shonen Magazine ripper
+// @name         PocketShonenMagazine Downloader
 // @namespace    https://tampermonkey.net/
 // @icon         https://pocket.shonenmagazine.com/img/favicon.ico
 // @version      1.1.0
 // @author       Fuku
-// @description  Download Pocket Shonen Magazine episode
+// @description  Tải manga trên MagaPoke (pocket.shonenmagazine.com).
 // @match        https://pocket.shonenmagazine.com/*
 // @grant        GM_xmlhttpRequest
 // @grant        unsafeWindow
 // @connect      mgpk-cdn.magazinepocket.com
 // @connect      api.pocket.shonenmagazine.com
+// @run-at       document-start
 // ==/UserScript==
 
 (function pocketShonenDownloader() {
@@ -25,7 +26,7 @@
 
   const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;
   const DOC = WIN.document;
-  const sleep = ms => new Promise(resolve => WIN.setTimeout(resolve, ms));
+  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
   /* =========================================================================
    * 1. BỘ ĐÓNG GÓI ZIP NGUYÊN BẢN (PURE ZIP WRITER)
@@ -181,14 +182,12 @@
         const titleParts = DOC.title.split('|');
         if (titleParts.length >= 2) {
           if (!seriesTitle) seriesTitle = titleParts[0].trim();
-          if (!episodeTitle) {
-            episodeTitle = titleParts[1].split('/')[0].trim();
-          }
+          if (!episodeTitle) episodeTitle = titleParts[1].split('/')[0].trim();
         }
       }
 
-      seriesTitle = seriesTitle.replace(/[\\/*?:"<>|]/g, '').trim();
-      episodeTitle = episodeTitle.replace(/[\\/*?:"<>|]/g, '').trim();
+      seriesTitle = seriesTitle.replace(/【[^】]*】/g, '').replace(/[\\/*?:"<>|]/g, '').trim();
+      episodeTitle = episodeTitle.replace(/【[^】]*】/g, '').replace(/[\\/*?:"<>|]/g, '').trim();
 
       if (seriesTitle && episodeTitle && !seriesTitle.includes(episodeTitle)) {
         return `${seriesTitle} - ${episodeTitle}`;
@@ -216,7 +215,6 @@
     return defaultExt;
   }
 
-  // Quét BẮT TẤT CẢ Ảnh Thương Mại / Quảng Cáo từ DOM + BỘ LỌC KÍCH THƯỚC FULL-PAGE
   async function getDomPrImages(timeoutMs = 400) {
     const selectors = [
       '.c-viewer__comic img',
@@ -236,18 +234,13 @@
         let src = img.getAttribute('data-src') || img.getAttribute('src') || '';
         if (!src || src.startsWith('data:')) continue;
 
-        // BỘ LỌC KÍCH THƯỚC: Bỏ qua icon nhỏ / logo / banner ngang quá dẹp (h < 300px hoặc w/h > 1.8)
         const w = img.naturalWidth || parseInt(img.getAttribute('width') || '0', 10);
         const h = img.naturalHeight || parseInt(img.getAttribute('height') || '0', 10);
 
-        if ((w > 0 && h > 0) && (h < 300 || (w / h) > 1.8)) {
-          continue;
-        }
+        if ((w > 0 && h > 0) && (h < 300 || (w / h) > 1.8)) continue;
 
         if (src.startsWith('//')) src = 'https:' + src;
-        if (!prList.includes(src)) {
-          prList.push(src);
-        }
+        if (!prList.includes(src)) prList.push(src);
       }
       if (prList.length > 0) break;
       await sleep(100);
@@ -302,11 +295,6 @@
       episodeId: e.data.episodeId,
     };
 
-    createUI();
-    if (state.ui?.panel) {
-      state.ui.panel.style.display = isEpisodeUrl() ? "block" : "none";
-    }
-
     updateProgressUI({
       completed: 0,
       total: state.episodeData.pages.length,
@@ -315,7 +303,7 @@
   }
 
   /* =========================================================================
-   * 4. DESCRAMBLE ALGORITHM (HỖ TRỢ MẶC ĐỊNH PNG / TÙY CHỌN JPG)
+   * 4. DESCRAMBLE ALGORITHM
    * ========================================================================= */
   const CHARSET_EVEN = "svdk0m7acl";
   const CHARSET_ODD = "q6jtf2xnog";
@@ -333,7 +321,6 @@
     const ctx = canvas.getContext("2d", { alpha: !isJpg });
     ctx.imageSmoothingEnabled = false;
 
-    // Nếu chọn JPG thì tô nền trắng
     if (isJpg) {
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, width, height);
@@ -351,10 +338,7 @@
       : ComputeGridBlockDimensions(width, height, grid);
 
     if (!i) {
-      return {
-        blob: blob,
-        ext: isJpg ? 'jpg' : 'png'
-      };
+      return { blob: blob, ext: isJpg ? 'jpg' : 'png' };
     }
 
     ctx.drawImage(img, 0, 0);
@@ -500,36 +484,22 @@
       let prCount = 0;
       let mainPageNo = 1;
 
-      // 1. Quét ảnh PR từ DOM
       const domPrs = await getDomPrImages(400);
       for (const prUrl of domPrs) {
         const inMain = pages.some(pUrl => pUrl.includes(prUrl.split('?')[0]));
         if (!inMain) {
           prCount++;
-          allTaskObjects.push({
-            isPR: true,
-            prNo: prCount,
-            url: prUrl
-          });
+          allTaskObjects.push({ isPR: true, prNo: prCount, url: prUrl });
         }
       }
 
-      // 2. Quét trang chính từ API
       for (const url of pages) {
         const isAdUrl = url.includes('/static/ads/') || url.includes('/ads/');
         if (isAdUrl) {
           prCount++;
-          allTaskObjects.push({
-            isPR: true,
-            prNo: prCount,
-            url: url
-          });
+          allTaskObjects.push({ isPR: true, prNo: prCount, url: url });
         } else {
-          allTaskObjects.push({
-            isPR: false,
-            pageNo: mainPageNo++,
-            url: url
-          });
+          allTaskObjects.push({ isPR: false, pageNo: mainPageNo++, url: url });
         }
       }
 
@@ -543,7 +513,6 @@
       const tasks = allTaskObjects.map((item) => async () => {
         const rawBlob = await fetchBlob(item.url);
 
-        // Ảnh PR Thương mại: GIỮ NGUYÊN ĐỊNH DẠNG/ĐUÔI FILE GỐC (png/jpg/webp...)
         if (item.isPR) {
           let ext = getExtensionFromUrl(item.url);
           if (!ext && rawBlob.type) {
@@ -551,21 +520,14 @@
           }
           const arrayBuffer = await rawBlob.arrayBuffer();
           const fileName = item.singlePR ? `PR.${ext}` : `PR_${item.prNo}.${ext}`;
-          return {
-            fileName: fileName,
-            data: new Uint8Array(arrayBuffer)
-          };
+          return { fileName: fileName, data: new Uint8Array(arrayBuffer) };
         }
 
-        // Trang truyện chính: GIẢI MÃ MA TRẬN -> Xuất mặc định PNG (hoặc JPG nếu tích chọn)
         let decoded;
         if (seed) {
           decoded = await descrambleImage(rawBlob, seed, ver, mangaId, episodeId, CONFIG.GRID_SIZE, useJpeg);
         } else {
-          decoded = {
-            blob: rawBlob,
-            ext: useJpeg ? 'jpg' : 'png'
-          };
+          decoded = { blob: rawBlob, ext: useJpeg ? 'jpg' : 'png' };
         }
 
         const arrayBuffer = await decoded.blob.arrayBuffer();
@@ -586,7 +548,7 @@
       updateProgressUI({
         completed: totalItems,
         total: totalItems,
-        status: "Đang đóng gói ZIP...",
+        status: "Đang đóng gói file ZIP...",
       });
       await sleep(50);
 
@@ -598,19 +560,13 @@
         }
       }
 
-      if (savedCount === 0) {
-        throw new Error("Không lấy được dữ liệu ảnh.");
-      }
+      if (savedCount === 0) throw new Error("Không lấy được dữ liệu ảnh.");
 
       const zipBlob = zip.generateBlob();
       const zipFileName = `${getCleanTitle()}.zip`;
       triggerDownload(zipBlob, zipFileName);
 
-      updateProgressUI({
-        completed: totalItems,
-        total: totalItems,
-        status: "Hoàn tất!",
-      });
+      updateProgressUI({ completed: totalItems, total: totalItems, status: "Hoàn tất." });
     } catch (e) {
       console.error("[pocket-dl] Download failed", e);
       updateProgressUI({ status: `Lỗi: ${e?.message || e}` });
@@ -645,7 +601,7 @@
   }
 
   /* =========================================================================
-   * 6. GIAO DIỆN UI (THÊM TICKBOX CHỌN JPG/PNG)
+   * 6. GIAO DIỆN UI (TÔNG XANH NAVY KODANSHA #2563eb / #0b1739 - CHUẨN PICCOMA)
    * ========================================================================= */
   function updateProgressUI(data = {}) {
     const total = Number.isFinite(data.total) ? data.total : state.lastProgress.total;
@@ -664,24 +620,22 @@
 
     ui.count.textContent = `${completed}/${total}`;
     ui.percent.textContent = `${pct}%`;
-    ui.fill.style.transform = `scaleX(${pct / 100})`;
+    ui.fill.style.transform = `scaleX(${total > 0 ? pct / 100 : 0})`;
     ui.status.textContent = state.lastProgress.status;
   }
 
   function setUiBusy(isBusy) {
     const ui = state.ui;
     if (!ui) return;
-
     ui.button.disabled = Boolean(isBusy);
-    ui.button.textContent = isBusy ? "Đang xử lý..." : "Download";
+    ui.button.textContent = "Download";
     ui.button.style.opacity = isBusy ? "0.72" : "1";
     ui.button.style.cursor = isBusy ? "progress" : "pointer";
     ui.jpgInput.disabled = Boolean(isBusy);
-    ui.jpgInput.style.cursor = isBusy ? "default" : "pointer";
   }
 
   function createUI() {
-    if (state.ui || !DOC.body) return;
+    if (state.ui || !DOC.body || DOC.getElementById("pocket-dl-panel")) return;
 
     const PANEL_WIDTH = 220;
     const TAB_WIDTH = 14;
@@ -693,22 +647,22 @@
       "all:initial",
       "position:fixed",
       "right:0px",
-      "top:93px",
+      "top:92px",
       "z-index:2147483647",
       "box-sizing:border-box",
       `width:${PANEL_WIDTH}px`,
       "padding:10px 14px",
-      "border:1px solid #b91c1c",
+      "border:1px solid #1e40af",
       "border-right:none",
       "border-radius:12px 0 0 12px",
-      "background:#450a0a",
+      "background:#0b1739",
       "color:#ffffff",
       'font:12px/1.3 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
       "user-select:none",
       "box-shadow:0 8px 24px rgba(0,0,0,0.85)",
       "transition:transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)",
       `transform:${isCollapsed ? `translateX(calc(100% - ${TAB_WIDTH}px))` : "translateX(0)"}`,
-      "display:none",
+      "display:block",
       "overflow:hidden"
     ].join(";");
 
@@ -720,15 +674,15 @@
       "top:0px",
       `width:${TAB_WIDTH}px`,
       "height:100%",
-      "background:#dc2626",
+      "background:#2563eb",
       "cursor:pointer",
       "transition:opacity 0.15s, background 0.15s",
       `opacity:${isCollapsed ? "1" : "0"}`,
       `pointer-events:${isCollapsed ? "auto" : "none"}`
     ].join(';');
-    collapsedStrip.title = "Bấm để mở bảng tải";
-    collapsedStrip.onmouseenter = () => { collapsedStrip.style.background = "#ef4444"; };
-    collapsedStrip.onmouseleave = () => { collapsedStrip.style.background = "#dc2626"; };
+    collapsedStrip.title = "Mở bảng tải";
+    collapsedStrip.onmouseenter = () => { collapsedStrip.style.background = "#3b82f6"; };
+    collapsedStrip.onmouseleave = () => { collapsedStrip.style.background = "#2563eb"; };
 
     const mainContent = DOC.createElement("div");
     mainContent.style.cssText = [
@@ -754,19 +708,19 @@
       "align-items:center",
       "justify-content:center",
       "border-radius:12px 0 8px 0",
-      "background:#dc2626",
+      "background:#2563eb",
       "color:#ffffff",
       "font:900 10px system-ui,sans-serif",
       "cursor:pointer",
       "transition:background 0.15s ease",
       "z-index:2"
     ].join(';');
-    collapseBtn.onmouseenter = () => { collapseBtn.style.background = "#ef4444"; };
-    collapseBtn.onmouseleave = () => { collapseBtn.style.background = "#dc2626"; };
+    collapseBtn.onmouseenter = () => { collapseBtn.style.background = "#3b82f6"; };
+    collapseBtn.onmouseleave = () => { collapseBtn.style.background = "#2563eb"; };
 
     const title = DOC.createElement("div");
     title.textContent = "Pocket Downloader";
-    title.style.cssText = "all:initial;display:block;color:#fca5a5;font:800 13px system-ui;margin-bottom:8px;text-align:center;padding-left:14px;";
+    title.style.cssText = "all:initial;display:block;color:#93c5fd;font:800 13px system-ui;margin-bottom:8px;text-align:center;padding-left:14px;";
 
     const btn = DOC.createElement("button");
     btn.type = "button";
@@ -779,35 +733,34 @@
       "padding:8px 0",
       "border:0",
       "border-radius:6px",
-      "background:#dc2626",
+      "background:#2563eb",
       "color:#ffffff",
-      "font:700 14px/1.2 system-ui,sans-serif",
+      "font:800 14px/1.2 system-ui,sans-serif",
       "text-align:center",
       "cursor:pointer",
-      "box-shadow:0 3px 10px rgba(220, 38, 38, 0.35)",
+      "box-shadow:0 3px 10px rgba(37, 99, 235, 0.35)",
     ].join(";");
     btn.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      startDownload();
+      if (!state.running) startDownload();
     });
 
     const label = DOC.createElement("label");
-    label.style.cssText = "all:initial;display:inline-flex;align-items:center;gap:6px;margin-top:8px;color:#fecaca;font:700 11px system-ui;cursor:pointer;";
+    label.style.cssText = "all:initial;display:inline-flex;align-items:center;gap:6px;margin-top:8px;color:#bfdbfe;font:700 11px system-ui;cursor:pointer;";
 
     const jpgInput = DOC.createElement("input");
     jpgInput.type = "checkbox";
     jpgInput.checked = state.convertJpeg;
-    jpgInput.style.cssText = "all:initial;appearance:auto;width:14px;height:14px;accent-color:#dc2626;cursor:pointer;";
-    jpgInput.addEventListener("change", e => {
-      e.stopPropagation();
+    jpgInput.style.cssText = "all:initial;appearance:auto;width:14px;height:14px;accent-color:#2563eb;cursor:pointer;";
+    jpgInput.addEventListener("change", () => {
       state.convertJpeg = jpgInput.checked;
       saveJpegPref(state.convertJpeg);
     });
 
     const spanJpg = DOC.createElement("span");
     spanJpg.textContent = "Xuất file JPG (mặc định PNG)";
-    spanJpg.style.cssText = "all:initial;color:#fecaca;font:700 11px system-ui;";
+    spanJpg.style.cssText = "all:initial;color:#bfdbfe;font:700 11px system-ui;";
     label.append(jpgInput, spanJpg);
 
     const progressRow = DOC.createElement("div");
@@ -824,15 +777,15 @@
     progressRow.append(countText, percentText);
 
     const track = DOC.createElement("div");
-    track.style.cssText = "all:initial;display:block;height:6px;overflow:hidden;border-radius:3px;background:#7f1d1d;margin-top:6px;";
+    track.style.cssText = "all:initial;display:block;height:6px;overflow:hidden;border-radius:3px;background:#172554;margin-top:6px;";
 
     const fill = DOC.createElement("div");
-    fill.style.cssText = "all:initial;display:block;width:100%;height:100%;background:#f87171;transform:scaleX(0);transform-origin:left center;transition:transform .22s ease;";
+    fill.style.cssText = "all:initial;display:block;width:100%;height:100%;background:#38bdf8;transform:scaleX(0);transform-origin:left center;transition:transform .22s ease;";
     track.appendChild(fill);
 
     const statusText = DOC.createElement("div");
     statusText.textContent = state.lastProgress.status;
-    statusText.style.cssText = "all:initial;display:block;margin-top:8px;color:#fecaca;font:11px system-ui;word-break:break-word;";
+    statusText.style.cssText = "all:initial;display:block;margin-top:8px;color:#bfdbfe;font:11px system-ui;word-break:break-word;";
 
     mainContent.append(collapseBtn, title, btn, label, progressRow, track, statusText);
     panel.append(collapsedStrip, mainContent);
@@ -858,12 +811,7 @@
       if (isCollapsed) setCollapsedState(false);
     });
 
-    const attachUI = () => {
-      if (DOC.body && !DOC.getElementById("pocket-dl-panel")) {
-        DOC.body.appendChild(panel);
-      }
-    };
-    attachUI();
+    DOC.body.appendChild(panel);
 
     state.ui = {
       panel,
@@ -879,7 +827,7 @@
   }
 
   /* =========================================================================
-   * 7. BỘ LẮNG NGHE CHUYỂN CHAP TỰ ĐỘNG (SPA ROUTE WATCHER)
+   * 7. ROUTE WATCHER & BOOT
    * ========================================================================= */
   function initRouteWatcher() {
     let lastUrl = WIN.location.href;
@@ -888,11 +836,9 @@
       const currentUrl = WIN.location.href;
       if (currentUrl !== lastUrl) {
         lastUrl = currentUrl;
-
         state.episodeData = null;
         state.running = false;
         setUiBusy(false);
-
         boot();
       }
     };
@@ -915,23 +861,18 @@
   }
 
   async function boot() {
-    while (!DOC.body) {
-      await sleep(100);
-    }
+    while (!DOC.body) await sleep(100);
+
     createUI();
 
     if (!isEpisodeUrl()) {
-      if (state.ui && state.ui.panel) {
-        state.ui.panel.style.display = "none";
-      }
+      if (state.ui?.panel) state.ui.panel.style.display = "none";
       return;
     }
 
-    if (state.ui && state.ui.panel) {
-      state.ui.panel.style.display = "block";
-    }
+    if (state.ui?.panel) state.ui.panel.style.display = "block";
 
-    updateProgressUI({ completed: 0, total: 0, status: "Đang kiểm tra trang..." });
+    updateProgressUI({ completed: 0, total: 0, status: "Đang kiểm tra..." });
 
     if (state.episodeData?.pages?.length) {
       updateProgressUI({
@@ -939,18 +880,9 @@
         total: state.episodeData.pages.length,
         status: "Sẵn sàng."
       });
-    } else {
-      updateProgressUI({
-        completed: 0,
-        total: 0,
-        status: "Chờ dữ liệu tập..."
-      });
     }
   }
 
-  /* =========================================================================
-   * 8. HELPERS & BOOT
-   * ========================================================================= */
   function fetchBlob(url) {
     return new Promise((res, rej) => {
       GM_xmlhttpRequest({
@@ -960,7 +892,7 @@
         timeout: 25000,
         onload: (r) => (r.status === 200 ? res(r.response) : rej(new Error(`Status: ${r.status}`))),
         onerror: (e) => rej(e),
-        ontimeout: () => rej(new Error("Timeout tải ảnh")),
+        ontimeout: () => rej(new Error("Timeout tải ảnh.")),
       });
     });
   }
@@ -983,7 +915,7 @@
     initRouteWatcher();
 
     if (DOC.readyState === "loading") {
-      DOC.addEventListener("DOMContentLoaded", () => boot());
+      DOC.addEventListener("DOMContentLoaded", boot);
     } else {
       boot();
     }

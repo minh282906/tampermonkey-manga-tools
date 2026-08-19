@@ -162,19 +162,20 @@
     lastProgress: { completed: 0, total: 0, percent: 0, status: "Đang kiểm tra..." }
   };
 
-  function isEpisodeUrl() {
-    return /\/viewer\/\d+\/\d+/.test(WIN.location.pathname);
-  }
-
   function saveJpegPref(val) {
     try {
       WIN.localStorage.setItem("piccoma-dl:convert-jpeg", val ? '1' : '0');
     } catch {}
   }
 
+  function isEpisodeUrl() {
+    // Hỗ trợ cả /viewer/123/456 và /viewer/s/123/456 (hoặc bất kỳ tiền tố chữ nào)
+    return /\/viewer\/(?:[a-zA-Z]+\/)?\d+\/\d+/.test(WIN.location.pathname);
+  }
+
   function getEpisodeId() {
     try {
-      const match = WIN.location.pathname.match(/\/viewer\/\d+\/(\d+)/);
+      const match = WIN.location.pathname.match(/\/viewer\/(?:[a-zA-Z]+\/)?\d+\/(\d+)/);
       if (match && match[1]) return match[1];
       if (state.cachedData?.episode_id) return String(state.cachedData.episode_id);
     } catch (e) {}

@@ -160,7 +160,7 @@
   };
 
   function isEpisodeUrl() {
-    return /\/(?:viewer|comics)\//.test(WIN.location.pathname);
+    return /^\/viewer\/comics\//.test(WIN.location.pathname);
   }
 
   function saveJpegPref(val) {

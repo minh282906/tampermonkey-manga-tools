@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CmoaJP Downloader
 // @namespace    https://www.cmoa.jp/
-// @version      1.0
+// @version      1.1
 // @icon         https://c-cmoa.akamaized.net/sol/pcc/images/webclipicon/icon_cmoa.png
 // @description  Tải manga trên Comic Cmoa (cmoa.jp).
 // @author       anonymous & AI
@@ -19,26 +19,15 @@
    * CẤU HÌNH HỆ THỐNG
    * ========================================================================= */
   const CONFIG = {
-    MAX_CONCURRENT: 4, // Số lượng trang tải song song cùng lúc
+    POLL_INTERVAL_MS: 20
   };
 
   const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;
   const DOC = WIN.document;
-  const sleep = ms => new Promise(resolve => WIN.setTimeout(resolve, ms));
+  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-  // Kiểm tra chỉ chạy UI trên cửa sổ chính (bỏ qua nếu là Iframe ngầm)
-  const isTopWindow = (() => {
-    try { return WIN.top === WIN.self; } catch { return true; }
-  })();
-
-  if (!isTopWindow) {
-    if (WIN.location.hash.includes("tm-silent-reader-")) {
-      try {
-        WIN.Storage.prototype.setItem = function() {};
-        WIN.Storage.prototype.removeItem = function() {};
-        WIN.Storage.prototype.clear = function() {};
-      } catch(e) {}
-    }
+  // Kiểm tra chỉ chạy trên cửa sổ chính
+  if (WIN.top !== WIN.self) {
     return;
   }
 
@@ -173,7 +162,6 @@
     try {
       let rawTitle = DOC.title || "";
       let clean = rawTitle.split('｜')[0].split('|')[0].trim();
-      clean = clean.replace(/【[^】]*】/g, '').trim();
       clean = clean.replace(/[\\/*?:"<>|]/g, '').trim();
       return clean || getCidPrefix() || "Cmoa_Manga";
     } catch (e) {
@@ -219,7 +207,7 @@
       if (Boolean(reader && reader.isContentLoaded && reader.content && Array.isArray(reader.content.page) && reader.content.page.length > 0)) {
         return reader;
       }
-      await sleep(120);
+      await sleep(100);
     }
     throw new Error("Không tìm thấy viewer đã tải xong.");
   }
@@ -230,6 +218,9 @@
     return url.href;
   }
 
+  /* =========================================================================
+   * 3. KHỞI TẠO IFRAME NGẦM (ẨN BẰNG CLIP-PATH, GIỮ GPU ACTIVE)
+   * ========================================================================= */
   async function createSilentFrame(timeoutMs = 45000) {
     if (!DOC.body) throw new Error("Trang chưa sẵn sàng.");
     DOC.getElementById("cmoa-dl-silent-frame")?.remove();
@@ -239,9 +230,10 @@
     frame.setAttribute("aria-hidden", "true");
     frame.tabIndex = -1;
     frame.src = getSilentFrameUrl();
-    frame.style.cssText = "position:fixed;left:-20000px;top:0;width:1280px;height:1800px;border:0;opacity:0;pointer-events:none;z-index:-1";
 
-    DOC.body.appendChild(frame);
+    frame.style.cssText = "position:fixed;left:0px;top:0px;width:1000px;height:1400px;opacity:0.001;pointer-events:none;border:none;z-index:-999999;clip:rect(0,0,0,0);";
+
+    (DOC.documentElement || DOC.body).appendChild(frame);
 
     const cleanup = () => { try { frame.remove(); } catch {} };
     const endTime = (WIN.performance?.now?.() || Date.now()) + timeoutMs;
@@ -255,9 +247,13 @@
         } catch { win = null; doc = null; }
         const reader = win?.SpeedBinb?.getInstance?.("content") || null;
         if (win && doc && Boolean(reader && reader.isContentLoaded && reader.content && Array.isArray(reader.content.page) && reader.content.page.length > 0)) {
+          try {
+            if (typeof reader.setEffect === "function") reader.setEffect(0);
+            if (typeof reader.setSpeed === "function") reader.setSpeed(0);
+          } catch(e) {}
           return { frame, W: win, D: doc, reader, cleanup };
         }
-        await sleep(150);
+        await sleep(100);
       }
     } catch (err) {
       cleanup();
@@ -268,9 +264,6 @@
     throw new Error("Không tạo được viewer ẩn.");
   }
 
-  /* =========================================================================
-   * 3. LẤY DANH SÁCH TRANG TRUYỆN CHÍNH (LỌC BỎ ADS/BANNER)
-   * ========================================================================= */
   function getPageList(reader) {
     const rawPages = Array.isArray(reader?.content?.page) ? reader.content.page : [];
     const mangaPages = [];
@@ -295,7 +288,7 @@
   }
 
   /* =========================================================================
-   * 4. THUẬT TOÁN BÓC TÁCH KHUNG CANVAS SPEEDBINB
+   * 4. THUẬT TOÁN BÓC TÁCH VÀ GHÉP KHUNG CANVAS SPEEDBINB
    * ========================================================================= */
   function parseSliceRect(styleStr) {
     if (!styleStr) return { top: 0, right: 0, bottom: 0, left: 0 };
@@ -393,53 +386,13 @@
         const result = await stitchPageToUint8Array(pageDiv, isJpg);
         if (result) return result;
       }
-      await sleep(100);
+      await sleep(CONFIG.POLL_INTERVAL_MS);
     }
     return null;
   }
 
   /* =========================================================================
-   * 5. TIẾN TRÌNH TẢI SONG SONG
-   * ========================================================================= */
-  async function runParallelQueue(tasks, limit, onProgress) {
-    const results = new Array(tasks.length);
-    let completed = 0;
-    let index = 0;
-
-    const workers = Array(Math.min(limit, tasks.length)).fill(0).map(async () => {
-      while (index < tasks.length) {
-        const currentIndex = index++;
-        try {
-          results[currentIndex] = await tasks[currentIndex]();
-        } catch (err) {
-          console.error(`[cmoa-dl] Lỗi trang ${currentIndex + 1}:`, err);
-          results[currentIndex] = null;
-        } finally {
-          completed++;
-          onProgress(completed, tasks.length);
-        }
-      }
-    });
-
-    await Promise.all(workers);
-    return results;
-  }
-
-  function triggerDownload(blob, fileName) {
-    const url = WIN.URL.createObjectURL(blob);
-    const a = DOC.createElement('a');
-    a.href = url;
-    a.download = fileName;
-    a.rel = "noopener";
-    a.style.display = "none";
-    DOC.documentElement.appendChild(a);
-    a.click();
-    a.remove();
-    WIN.setTimeout(() => WIN.URL.revokeObjectURL(url), 60000);
-  }
-
-  /* =========================================================================
-   * 6. GIAO DIỆN UI (THEME CAM COMIC CMOA #ea580c)
+   * 5. GIAO DIỆN UI (THEME CAM COMIC CMOA #ea580c)
    * ========================================================================= */
   function updateProgressUI(data = {}) {
     const total = Number.isFinite(data.total) ? data.total : state.lastProgress.total;
@@ -503,6 +456,10 @@
       "display:block",
       "overflow:hidden"
     ].join(';');
+
+    ['click', 'mousedown', 'mouseup', 'pointerdown', 'pointerup', 'touchstart', 'touchend'].forEach(evt => {
+      panel.addEventListener(evt, e => e.stopPropagation());
+    });
 
     const collapsedStrip = DOC.createElement("div");
     collapsedStrip.style.cssText = [
@@ -666,13 +623,19 @@
   }
 
   /* =========================================================================
-   * 7. CHƯƠNG TRÌNH TẢI CHÍNH
+   * 6. CHƯƠNG TRÌNH TẢI CHÍNH (TUẦN TỰ KHÔNG XUNG ĐỘT SPEEDBINB)
    * ========================================================================= */
-  let readerLock = Promise.resolve();
-  function withReaderLock(fn) {
-    const next = readerLock.then(fn, fn);
-    readerLock = next;
-    return next;
+  function triggerDownload(blob, fileName) {
+    const url = WIN.URL.createObjectURL(blob);
+    const a = DOC.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    a.rel = "noopener";
+    a.style.display = "none";
+    DOC.documentElement.appendChild(a);
+    a.click();
+    a.remove();
+    WIN.setTimeout(() => WIN.URL.revokeObjectURL(url), 60000);
   }
 
   async function startDownload() {
@@ -686,16 +649,16 @@
 
     try {
       updateProgressUI({ completed: 0, status: "Đang tải..." });
-      await waitForReader();
-      silentFrameObj = await createSilentFrame();
 
-      const reader = silentFrameObj.reader;
-      const pages = getPageList(reader);
+      const mainReader = await waitForReader();
+      const pages = getPageList(mainReader);
       const totalPages = pages.length;
 
       if (!totalPages) {
         throw new Error("Không có trang hợp lệ để tải.");
       }
+
+      silentFrameObj = await createSilentFrame();
 
       const useJpeg = Boolean(state.convertJpeg);
       const zip = new PureZipWriter();
@@ -705,31 +668,23 @@
 
       updateProgressUI({ completed: 0, total: totalPages, status: "Đang tải..." });
 
-      const tasks = pages.map((pageObj) => async () => {
-        return withReaderLock(async () => {
-          silentFrameObj.reader.moveTo(pageObj.index, false);
-          const stitched = await waitForRenderedPageAndStitch(pageObj, silentFrameObj.D, useJpeg, 4000);
-          if (stitched) {
-            return {
-              fileName: `${pageObj.pageNo}.${stitched.ext}`,
-              data: stitched.uint8Array
-            };
-          }
-          return null;
-        });
-      });
+      for (let i = 0; i < totalPages; i++) {
+        const pageObj = pages[i];
 
-      const results = await runParallelQueue(tasks, CONFIG.MAX_CONCURRENT, (completed, total) => {
-        updateProgressUI({ completed, total, status: "Đang tải..." });
-      });
+        silentFrameObj.reader.moveTo(pageObj.index, true);
+        const stitched = await waitForRenderedPageAndStitch(pageObj, silentFrameObj.D, useJpeg, 4000);
+        if (stitched) {
+          zip.addFile(`${pageObj.pageNo}.${stitched.ext}`, stitched.uint8Array);
+        }
+        updateProgressUI({ completed: i + 1, total: totalPages, status: "Đang tải..." });
+      }
 
       updateProgressUI({ completed: totalPages, total: totalPages, status: "Đang đóng gói file ZIP..." });
       await sleep(50);
 
       let savedCount = 0;
-      for (const res of results) {
-        if (res && res.data) {
-          zip.addFile(res.fileName, res.data);
+      for (const res of zip.files) {
+        if (res && res.data && res.data.length > 0) {
           savedCount++;
         }
       }
@@ -764,7 +719,7 @@
   }
 
   /* =========================================================================
-   * 8. ROUTE WATCHER & BOOT
+   * 7. ROUTE WATCHER & BOOT
    * ========================================================================= */
   function initRouteWatcher() {
     let lastUrl = WIN.location.href;
@@ -773,9 +728,10 @@
       const currentUrl = WIN.location.href;
       if (currentUrl !== lastUrl) {
         lastUrl = currentUrl;
-        state.running = false;
-        setUiBusy(false);
-        boot();
+        if (!state.running) {
+          setUiBusy(false);
+          boot();
+        }
       }
     };
 

@@ -145,7 +145,7 @@
     try {
       let rawTitle = DOC.title || "";
       let clean = rawTitle.split('｜')[0].split('|')[0].trim();
-      clean = clean.replace(/【[^】]*】/g, '').replace(/[\\/*?:"<>|]/g, '').trim();
+      clean = clean.replace(/[\\/*?:"<>|]/g, '').trim();
       return clean || getCidPrefix() || "Yanmaga_Manga";
     } catch (e) { return getCidPrefix() || "Yanmaga_Manga"; }
   }

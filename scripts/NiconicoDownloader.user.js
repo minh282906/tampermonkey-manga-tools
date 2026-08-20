@@ -22,7 +22,7 @@
    * CẤU HÌNH HỆ THỐNG
    * ========================================================================= */
   const CONFIG = {
-    MAX_CONCURRENT: 4, // Số lượng trang tải song song vào RAM
+    MAX_CONCURRENT: 6, // Số lượng trang tải song song vào RAM
   };
 
   const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;

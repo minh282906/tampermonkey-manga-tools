@@ -59,7 +59,7 @@
    * CẤU HÌNH HỆ THỐNG GIGAVIEWER
    * ========================================================================= */
   const CONFIG = {
-    MAX_CONCURRENT: 4, // Số lượng trang tải song song tối ưu
+    MAX_CONCURRENT: 6, // Số lượng trang tải song song tối ưu
     DIVIDE_NUM: 4,     // Thuật toán ma trận 4x4
     MULTIPLE: 8,       // Bội số ô vuông 8px
   };

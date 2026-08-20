@@ -61,7 +61,7 @@
    * CẤU HÌNH HỆ THỐNG
    * ========================================================================= */
   const CONFIG = {
-    MAX_CONCURRENT: 4, // Số lượng trang ảnh tải song song
+    MAX_CONCURRENT: 6, // Số lượng trang ảnh tải song song
     JPEG_QUALITY: 0.95 // Chất lượng xuất JPG
   };
 

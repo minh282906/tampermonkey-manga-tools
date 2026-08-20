@@ -573,7 +573,7 @@
         if (res && res.data && res.data.length > 0) savedCount++;
       }
 
-      if (savedCount <= 1) throw new Error("Lỗi nạp trang truyện.");
+      if (savedCount == 0) throw new Error("Lỗi nạp trang truyện.");
 
       const zipBlob = zip.generateBlob();
       const zipFileName = `${getCleanMangaTitle()}.zip`;

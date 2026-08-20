@@ -485,7 +485,7 @@
       "all:initial",
       "position:fixed",
       "right:0px",
-      "top:92px",
+      "top:43px",
       "z-index:2147483647",
       "box-sizing:border-box",
       `width:${PANEL_WIDTH}px`,

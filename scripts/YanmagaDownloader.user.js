@@ -1,144 +1,66 @@
 // ==UserScript==
 // @name         Yanmaga Downloader
-// @namespace    https://yanmaga.jp/
-// @version      1.0
+// @namespace    https://github.com/minh282906/tampermonkey-manga-tools
+// @version      3.0.0
 // @icon         https://www.google.com/s2/favicons?domain=yanmaga.jp&sz=128
-// @description  Tải manga trên Yanmaga Web.
+// @description  Tải manga trên Yanmaga Web siêu tốc qua API trực tiếp & giải mã CoordDecoder.
 // @author       anonymous & AI
 // @match        https://yanmaga.jp/*
 // @run-at       document-start
 // @grant        unsafeWindow
 // @grant        GM_xmlhttpRequest
 // @connect      *
+// @connect      yanmaga.jp
+// @connect      *.yanmaga.jp
+//
+// --- GỌI CÁC MODULE DÙNG CHUNG TỪ REPO CỦA BẠN ---
+// @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/core/PureZipWriter.js
+// @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/core/UniversalUI.js
+// @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/core/RouteWatcher.js
+// @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/decoders/SpeedReaderTools.js
 // ==/UserScript==
 
-(function yanmagaDownloader() {
+(function yanmagaUniversalDownloader() {
   'use strict';
 
   /* =========================================================================
-   * CẤU HÌNH HỆ THỐNG
+   * CẤU HÌNH & KHỞI TẠO
    * ========================================================================= */
   const CONFIG = {
-    MAX_CONCURRENT: 4,
-    POLL_INTERVAL_MS: 20
+    MAX_CONCURRENT: 6,   // 6 luồng tải và giải mã song song
+    JPEG_QUALITY: 0.95   // Chất lượng xuất JPG nếu chuyển đổi
   };
 
   const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;
   const DOC = WIN.document;
-  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const sleep = ms => new Promise(resolve => WIN.setTimeout(resolve, ms));
 
-  // Cách ly Iframe ngầm an toàn (KHÔNG làm hỏng postMessage của trang chính)
-  if (WIN.top !== WIN.self) {
-    if (WIN.location.hash.includes("tm-silent-reader-")) {
-      try {
-        // Đánh lừa iframe rằng nó là cửa sổ cao nhất để không gửi bất kỳ postMessage nào lên trang chính
-        Object.defineProperty(WIN, 'parent', { get: () => WIN });
-        Object.defineProperty(WIN, 'top', { get: () => WIN });
+  if (WIN.top !== WIN.self) return;
 
-        // Storage ảo cho iframe để không ảnh hưởng trang chính
-        const dummyStorage = {
-          getItem: () => null,
-          setItem: () => {},
-          removeItem: () => {},
-          clear: () => {},
-          length: 0,
-          key: () => null
-        };
-        Object.defineProperty(WIN, 'localStorage', { get: () => dummyStorage });
-        Object.defineProperty(WIN, 'sessionStorage', { get: () => dummyStorage });
-
-        WIN.dataLayer = [];
-        WIN.ga = function() {};
-        WIN.gtag = function() {};
-      } catch (e) {}
-    }
-    return;
-  }
-
-  /* =========================================================================
-   * 1. BỘ ĐÓNG GÓI ZIP NGUYÊN BẢN (PURE ZIP WRITER)
-   * ========================================================================= */
-  class PureZipWriter {
-    constructor() { this.files = []; }
-    addFile(name, uint8Array) { this.files.push({ name, data: uint8Array }); }
-    static crc32(data) {
-      let crc = -1;
-      for (let i = 0; i < data.length; i++) {
-        crc = (crc >>> 8) ^ PureZipWriter.crcTable[(crc ^ data[i]) & 0xFF];
-      }
-      return (crc ^ -1) >>> 0;
-    }
-    generateBlob() {
-      const parts = [], centralEntries = [];
-      let offset = 0;
-      const enc = new TextEncoder();
-      for (const file of this.files) {
-        const nameBytes = enc.encode(file.name);
-        const dataBytes = file.data;
-        const crc = PureZipWriter.crc32(dataBytes);
-        const size = dataBytes.length;
-
-        const header = new Uint8Array(30 + nameBytes.length);
-        const view = new DataView(header.buffer);
-        view.setUint32(0, 0x04034b50, true);
-        view.setUint16(4, 20, true);
-        view.setUint32(14, crc, true);
-        view.setUint32(18, size, true);
-        view.setUint32(22, size, true);
-        view.setUint16(26, nameBytes.length, true);
-        header.set(nameBytes, 30);
-        parts.push(header, dataBytes);
-
-        const cent = new Uint8Array(46 + nameBytes.length);
-        const cview = new DataView(cent.buffer);
-        cview.setUint32(0, 0x02014b50, true);
-        cview.setUint16(4, 20, true);
-        cview.setUint16(6, 20, true);
-        cview.setUint32(16, crc, true);
-        cview.setUint32(20, size, true);
-        cview.setUint32(24, size, true);
-        cview.setUint16(28, nameBytes.length, true);
-        cview.setUint32(42, offset, true);
-        cent.set(nameBytes, 46);
-        centralEntries.push(cent);
-        offset += header.length + size;
-      }
-      let centralSize = 0;
-      for (const cent of centralEntries) { parts.push(cent); centralSize += cent.length; }
-      const eocd = new Uint8Array(22);
-      const eview = new DataView(eocd.buffer);
-      eview.setUint32(0, 0x06054b50, true);
-      eview.setUint16(8, this.files.length, true);
-      eview.setUint16(10, this.files.length, true);
-      eview.setUint32(12, centralSize, true);
-      eview.setUint32(16, offset, true);
-      parts.push(eocd);
-      return new Blob(parts, { type: 'application/zip' });
-    }
-  }
-  PureZipWriter.crcTable = new Uint32Array(256);
-  for (let i = 0; i < 256; i++) {
-    let c = i;
-    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
-    PureZipWriter.crcTable[i] = c;
-  }
-
-  /* =========================================================================
-   * 2. STATE & HELPER FUNCTIONS
-   * ========================================================================= */
   const state = {
     running: false,
     convertJpeg: localStorage.getItem("yanmaga-dl:convert-jpeg") === '1',
-    ui: null,
-    lastProgress: { completed: 0, total: 0, percent: 0, status: "Đang kiểm tra..." }
+    chapterData: null
   };
 
+  // Khởi tạo UI đa năng dùng chung từ core/UniversalUI.js
+  const ui = (window.createMangaDownloaderUI || globalThis.createMangaDownloaderUI)({
+    storagePrefix: "yanmaga-dl",
+    title: "Yanmaga Downloader",
+    themeColor: "#eab308",
+    themeBg: "#18181b",
+    titleColor: "#fde047",
+    topOffset: "76px",
+    defaultJpgText: "Xuất file JPG (mặc định PNG)",
+    onDownload: startDownload,
+    onJpgChange: (checked) => { state.convertJpeg = checked; }
+  });
+
+  /* =========================================================================
+   * HELPER FUNCTIONS
+   * ========================================================================= */
   function isEpisodeUrl() {
     return /^\/viewer\/comics\//.test(WIN.location.pathname);
-  }
-
-  function saveJpegPref(val) {
-    try { WIN.localStorage.setItem("yanmaga-dl:convert-jpeg", val ? '1' : '0'); } catch {}
   }
 
   function getCleanMangaTitle() {
@@ -147,12 +69,15 @@
       let clean = rawTitle.split('｜')[0].split('|')[0].trim();
       clean = clean.replace(/[\\/*?:"<>|]/g, '').trim();
       return clean || getCidPrefix() || "Yanmaga_Manga";
-    } catch (e) { return getCidPrefix() || "Yanmaga_Manga"; }
+    } catch (e) {
+      return getCidPrefix() || "Yanmaga_Manga";
+    }
   }
 
   function getCidPrefix() {
     try {
-      const cid = DOC.getElementById('content')?.getAttribute('data-ptbinb-cid');
+      const contentEl = DOC.getElementById('content');
+      const cid = contentEl?.getAttribute('data-ptbinb-cid') || contentEl?.dataset?.ptbinbCid;
       if (cid) return cid.trim();
     } catch (e) {}
     const cid = new URLSearchParams(WIN.location.search).get("cid");
@@ -161,358 +86,187 @@
     return match ? match[1] : "Yanmaga_Episode";
   }
 
-  function getReader() {
-    try { return WIN.SpeedBinb?.getInstance?.("content") || null; } catch { return null; }
-  }
-
-  async function waitForReader(timeoutMs = 45000) {
-    const endTime = (WIN.performance?.now?.() || Date.now()) + timeoutMs;
-    while ((WIN.performance?.now?.() || Date.now()) < endTime) {
-      const reader = getReader();
-      if (Boolean(reader && reader.isContentLoaded && reader.content && Array.isArray(reader.content.page) && reader.content.page.length > 0)) {
-        return reader;
-      }
+  async function waitForCid(timeoutMs = 15000) {
+    const startTime = Date.now();
+    while (Date.now() - startTime < timeoutMs) {
+      const cid = getCidPrefix();
+      if (cid && cid !== "Yanmaga_Episode") return cid;
       await sleep(100);
     }
-    throw new Error("Không tìm thấy viewer đã tải xong.");
-  }
-
-  function getSilentFrameUrl() {
-    const url = new URL(WIN.location.href);
-    url.hash = `tm-silent-reader-${Date.now()}`;
-    return url.href;
+    return getCidPrefix();
   }
 
   /* =========================================================================
-   * 3. KHỞI TẠO IFRAME NGẦM (ẨN BẰNG CLIP-PATH, KHÔNG RUNG DOM)
+   * API CLIENT SPEEDBINB & GIẢI MÃ MA TRẬN
    * ========================================================================= */
-  async function createSilentFrame(timeoutMs = 45000) {
-    if (!DOC.body) throw new Error("Trang chưa sẵn sàng.");
-    DOC.getElementById("yanmaga-dl-silent-frame")?.remove();
+  async function fetchSpeedBinbManifest(cid) {
+    const Tools = window.SpeedReaderTools || globalThis.SpeedReaderTools;
+    const randomString = Tools.generateRandomString32(cid);
+    const infoUrl = `https://yanmaga.jp/viewer/bibGetCntntInfo?cid=${cid}&dmytime=${Date.now()}&k=${randomString}&type=comics`;
 
-    const frame = DOC.createElement("iframe");
-    frame.id = "yanmaga-dl-silent-frame";
-    frame.setAttribute("aria-hidden", "true");
-    frame.tabIndex = -1;
-    frame.src = getSilentFrameUrl();
-    
-    frame.style.cssText = "position:fixed;left:0px;top:0px;width:1000px;height:1400px;opacity:0.001;pointer-events:none;border:none;z-index:-999999;clip:rect(0,0,0,0);";
+    // 1. Lấy thông tin cấu hình từ bibGetCntntInfo
+    const infoRes = await new Promise((resolve, reject) => {
+      GM_xmlhttpRequest({
+        method: "GET",
+        url: infoUrl,
+        responseType: "json",
+        timeout: 15000,
+        onload: res => {
+          if (res.status >= 200 && res.status < 300 && res.response?.items?.[0]) {
+            resolve(res.response.items[0]);
+          } else {
+            reject(new Error(`bibGetCntntInfo HTTP ${res.status}`));
+          }
+        },
+        onerror: () => reject(new Error("Lỗi kết nối API")),
+        ontimeout: () => reject(new Error("Timeout kết nối API"))
+      });
+    });
 
-    (DOC.documentElement || DOC.body).appendChild(frame);
+    const config = {
+      title: infoRes.Title,
+      contentServer: infoRes.ContentsServer,
+      ctbl: Tools.getDecryptedTable(cid, randomString, infoRes.ctbl),
+      ptbl: Tools.getDecryptedTable(cid, randomString, infoRes.ptbl)
+    };
 
-    const cleanup = () => { try { frame.remove(); } catch {} };
-    const endTime = (WIN.performance?.now?.() || Date.now()) + timeoutMs;
+    // 2. Lấy cấu trúc trang TTX
+    const ttxRes = await new Promise((resolve, reject) => {
+      GM_xmlhttpRequest({
+        method: "GET",
+        url: `${config.contentServer}/content`,
+        responseType: "json",
+        timeout: 15000,
+        onload: res => {
+          if (res.status >= 200 && res.status < 300 && res.response?.ttx) {
+            resolve(res.response.ttx);
+          } else {
+            reject(new Error(`TTX HTTP ${res.status}`));
+          }
+        },
+        onerror: () => reject(new Error("Lỗi tải cấu trúc TTX")),
+        ontimeout: () => reject(new Error("Timeout tải TTX"))
+      });
+    });
 
-    try {
-      while ((WIN.performance?.now?.() || Date.now()) < endTime) {
-        let win = null, doc = null;
-        try {
-          win = frame.contentWindow;
-          doc = frame.contentDocument || win?.document || null;
-        } catch { win = null; doc = null; }
-        const reader = win?.SpeedBinb?.getInstance?.("content") || null;
-        if (win && doc && Boolean(reader && reader.isContentLoaded && reader.content && Array.isArray(reader.content.page) && reader.content.page.length > 0)) {
-          try {
-            if (typeof reader.setEffect === "function") reader.setEffect(0);
-            if (typeof reader.setSpeed === "function") reader.setSpeed(0);
-          } catch(e) {}
-          return { frame, W: win, D: doc, reader, cleanup };
-        }
-        await sleep(100);
+    // 3. Lọc danh sách trang duy nhất qua Set (chất lượng gốc ?q=1)
+    const matchResult = ttxRes.matchAll(/(pages\/[a-zA-Z0-9_]*.jpg)[^A-Z]*orgwidth="(\d*)" orgheight="(\d*)"/gm);
+    const seen = new Set();
+    const files = [];
+
+    for (const match of matchResult) {
+      const filename = match[1];
+      if (!seen.has(filename)) {
+        seen.add(filename);
+        files.push({
+          pageNo: files.length + 1,
+          filename: filename,
+          width: parseInt(match[2], 10),
+          height: parseInt(match[3], 10),
+          src: `${config.contentServer}/img/${filename}?q=1`
+        });
       }
-    } catch (err) {
-      cleanup();
-      throw err;
     }
 
-    cleanup();
-    throw new Error("Không tạo được viewer ẩn.");
+    return { config, files };
   }
 
-  function getPageList(reader) {
-    const rawPages = Array.isArray(reader?.content?.page) ? reader.content.page : [];
-    const mangaPages = [];
-    let pageNo = 1;
-
-    for (let index = 0; index < rawPages.length; index++) {
-      const page = rawPages[index];
-      const domId = page?.id || ("content-p" + (index + 1));
-      if (!/^(ads|recommend|banners|rental|r-banner)/i.test(domId) && !domId.includes('banner')) {
-        mangaPages.push({ page, index, domId, pageNo: pageNo++ });
-      }
-    }
-    return mangaPages;
+  function fetchImageArrayBuffer(url) {
+    return new Promise((resolve, reject) => {
+      GM_xmlhttpRequest({
+        method: "GET",
+        url: url,
+        responseType: "arraybuffer",
+        timeout: 25000,
+        onload: res => {
+          if (res.status >= 200 && res.status < 300 && res.response) {
+            resolve(res.response);
+          } else {
+            reject(new Error(`HTTP ${res.status}`));
+          }
+        },
+        onerror: () => reject(new Error("Lỗi tải ảnh")),
+        ontimeout: () => reject(new Error("Timeout tải ảnh"))
+      });
+    });
   }
 
-  /* =========================================================================
-   * 4. THUẬT TOÁN BÓC TÁCH & GHÉP MẢNH CANVAS (ALPHA: FALSE)
-   * ========================================================================= */
-  function parseSliceRect(styleStr) {
-    if (!styleStr) return { top: 0, right: 0, bottom: 0, left: 0 };
-    const insetMatch = styleStr.match(/inset:\s*([\d\.-]+)(%|px)?\s+([\d\.-]+)(%|px)?\s+([\d\.-]+)(%|px)?\s+([\d\.-]+)(%|px)?/i);
-    if (insetMatch) {
-      return { top: parseFloat(insetMatch[1]), right: parseFloat(insetMatch[3]), bottom: parseFloat(insetMatch[5]), left: parseFloat(insetMatch[7]) };
-    }
-    let top = 0, right = 0, bottom = 0, left = 0;
-    const topMatch = styleStr.match(/top:\s*([\d\.-]+)%/i);
-    const rightMatch = styleStr.match(/right:\s*([\d\.-]+)%/i);
-    const bottomMatch = styleStr.match(/bottom:\s*([\d\.-]+)%/i);
-    const leftMatch = styleStr.match(/left:\s*([\d\.-]+)%/i);
-    const widthMatch = styleStr.match(/width:\s*([\d\.-]+)%/i);
-    const heightMatch = styleStr.match(/height:\s*([\d\.-]+)%/i);
+  async function descrambleAndFormatImage(fileObj, config, isJpg) {
+    const Tools = window.SpeedReaderTools || globalThis.SpeedReaderTools;
+    const rawBuffer = await fetchImageArrayBuffer(fileObj.src);
+    const blob = new Blob([rawBuffer], { type: 'image/jpeg' });
+    const objUrl = WIN.URL.createObjectURL(blob);
 
-    if (topMatch) top = parseFloat(topMatch[1]);
-    if (leftMatch) left = parseFloat(leftMatch[1]);
-    if (rightMatch) right = parseFloat(rightMatch[1]);
-    else if (widthMatch) right = 100 - left - parseFloat(widthMatch[1]);
+    const img = new WIN.Image();
+    img.decoding = "async";
 
-    if (bottomMatch) bottom = parseFloat(bottomMatch[1]);
-    else if (heightMatch && heightMatch[1]) bottom = 100 - top - parseFloat(heightMatch[1]);
-
-    return { top, right, bottom, left };
-  }
-
-  async function stitchPageToUint8Array(pageDiv, isJpg) {
-    const ptImg = pageDiv.querySelector('.pt-img') || pageDiv;
-    const sliceDivs = Array.from(ptImg.children).filter(d => d.querySelector('img'));
-    if (sliceDivs.length === 0) return null;
-
-    const sliceData = [];
-    let maxFullH = 0, maxFullW = 0;
-
-    for (const div of sliceDivs) {
-      const img = div.querySelector('img');
-      if (!img || !img.complete || img.naturalWidth === 0 || !img.src.startsWith('blob:')) return null;
-
-      const inset = parseSliceRect(div.getAttribute('style') || '');
-      const spanH = (100 - inset.bottom - inset.top) / 100;
-      const spanW = (100 - inset.left - inset.right) / 100;
-      if (spanH > 0 && spanW > 0) {
-        maxFullH = Math.max(maxFullH, img.naturalHeight / spanH);
-        maxFullW = Math.max(maxFullW, img.naturalWidth / spanW);
-      }
-      sliceData.push({ img, inset });
-    }
-
-    if (sliceData.length === 0 || maxFullW === 0 || maxFullH === 0) return null;
-
-    const targetW = Math.round(maxFullW);
-    const targetH = Math.round(maxFullH);
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = reject;
+      img.src = objUrl;
+    });
+    WIN.URL.revokeObjectURL(objUrl);
 
     const canvas = DOC.createElement('canvas');
-    canvas.width = targetW;
-    canvas.height = targetH;
-    
+    canvas.width = fileObj.width;
+    canvas.height = fileObj.height;
+
     const ctx = canvas.getContext('2d', { alpha: false });
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, targetW, targetH);
+    ctx.fillRect(0, 0, fileObj.width, fileObj.height);
 
-    for (const item of sliceData) {
-      const dx = Math.round((item.inset.left / 100) * targetW);
-      const dy = Math.round((item.inset.top / 100) * targetH);
-      const dw = Math.round(((100 - item.inset.left - item.inset.right) / 100) * targetW);
-      const dh = Math.round(((100 - item.inset.top - item.inset.bottom) / 100) * targetH);
-      ctx.drawImage(item.img, 0, 0, item.img.naturalWidth, item.img.naturalHeight, dx, dy, dw, dh);
+    // Giải mã mảnh ghép bằng CoordDecoder
+    const key = Tools.getDecryptionKey(fileObj.filename, config.ctbl, config.ptbl);
+    const decoder = new Tools.CoordDecoder(key[0], key[1]);
+    const coords = decoder.getCoords(img);
+
+    for (const { srcX, srcY, destX, destY, width, height } of coords) {
+      ctx.drawImage(img, srcX, srcY, width, height, destX, destY, width, height);
     }
 
     const mimeType = isJpg ? 'image/jpeg' : 'image/png';
-    const blob = await new Promise(resolve => canvas.toBlob(resolve, mimeType, 0.95));
-    const arrayBuffer = await blob.arrayBuffer();
+    const quality = isJpg ? CONFIG.JPEG_QUALITY : undefined;
+    const outExt = isJpg ? 'jpg' : 'png';
+
+    const outBlob = await new Promise(resolve => canvas.toBlob(resolve, mimeType, quality));
+    const outBuffer = await outBlob.arrayBuffer();
+
+    canvas.width = 0;
+    canvas.height = 0;
 
     return {
-      uint8Array: new Uint8Array(arrayBuffer),
-      ext: isJpg ? 'jpg' : 'png'
+      fileName: `${fileObj.pageNo}.${outExt}`,
+      data: new Uint8Array(outBuffer)
     };
   }
 
-  async function waitForRenderedPageAndStitch(pageObj, frameDoc, isJpg, timeoutMs = 4000) {
-    const endTime = (WIN.performance?.now?.() || Date.now()) + timeoutMs;
-    while ((WIN.performance?.now?.() || Date.now()) < endTime) {
-      const pageDiv = frameDoc.getElementById(pageObj.domId) || frameDoc.querySelector(`#content-p${pageObj.pageNo}`);
-      if (pageDiv) {
-        const result = await stitchPageToUint8Array(pageDiv, isJpg);
-        if (result) return result;
+  /* =========================================================================
+   * TIẾN TRÌNH TẢI SONG SONG
+   * ========================================================================= */
+  async function runParallelQueue(tasks, limit, onProgress) {
+    const results = new Array(tasks.length);
+    let completed = 0;
+    let index = 0;
+
+    const workers = Array(Math.min(limit, tasks.length)).fill(0).map(async () => {
+      while (index < tasks.length) {
+        const currentIndex = index++;
+        try {
+          results[currentIndex] = await tasks[currentIndex]();
+        } catch (err) {
+          console.error(`[yanmaga-dl] Lỗi trang ${currentIndex + 1}:`, err);
+          results[currentIndex] = null;
+        } finally {
+          completed++;
+          onProgress(completed, tasks.length);
+        }
       }
-      await sleep(CONFIG.POLL_INTERVAL_MS);
-    }
-    return null;
-  }
-
-  /* =========================================================================
-   * 5. GIAO DIỆN UI (CHẶN BUBBLE AN TOÀN, TRẢ LẠI 100% QUYỀN CHO SPEEDBINB)
-   * ========================================================================= */
-  function updateProgressUI(data = {}) {
-    const total = Number.isFinite(data.total) ? data.total : state.lastProgress.total;
-    const completed = Number.isFinite(data.completed) ? data.completed : state.lastProgress.completed;
-    const pct = total > 0 ? Math.max(0, Math.min(100, Math.round(completed / total * 100))) : 0;
-
-    state.lastProgress = { completed, total, percent: pct, status: data.status || state.lastProgress.status };
-    const ui = state.ui;
-    if (!ui) return;
-
-    ui.count.textContent = total ? `${Math.min(completed, total)}/${total}` : "0/0";
-    ui.percent.textContent = pct + '%';
-    ui.fill.style.transform = `scaleX(${total > 0 ? pct / 100 : 0})`;
-    ui.status.textContent = state.lastProgress.status;
-  }
-
-  function setUiBusy(isBusy) {
-    const ui = state.ui;
-    if (!ui) return;
-    ui.button.disabled = Boolean(isBusy);
-    ui.button.textContent = "Download";
-    ui.button.style.opacity = isBusy ? "0.72" : '1';
-    ui.button.style.cursor = isBusy ? "progress" : "pointer";
-    ui.jpgInput.disabled = Boolean(isBusy);
-  }
-
-  function createUI() {
-    if (state.ui || !DOC.body || DOC.getElementById("yanmaga-dl-panel")) return;
-
-    const PANEL_WIDTH = 220;
-    const TAB_WIDTH = 14;
-    let isCollapsed = localStorage.getItem("yanmaga-dl:collapsed") === '1';
-
-    const panel = DOC.createElement("div");
-    panel.id = "yanmaga-dl-panel";
-    panel.tabIndex = -1;
-    panel.style.cssText = [
-      "all:initial", "position:fixed", "right:0px", "top:76px",
-      "z-index:2147483647", "box-sizing:border-box", `width:${PANEL_WIDTH}px`,
-      "padding:10px 14px", "border:1px solid #eab308", "border-right:none",
-      "border-radius:12px 0 0 12px", "background:#18181b", "color:#ffffff",
-      "font:12px/1.3 system-ui,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif",
-      "user-select:none", "box-shadow:0 8px 24px rgba(0,0,0,0.85)",
-      "transition:transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)",
-      `transform:${isCollapsed ? `translateX(calc(100% - ${TAB_WIDTH}px))` : "translateX(0)"}`,
-      "display:block", "overflow:hidden"
-    ].join(';');
-
-    ['click', 'mousedown', 'mouseup', 'pointerdown', 'pointerup', 'touchstart', 'touchend'].forEach(evt => {
-      panel.addEventListener(evt, e => e.stopPropagation());
     });
 
-    const collapsedStrip = DOC.createElement("div");
-    collapsedStrip.tabIndex = -1;
-    collapsedStrip.style.cssText = [
-      "all:initial", "position:absolute", "left:0px", "top:0px",
-      `width:${TAB_WIDTH}px`, "height:100%", "background:#eab308", "cursor:pointer",
-      "transition:opacity 0.15s, background 0.15s",
-      `opacity:${isCollapsed ? "1" : "0"}`, `pointer-events:${isCollapsed ? "auto" : "none"}`
-    ].join(';');
-    collapsedStrip.title = "Mở bảng tải";
-    collapsedStrip.onmouseenter = () => { collapsedStrip.style.background = "#facc15"; };
-    collapsedStrip.onmouseleave = () => { collapsedStrip.style.background = "#eab308"; };
-
-    const mainContent = DOC.createElement("div");
-    mainContent.style.cssText = [
-      "all:initial", "display:block", "transition:opacity 0.2s",
-      `opacity:${isCollapsed ? "0" : "1"}`, `pointer-events:${isCollapsed ? "none" : "auto"}`
-    ].join(';');
-
-    const collapseBtn = DOC.createElement("button");
-    collapseBtn.type = "button";
-    collapseBtn.tabIndex = -1;
-    collapseBtn.textContent = "▶";
-    collapseBtn.title = "Thu gọn";
-    collapseBtn.style.cssText = [
-      "all:initial", "position:absolute", "left:0px", "top:0px",
-      "width:24px", "height:24px", "display:flex", "align-items:center", "justify-content:center",
-      "border-radius:12px 0 8px 0", "background:#eab308", "color:#18181b",
-      "font:900 10px system-ui,sans-serif", "cursor:pointer", "transition:background 0.15s ease", "z-index:2"
-    ].join(';');
-    collapseBtn.onmouseenter = () => { collapseBtn.style.background = "#facc15"; };
-    collapseBtn.onmouseleave = () => { collapseBtn.style.background = "#eab308"; };
-
-    const title = DOC.createElement("div");
-    title.textContent = "Yanmaga Downloader";
-    title.style.cssText = "all:initial;display:block;color:#fde047;font:800 13px system-ui;margin-bottom:8px;text-align:center;padding-left:14px;";
-
-    const btn = DOC.createElement("button");
-    btn.type = "button";
-    btn.tabIndex = -1;
-    btn.textContent = "Download";
-    btn.style.cssText = [
-      "all:initial", "display:block", "box-sizing:border-box", "width:100%", "padding:8px 0",
-      "border:0", "border-radius:6px", "background:#eab308", "color:#18181b",
-      "font:800 14px/1.2 system-ui,sans-serif", "text-align:center", "cursor:pointer",
-      "box-shadow:0 3px 10px rgba(234, 179, 8, 0.35)"
-    ].join(';');
-
-    btn.addEventListener("click", e => {
-      e.preventDefault();
-      e.stopPropagation();
-      btn.blur();
-      if (!state.running) startDownload();
-    });
-
-    const label = DOC.createElement("label");
-    label.style.cssText = "all:initial;display:inline-flex;align-items:center;gap:6px;margin-top:8px;color:#fef08a;font:700 11px system-ui;cursor:pointer;";
-
-    const jpgInput = DOC.createElement("input");
-    jpgInput.type = "checkbox";
-    jpgInput.tabIndex = -1;
-    jpgInput.checked = state.convertJpeg;
-    jpgInput.style.cssText = "all:initial;appearance:auto;width:14px;height:14px;accent-color:#eab308;cursor:pointer;";
-    jpgInput.addEventListener("click", e => e.stopPropagation());
-    jpgInput.addEventListener("change", () => {
-      state.convertJpeg = jpgInput.checked;
-      saveJpegPref(state.convertJpeg);
-    });
-
-    const spanJpg = DOC.createElement("span");
-    spanJpg.textContent = "Xuất file JPG (mặc định PNG)";
-    spanJpg.style.cssText = "all:initial;color:#fef08a;font:700 11px system-ui;";
-    label.append(jpgInput, spanJpg);
-
-    const progressRow = DOC.createElement("div");
-    progressRow.style.cssText = "all:initial;display:flex;justify-content:space-between;align-items:center;margin-top:10px;color:#ffffff;font:800 12px system-ui;";
-
-    const countText = DOC.createElement("span");
-    countText.textContent = "0/0";
-    countText.style.cssText = "all:initial;color:#ffffff;font:800 12px system-ui;";
-
-    const percentText = DOC.createElement("span");
-    percentText.textContent = "0%";
-    percentText.style.cssText = "all:initial;color:#ffffff;font:800 12px system-ui;";
-    progressRow.append(countText, percentText);
-
-    const track = DOC.createElement("div");
-    track.style.cssText = "all:initial;display:block;height:6px;overflow:hidden;border-radius:3px;background:#3f3f46;margin-top:6px;";
-
-    const fill = DOC.createElement("div");
-    fill.style.cssText = "all:initial;display:block;width:100%;height:100%;background:#facc15;transform:scaleX(0);transform-origin:left center;transition:transform .22s ease;";
-    track.appendChild(fill);
-
-    const statusText = DOC.createElement("div");
-    statusText.textContent = state.lastProgress.status;
-    statusText.style.cssText = "all:initial;display:block;margin-top:8px;color:#fef08a;font:11px system-ui;word-break:break-word;";
-
-    mainContent.append(collapseBtn, title, btn, label, progressRow, track, statusText);
-    panel.append(collapsedStrip, mainContent);
-
-    function setCollapsedState(collapsed) {
-      isCollapsed = collapsed;
-      localStorage.setItem("yanmaga-dl:collapsed", isCollapsed ? '1' : '0');
-      panel.style.transform = isCollapsed ? `translateX(calc(100% - ${TAB_WIDTH}px))` : "translateX(0)";
-      collapsedStrip.style.opacity = isCollapsed ? "1" : "0";
-      collapsedStrip.style.pointerEvents = isCollapsed ? "auto" : "none";
-      mainContent.style.opacity = isCollapsed ? "0" : "1";
-      mainContent.style.pointerEvents = isCollapsed ? "none" : "auto";
-    }
-
-    collapseBtn.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); setCollapsedState(true); });
-    panel.addEventListener("click", (e) => { e.stopPropagation(); if (isCollapsed) setCollapsedState(false); });
-
-    DOC.body.appendChild(panel);
-
-    state.ui = { panel, button: btn, jpgInput, count: countText, percent: percentText, fill, status: statusText };
-    updateProgressUI(state.lastProgress);
+    await Promise.all(workers);
+    return results;
   }
 
-  /* =========================================================================
-   * 6. CHƯƠNG TRÌNH TẢI CHÍNH
-   * ========================================================================= */
   function triggerDownload(blob, fileName) {
     const url = WIN.URL.createObjectURL(blob);
     const a = DOC.createElement('a');
@@ -520,125 +274,126 @@
     a.download = fileName;
     a.rel = "noopener";
     a.style.display = "none";
-    a.addEventListener('click', e => e.stopPropagation());
     DOC.documentElement.appendChild(a);
     a.click();
     a.remove();
     WIN.setTimeout(() => WIN.URL.revokeObjectURL(url), 60000);
   }
 
+  /* =========================================================================
+   * CHƯƠNG TRÌNH TẢI CHÍNH
+   * ========================================================================= */
   async function startDownload() {
     if (state.running) return;
+
+    const cid = await waitForCid(5000);
+    if (!cid || cid === "Yanmaga_Episode") {
+      ui.updateProgress({ status: "Lỗi: Không tìm thấy CID." });
+      return;
+    }
+
     state.running = true;
-    setUiBusy(true);
-    let silentFrameObj = null;
+    ui.setBusy(true);
 
     try {
-      updateProgressUI({ completed: 0, status: "Đang tải..." });
-      
-      const mainReader = await waitForReader();
-      const pages = getPageList(mainReader);
-      const totalPages = pages.length;
+      ui.updateProgress({ completed: 0, total: 0, status: "Đang tải..." });
 
-      if (!totalPages) throw new Error("Không có trang hợp lệ để tải.");
-
-      // Khởi tạo Iframe ngầm chạy độc lập
-      silentFrameObj = await createSilentFrame();
-
-      const useJpeg = Boolean(state.convertJpeg);
-      const zip = new PureZipWriter();
-      const cidPrefix = getCidPrefix();
-      zip.addFile(`${cidPrefix}.txt`, new Uint8Array(0));
-
-      updateProgressUI({ completed: 0, total: totalPages, status: "Đang tải..." });
-
-      // Tải từng trang trong Iframe ngầm (không ảnh hưởng màn hình chính)
-      for (let i = 0; i < totalPages; i++) {
-        const pageObj = pages[i];
-        
-        silentFrameObj.reader.moveTo(pageObj.index, true);
-        
-        const stitched = await waitForRenderedPageAndStitch(pageObj, silentFrameObj.D, useJpeg, 4000);
-        if (stitched) {
-          zip.addFile(`${pageObj.pageNo}.${stitched.ext}`, stitched.uint8Array);
-        }
-        updateProgressUI({ completed: i + 1, total: totalPages, status: "Đang tải..." });
+      let data = state.chapterData;
+      if (!data || !data.files?.length) {
+        data = await fetchSpeedBinbManifest(cid);
+        state.chapterData = data;
       }
 
-      updateProgressUI({ completed: totalPages, total: totalPages, status: "Đang đóng gói file ZIP..." });
+      const { config, files } = data;
+      const totalPages = files.length;
+      if (!totalPages) throw new Error("Không tìm thấy trang truyện.");
+
+      const useJpeg = Boolean(state.convertJpeg);
+      const ZipClass = window.PureZipWriter || globalThis.PureZipWriter;
+      const zip = new ZipClass();
+
+      zip.addFile(`${cid}.txt`, new Uint8Array(0));
+      ui.updateProgress({ completed: 0, total: totalPages, status: "Đang tải..." });
+
+      const tasks = files.map((fileObj) => async () => {
+        return await descrambleAndFormatImage(fileObj, config, useJpeg);
+      });
+
+      const results = await runParallelQueue(tasks, CONFIG.MAX_CONCURRENT, (completed, total) => {
+        ui.updateProgress({ completed, total, status: "Đang tải..." });
+      });
+
+      ui.updateProgress({ completed: totalPages, total: totalPages, status: "Đang đóng gói file ZIP..." });
       await sleep(50);
 
       let savedCount = 0;
-      for (const res of zip.files) {
-        if (res && res.data && res.data.length > 0) savedCount++;
+      for (const res of results) {
+        if (res && res.data) {
+          zip.addFile(res.fileName, res.data);
+          savedCount++;
+        }
       }
 
-      if (savedCount == 0) throw new Error("Lỗi nạp trang truyện.");
+      if (savedCount === 0) throw new Error("Lỗi đóng gói ảnh vào ZIP.");
 
       const zipBlob = zip.generateBlob();
       const zipFileName = `${getCleanMangaTitle()}.zip`;
       triggerDownload(zipBlob, zipFileName);
 
-      updateProgressUI({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
+      ui.updateProgress({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
     } catch (err) {
-      updateProgressUI({ status: "Lỗi: " + (err?.message || String(err)) });
-      console.error("[yanmaga-dl] Download failed:", err);
+      ui.updateProgress({ status: "Lỗi: " + (err?.message || String(err)) });
+      console.error("[yanmaga-dl] Error:", err);
     } finally {
-      if (silentFrameObj) silentFrameObj.cleanup();
       state.running = false;
-      setUiBusy(false);
-      updateProgressUI(state.lastProgress);
+      ui.setBusy(false);
     }
   }
 
   /* =========================================================================
-   * 7. ROUTE WATCHER & BOOT
+   * KHỞI CHẠY VÀ SPA WATCHER
    * ========================================================================= */
-  function initRouteWatcher() {
-    let lastUrl = WIN.location.href;
-    const onUrlChange = () => {
-      const currentUrl = WIN.location.href;
-      if (currentUrl !== lastUrl) {
-        lastUrl = currentUrl;
-        if (!state.running) {
-          setUiBusy(false);
-          boot();
-        }
-      }
-    };
-
-    const origPush = WIN.history.pushState;
-    WIN.history.pushState = function(...args) { origPush.apply(this, args); onUrlChange(); };
-    const origReplace = WIN.history.replaceState;
-    WIN.history.replaceState = function(...args) { origReplace.apply(this, args); onUrlChange(); };
-
-    WIN.addEventListener("popstate", onUrlChange);
-    WIN.addEventListener("hashchange", onUrlChange);
-    WIN.setInterval(onUrlChange, 600);
-  }
-
   async function boot() {
-    while (!DOC.body) await sleep(100);
-    createUI();
+    while (!DOC.body) await sleep(50);
 
     if (!isEpisodeUrl()) {
-      if (state.ui?.panel) state.ui.panel.style.display = "none";
+      if (ui?.panel) ui.panel.style.display = "none";
       return;
     }
 
-    if (state.ui?.panel) state.ui.panel.style.display = "block";
-    updateProgressUI({ completed: 0, total: 0, status: "Đang kiểm tra..." });
+    if (ui?.panel) ui.panel.style.display = "block";
+    ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
+
+    const cid = await waitForCid(10000);
+    if (!cid || cid === "Yanmaga_Episode") return;
 
     try {
-      const reader = await waitForReader();
-      const pages = getPageList(reader);
-      updateProgressUI({ completed: 0, total: pages.length, status: "Sẵn sàng." });
+      const data = await fetchSpeedBinbManifest(cid);
+      state.chapterData = data;
+      ui.updateProgress({
+        completed: 0,
+        total: data.files.length,
+        status: "Sẵn sàng."
+      });
     } catch (err) {
-      updateProgressUI({ completed: 0, total: 0, status: "Lỗi: " + (err?.message || err) });
+      ui.updateProgress({
+        completed: 0,
+        total: 0,
+        status: "Đang kiểm tra..."
+      });
     }
   }
 
-  initRouteWatcher();
+  // Khởi động SPA Route Watcher từ core/RouteWatcher.js
+  const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
+  if (typeof watchRoute === "function") {
+    watchRoute(() => {
+      state.chapterData = null;
+      state.running = false;
+      ui.setBusy(false);
+      boot();
+    });
+  }
 
   if (DOC.readyState === "loading") {
     DOC.addEventListener("DOMContentLoaded", boot);

@@ -3,7 +3,7 @@
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
 // @version      2.0.0
 // @icon         https://www.google.com/s2/favicons?domain=yanmaga.jp&sz=128
-// @description  Tải manga trên Yanmaga Web
+// @description  Tải manga trên Yanmaga Web.
 // @author       anonymous & AI
 // @match        https://yanmaga.jp/*
 // @run-at       document-start
@@ -12,6 +12,13 @@
 // @connect      *
 // @connect      yanmaga.jp
 // @connect      *.yanmaga.jp
+//
+// --- TỰ ĐỘNG NẠP KHI CÀI ĐẶT ĐỘC LẬP QUA JSDELIVR ---
+// @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/cores/PureZipWriter.js
+// @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/cores/UniversalUI.js
+// @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/cores/RouteWatcher.js
+// @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/cores/MangaUtils.js
+// @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/decoders/SpeedBinderTools.js
 // ==/UserScript==
 
 (function yanmagaUniversalDownloader() {
@@ -21,7 +28,7 @@
    * CẤU HÌNH & KHỞI TẠO
    * ========================================================================= */
   const CONFIG = {
-    MAX_CONCURRENT: 6,   // 6 luồng tải và giải mã song song
+    MAX_CONCURRENT: 6,   // 6 luồng tải song song
     JPEG_QUALITY: 0.95   // Chất lượng xuất JPG nếu chuyển đổi
   };
 
@@ -31,42 +38,14 @@
 
   if (WIN.top !== WIN.self) return;
 
-  function getSpeedBinderTools() {
-    return (typeof SpeedBinderTools !== 'undefined' ? SpeedBinderTools : null) ||
-           (typeof window !== 'undefined' ? window.SpeedBinderTools : null) ||
-           (typeof unsafeWindow !== 'undefined' ? unsafeWindow.SpeedBinderTools : null) ||
-           (typeof globalThis !== 'undefined' ? globalThis.SpeedBinderTools : null);
-  }
-
-  function getUniversalUI() {
-    return (typeof createMangaDownloaderUI !== 'undefined' ? createMangaDownloaderUI : null) ||
-           (typeof window !== 'undefined' ? window.createMangaDownloaderUI : null) ||
-           (typeof unsafeWindow !== 'undefined' ? unsafeWindow.createMangaDownloaderUI : null) ||
-           (typeof globalThis !== 'undefined' ? globalThis.createMangaDownloaderUI : null);
-  }
-
-  function getPureZipWriter() {
-    return (typeof PureZipWriter !== 'undefined' ? PureZipWriter : null) ||
-           (typeof window !== 'undefined' ? window.PureZipWriter : null) ||
-           (typeof unsafeWindow !== 'undefined' ? unsafeWindow.PureZipWriter : null) ||
-           (typeof globalThis !== 'undefined' ? globalThis.PureZipWriter : null);
-  }
-
-  function getRouteWatcher() {
-    return (typeof initRouteWatcher !== 'undefined' ? initRouteWatcher : null) ||
-           (typeof window !== 'undefined' ? window.initRouteWatcher : null) ||
-           (typeof unsafeWindow !== 'undefined' ? unsafeWindow.initRouteWatcher : null) ||
-           (typeof globalThis !== 'undefined' ? globalThis.initRouteWatcher : null);
-  }
-
   const state = {
     running: false,
     convertJpeg: localStorage.getItem("yanmaga-dl:convert-jpeg") === '1',
     chapterData: null
   };
 
-  // Khởi tạo UI
-  const createUI = getUniversalUI();
+  // Khởi tạo UI đa năng dùng chung
+  const createUI = window.createMangaDownloaderUI || globalThis.createMangaDownloaderUI;
   const ui = createUI({
     storagePrefix: "yanmaga-dl",
     title: "Yanmaga Downloader",
@@ -90,28 +69,18 @@
     try {
       let rawTitle = DOC.title || "";
       let clean = rawTitle.split('｜')[0].split('|')[0].trim();
-      clean = clean.replace(/[\\/*?:"<>|]/g, '').trim();
-      return clean || "Yanmaga_Manga";
+      return clean.replace(/[\\/*?:"<>|]/g, '').trim() || "Yanmaga_Manga";
     } catch (e) {
       return "Yanmaga_Manga";
     }
   }
 
-  // ĐỢI ĐÚNG THẺ #content ĐƯỢC REACT GÁN CID (0.1 - 0.5s)
   async function waitForCid(timeoutMs = 15000) {
     const startTime = Date.now();
     while (Date.now() - startTime < timeoutMs) {
       const contentEl = DOC.getElementById('content');
-      const cid = contentEl?.getAttribute('data-ptbinb-cid') || contentEl?.dataset?.ptbinbCid;
-      if (cid && cid.trim()) {
-        return cid.trim();
-      }
-      
-      const searchCid = new URLSearchParams(WIN.location.search).get("cid");
-      if (searchCid && searchCid.trim()) {
-        return searchCid.trim();
-      }
-
+      const cid = contentEl?.getAttribute('data-ptbinb-cid') || contentEl?.dataset?.ptbinbCid || new URLSearchParams(WIN.location.search).get("cid");
+      if (cid && cid.trim()) return cid.trim();
       await sleep(100);
     }
     return null;
@@ -121,30 +90,13 @@
    * API CLIENT SPEEDBINB & GIẢI MÃ MA TRẬN
    * ========================================================================= */
   async function fetchSpeedBinbManifest(cid) {
-    const Tools = getSpeedBinderTools();
-    if (!Tools) throw new Error("Chưa tải xong SpeedBinderTools.");
-
+    const Tools = window.SpeedBinderTools || globalThis.SpeedBinderTools;
+    const Utils = window.MangaUtils || globalThis.MangaUtils;
     const randomString = Tools.generateRandomString32(cid);
     const infoUrl = `https://yanmaga.jp/viewer/bibGetCntntInfo?cid=${cid}&dmytime=${Date.now()}&k=${randomString}&type=comics`;
 
-    // 1. Lấy thông tin cấu hình từ bibGetCntntInfo
-    const infoRes = await new Promise((resolve, reject) => {
-      GM_xmlhttpRequest({
-        method: "GET",
-        url: infoUrl,
-        responseType: "json",
-        timeout: 15000,
-        onload: res => {
-          if (res.status >= 200 && res.status < 300 && res.response?.items?.[0]) {
-            resolve(res.response.items[0]);
-          } else {
-            reject(new Error(`bibGetCntntInfo HTTP ${res.status}`));
-          }
-        },
-        onerror: () => reject(new Error("Lỗi kết nối API")),
-        ontimeout: () => reject(new Error("Timeout kết nối API"))
-      });
-    });
+    const infoBuffer = await Utils.fetchBuffer(infoUrl);
+    const infoRes = JSON.parse(new TextDecoder().decode(infoBuffer)).items[0];
 
     const config = {
       title: infoRes.Title,
@@ -153,31 +105,13 @@
       ptbl: Tools.getDecryptedTable(cid, randomString, infoRes.ptbl)
     };
 
-    // 2. Lấy cấu trúc trang TTX
-    const ttxRes = await new Promise((resolve, reject) => {
-      GM_xmlhttpRequest({
-        method: "GET",
-        url: `${config.contentServer}/content`,
-        responseType: "json",
-        timeout: 15000,
-        onload: res => {
-          if (res.status >= 200 && res.status < 300 && res.response?.ttx) {
-            resolve(res.response.ttx);
-          } else {
-            reject(new Error(`TTX HTTP ${res.status}`));
-          }
-        },
-        onerror: () => reject(new Error("Lỗi tải cấu trúc TTX")),
-        ontimeout: () => reject(new Error("Timeout tải TTX"))
-      });
-    });
+    const ttxBuffer = await Utils.fetchBuffer(`${config.contentServer}/content`);
+    const ttxText = JSON.parse(new TextDecoder().decode(ttxBuffer)).ttx;
 
-    // 3. Lọc danh sách trang duy nhất qua Set (chất lượng gốc ?q=1)
-    const matchResult = ttxRes.matchAll(/(pages\/[a-zA-Z0-9_]*.jpg)[^A-Z]*orgwidth="(\d*)" orgheight="(\d*)"/gm);
     const seen = new Set();
     const files = [];
 
-    for (const match of matchResult) {
+    for (const match of ttxText.matchAll(/(pages\/[a-zA-Z0-9_]*.jpg)[^A-Z]*orgwidth="(\d*)" orgheight="(\d*)"/gm)) {
       const filename = match[1];
       if (!seen.has(filename)) {
         seen.add(filename);
@@ -190,45 +124,15 @@
         });
       }
     }
-
     return { config, files };
   }
 
-  function fetchImageArrayBuffer(url) {
-    return new Promise((resolve, reject) => {
-      GM_xmlhttpRequest({
-        method: "GET",
-        url: url,
-        responseType: "arraybuffer",
-        timeout: 25000,
-        onload: res => {
-          if (res.status >= 200 && res.status < 300 && res.response) {
-            resolve(res.response);
-          } else {
-            reject(new Error(`HTTP ${res.status}`));
-          }
-        },
-        onerror: () => reject(new Error("Lỗi tải ảnh")),
-        ontimeout: () => reject(new Error("Timeout tải ảnh"))
-      });
-    });
-  }
-
   async function descrambleAndFormatImage(fileObj, config, isJpg) {
-    const Tools = getSpeedBinderTools();
-    const rawBuffer = await fetchImageArrayBuffer(fileObj.src);
-    const blob = new Blob([rawBuffer], { type: 'image/jpeg' });
-    const objUrl = WIN.URL.createObjectURL(blob);
+    const Tools = window.SpeedBinderTools || globalThis.SpeedBinderTools;
+    const Utils = window.MangaUtils || globalThis.MangaUtils;
 
-    const img = new WIN.Image();
-    img.decoding = "async";
-
-    await new Promise((resolve, reject) => {
-      img.onload = resolve;
-      img.onerror = reject;
-      img.src = objUrl;
-    });
-    WIN.URL.revokeObjectURL(objUrl);
+    const rawBuffer = await Utils.fetchBuffer(fileObj.src);
+    const img = await Utils.loadImage(rawBuffer);
 
     const canvas = DOC.createElement('canvas');
     canvas.width = fileObj.width;
@@ -238,7 +142,6 @@
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, fileObj.width, fileObj.height);
 
-    // Giải mã mảnh ghép bằng CoordDecoder
     const key = Tools.getDecryptionKey(fileObj.filename, config.ctbl, config.ptbl);
     const decoder = new Tools.CoordDecoder(key[0], key[1]);
     const coords = decoder.getCoords(img);
@@ -248,59 +151,16 @@
     }
 
     const mimeType = isJpg ? 'image/jpeg' : 'image/png';
-    const quality = isJpg ? CONFIG.JPEG_QUALITY : undefined;
     const outExt = isJpg ? 'jpg' : 'png';
-
-    const outBlob = await new Promise(resolve => canvas.toBlob(resolve, mimeType, quality));
-    const outBuffer = await outBlob.arrayBuffer();
+    const blob = await new Promise(r => canvas.toBlob(r, mimeType, CONFIG.JPEG_QUALITY));
 
     canvas.width = 0;
     canvas.height = 0;
 
     return {
       fileName: `${fileObj.pageNo}.${outExt}`,
-      data: new Uint8Array(outBuffer)
+      data: new Uint8Array(await blob.arrayBuffer())
     };
-  }
-
-  /* =========================================================================
-   * TIẾN TRÌNH TẢI SONG SONG
-   * ========================================================================= */
-  async function runParallelQueue(tasks, limit, onProgress) {
-    const results = new Array(tasks.length);
-    let completed = 0;
-    let index = 0;
-
-    const workers = Array(Math.min(limit, tasks.length)).fill(0).map(async () => {
-      while (index < tasks.length) {
-        const currentIndex = index++;
-        try {
-          results[currentIndex] = await tasks[currentIndex]();
-        } catch (err) {
-          console.error(`[yanmaga-dl] Lỗi trang ${currentIndex + 1}:`, err);
-          results[currentIndex] = null;
-        } finally {
-          completed++;
-          onProgress(completed, tasks.length);
-        }
-      }
-    });
-
-    await Promise.all(workers);
-    return results;
-  }
-
-  function triggerDownload(blob, fileName) {
-    const url = WIN.URL.createObjectURL(blob);
-    const a = DOC.createElement('a');
-    a.href = url;
-    a.download = fileName;
-    a.rel = "noopener";
-    a.style.display = "none";
-    DOC.documentElement.appendChild(a);
-    a.click();
-    a.remove();
-    WIN.setTimeout(() => WIN.URL.revokeObjectURL(url), 60000);
   }
 
   /* =========================================================================
@@ -310,10 +170,7 @@
     if (state.running) return;
 
     const cid = await waitForCid(5000);
-    if (!cid) {
-      ui.updateProgress({ status: "Lỗi: Không tìm thấy CID." });
-      return;
-    }
+    if (!cid) return ui.updateProgress({ status: "Lỗi: Không tìm thấy CID." });
 
     state.running = true;
     ui.setBusy(true);
@@ -321,51 +178,39 @@
     try {
       ui.updateProgress({ completed: 0, total: 0, status: "Đang tải..." });
 
-      let data = state.chapterData;
-      if (!data || !data.files?.length) {
-        data = await fetchSpeedBinbManifest(cid);
-        state.chapterData = data;
-      }
+      let data = state.chapterData || await fetchSpeedBinbManifest(cid);
+      state.chapterData = data;
 
       const { config, files } = data;
       const totalPages = files.length;
       if (!totalPages) throw new Error("Không tìm thấy trang truyện.");
 
       const useJpeg = Boolean(state.convertJpeg);
-      const ZipClass = getPureZipWriter();
+      const ZipClass = window.PureZipWriter || globalThis.PureZipWriter;
+      const Utils = window.MangaUtils || globalThis.MangaUtils;
       const zip = new ZipClass();
 
       zip.addFile(`${cid}.txt`, new Uint8Array(0));
       ui.updateProgress({ completed: 0, total: totalPages, status: "Đang tải..." });
 
-      const tasks = files.map((fileObj) => async () => {
-        return await descrambleAndFormatImage(fileObj, config, useJpeg);
-      });
-
-      const results = await runParallelQueue(tasks, CONFIG.MAX_CONCURRENT, (completed, total) => {
+      const tasks = files.map(fileObj => () => descrambleAndFormatImage(fileObj, config, useJpeg));
+      const results = await Utils.runParallelQueue(tasks, CONFIG.MAX_CONCURRENT, (completed, total) => {
         ui.updateProgress({ completed, total, status: "Đang tải..." });
       });
 
       ui.updateProgress({ completed: totalPages, total: totalPages, status: "Đang đóng gói file ZIP..." });
       await sleep(50);
 
-      let savedCount = 0;
       for (const res of results) {
-        if (res && res.data) {
-          zip.addFile(res.fileName, res.data);
-          savedCount++;
-        }
+        if (res?.data) zip.addFile(res.fileName, res.data);
       }
 
-      if (savedCount === 0) throw new Error("Lỗi đóng gói ảnh vào ZIP.");
-
-      const zipBlob = zip.generateBlob();
-      const zipFileName = `${getCleanMangaTitle()}.zip`;
-      triggerDownload(zipBlob, zipFileName);
+      // Kích hoạt tải ZIP trực tiếp bằng phương thức tích hợp sẵn
+      zip.download(`${getCleanMangaTitle()}.zip`);
 
       ui.updateProgress({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
     } catch (err) {
-      ui.updateProgress({ status: "Lỗi: " + (err?.message || String(err)) });
+      ui.updateProgress({ status: "Lỗi: " + (err?.message || err) });
       console.error("[yanmaga-dl] Error:", err);
     } finally {
       state.running = false;
@@ -387,12 +232,8 @@
     if (ui?.panel) ui.panel.style.display = "block";
     ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
 
-    // Đợi đúng thẻ #content có thuộc tính data-ptbinb-cid thực sự
     const cid = await waitForCid(15000);
-    if (!cid) {
-      console.warn("[yanmaga-dl] Không tìm thấy CID.");
-      return;
-    }
+    if (!cid) return;
 
     try {
       const data = await fetchSpeedBinbManifest(cid);
@@ -402,13 +243,13 @@
         total: data.files.length,
         status: "Sẵn sàng."
       });
-    } catch (err) {
-      console.error("[yanmaga-dl] Boot API error:", err);
+    } catch (e) {
+      console.error("[yanmaga-dl] Boot error:", e);
     }
   }
 
   // Khởi động SPA Route Watcher
-  const watchRoute = getRouteWatcher();
+  const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
   if (typeof watchRoute === "function") {
     watchRoute(() => {
       state.chapterData = null;

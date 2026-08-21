@@ -20,7 +20,7 @@
       storagePrefix = "manga-dl",
       title = "Manga Downloader",
       themeColor = "#e52865",        // Màu nút & viền
-      themeBg = "#18181b",           // Màu nền đen
+      themeBg = "#18181b",           // Màu nền
       titleColor = "#f472b6",        // Màu chữ tiêu đề
       topOffset = "70px",            // Vị trí top
       defaultJpgText = "Xuất file JPG (mặc định PNG)",
@@ -28,8 +28,14 @@
       onJpgChange = (checked) => {}
     } = options;
 
-    // Tự động tính màu chữ nút bấm dựa trên màu nền themeColor
+    // Tự động tính toán màu sắc tương phản hoàn hảo theo Nền Nút và Nền Bảng
     const btnTextColor = getContrastColor(themeColor);
+    const isLightBg = getContrastColor(themeBg) === '#18181b';
+    const bodyTextColor = isLightBg ? '#1e293b' : '#ffffff'; // Chữ chính (0/0, 0%)
+    const subTextColor = isLightBg ? '#475569' : '#cbd5e1';  // Chữ phụ (Status, Checkbox)
+    const trackBg = isLightBg ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.15)'; // Rãnh thanh trượt
+    const panelShadow = isLightBg ? '0 8px 24px rgba(0,0,0,0.12), -2px 0 8px rgba(0,0,0,0.04)' : '0 8px 24px rgba(0,0,0,0.85)';
+    const btnShadow = isLightBg ? '0 2px 6px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.06)' : `0 3px 10px ${themeColor}55`;
 
     const DOC = document;
     const PANEL_WIDTH = 220;
@@ -42,9 +48,9 @@
       "all:initial", "position:fixed", "right:0px", `top:${topOffset}`,
       "z-index:2147483647", "box-sizing:border-box", `width:${PANEL_WIDTH}px`,
       "padding:10px 14px", `border:1px solid ${themeColor}`, "border-right:none",
-      "border-radius:12px 0 0 12px", `background:${themeBg}`, "color:#ffffff",
+      "border-radius:12px 0 0 12px", `background:${themeBg}`, `color:${bodyTextColor}`,
       "font:12px/1.3 system-ui,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif",
-      "user-select:none", "box-shadow:0 8px 24px rgba(0,0,0,0.85)",
+      "user-select:none", `box-shadow:${panelShadow}`,
       "transition:transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)",
       `transform:${isCollapsed ? `translateX(calc(100% - ${TAB_WIDTH}px))` : "translateX(0)"}`,
       "display:none", "overflow:hidden"
@@ -87,12 +93,12 @@
       "all:initial", "display:block", "box-sizing:border-box", "width:100%", "padding:8px 0",
       "border:0", "border-radius:6px", `background:${themeColor}`, `color:${btnTextColor}`,
       "font:800 14px/1.2 system-ui,sans-serif", "text-align:center", "cursor:pointer",
-      `box-shadow:0 3px 10px ${themeColor}55`
+      `box-shadow:${btnShadow}`
     ].join(';');
     btn.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); onDownload(); });
 
     const label = DOC.createElement("label");
-    label.style.cssText = "all:initial;display:inline-flex;align-items:center;gap:6px;margin-top:8px;color:#cbd5e1;font:700 11px system-ui;cursor:pointer;";
+    label.style.cssText = `all:initial;display:inline-flex;align-items:center;gap:6px;margin-top:8px;color:${subTextColor};font:700 11px system-ui;cursor:pointer;`;
 
     const jpgInput = DOC.createElement("input");
     jpgInput.type = "checkbox";
@@ -105,23 +111,23 @@
 
     const spanJpg = DOC.createElement("span");
     spanJpg.textContent = defaultJpgText;
-    spanJpg.style.cssText = "all:initial;color:#cbd5e1;font:700 11px system-ui;";
+    spanJpg.style.cssText = `all:initial;color:${subTextColor};font:700 11px system-ui;`;
     label.append(jpgInput, spanJpg);
 
     const progressRow = DOC.createElement("div");
-    progressRow.style.cssText = "all:initial;display:flex;justify-content:space-between;align-items:center;margin-top:10px;color:#ffffff;font:800 12px system-ui;";
+    progressRow.style.cssText = `all:initial;display:flex;justify-content:space-between;align-items:center;margin-top:10px;color:${bodyTextColor};font:800 12px system-ui;`;
 
     const countText = DOC.createElement("span");
     countText.textContent = "0/0";
-    countText.style.cssText = "all:initial;color:#ffffff;font:800 12px system-ui;";
+    countText.style.cssText = `all:initial;color:${bodyTextColor};font:800 12px system-ui;`;
 
     const percentText = DOC.createElement("span");
     percentText.textContent = "0%";
-    percentText.style.cssText = "all:initial;color:#ffffff;font:800 12px system-ui;";
+    percentText.style.cssText = `all:initial;color:${bodyTextColor};font:800 12px system-ui;`;
     progressRow.append(countText, percentText);
 
     const track = DOC.createElement("div");
-    track.style.cssText = "all:initial;display:block;height:6px;overflow:hidden;border-radius:3px;background:rgba(255,255,255,0.15);margin-top:6px;";
+    track.style.cssText = `all:initial;display:block;height:6px;overflow:hidden;border-radius:3px;background:${trackBg};margin-top:6px;`;
 
     const fill = DOC.createElement("div");
     fill.style.cssText = `all:initial;display:block;width:100%;height:100%;background:${themeColor};transform:scaleX(0);transform-origin:left center;transition:transform .22s ease;`;
@@ -129,7 +135,7 @@
 
     const statusText = DOC.createElement("div");
     statusText.textContent = "Đang kiểm tra...";
-    statusText.style.cssText = "all:initial;display:block;margin-top:8px;color:#cbd5e1;font:11px system-ui;word-break:break-word;";
+    statusText.style.cssText = `all:initial;display:block;margin-top:8px;color:${subTextColor};font:11px system-ui;word-break:break-word;`;
 
     mainContent.append(collapseBtn, titleEl, btn, label, progressRow, track, statusText);
     panel.append(collapsedStrip, mainContent);

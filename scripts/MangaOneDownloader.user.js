@@ -350,7 +350,7 @@
       updateFormatUI(ext);
     }
 
-    const fileName = `${String(pageItem.pageNo).padStart(3, '0')}.${forceJpg ? 'jpg' : ext}`;
+    const fileName = `${pageItem.pageNo}.${forceJpg ? 'jpg' : ext}`;
 
     // Không cần ép JPG hoặc ảnh vốn là JPG
     if (ext === 'jpg' || !forceJpg) {
@@ -723,7 +723,7 @@
 
       updateProgressUI({ completed: 0, total: totalPages, status: "Đang tải..." });
 
-      // Tải và giải mã song song 4 luồng
+      // Tải và giải mã song song 6 luồng
       const tasks = pages.map((pageItem) => async () => {
         const rawBuffer = await fetchEncryptedArrayBuffer(pageItem.url);
         return await decryptAndFormatImage(rawBuffer, pageItem, forceJpg);

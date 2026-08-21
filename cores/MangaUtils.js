@@ -55,8 +55,5 @@
     }
   };
 
-  if (typeof window !== 'undefined') window.MangaUtils = MangaUtils;
-  if (typeof unsafeWindow !== 'undefined') unsafeWindow.MangaUtils = MangaUtils;
-  if (typeof globalThis !== 'undefined') globalThis.MangaUtils = MangaUtils;
-  global.MangaUtils = MangaUtils;
+  (typeof globalThis !== 'undefined' ? globalThis : window).MangaUtils = MangaUtils;
 })(typeof window !== 'undefined' ? window : this);

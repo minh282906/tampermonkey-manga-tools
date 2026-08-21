@@ -36,9 +36,5 @@
     window.setInterval(checkUrl, 500);
   }
 
-  // GÁN BIẾN 4 TẦNG AN TOÀN TUYỆT ĐỐI
-  if (typeof window !== 'undefined') window.initRouteWatcher = initRouteWatcher;
-  if (typeof unsafeWindow !== 'undefined') unsafeWindow.initRouteWatcher = initRouteWatcher;
-  if (typeof globalThis !== 'undefined') globalThis.initRouteWatcher = initRouteWatcher;
-  global.initRouteWatcher = initRouteWatcher;
+  (typeof globalThis !== 'undefined' ? globalThis : window).initRouteWatcher = initRouteWatcher;
 })(typeof window !== 'undefined' ? window : this);

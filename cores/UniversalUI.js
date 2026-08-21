@@ -187,9 +187,5 @@
     };
   }
 
-  // GÁN BIẾN 4 TẦNG AN TOÀN TUYỆT ĐỐI
-  if (typeof window !== 'undefined') window.createMangaDownloaderUI = createMangaDownloaderUI;
-  if (typeof unsafeWindow !== 'undefined') unsafeWindow.createMangaDownloaderUI = createMangaDownloaderUI;
-  if (typeof globalThis !== 'undefined') globalThis.createMangaDownloaderUI = createMangaDownloaderUI;
-  global.createMangaDownloaderUI = createMangaDownloaderUI;
+  (typeof globalThis !== 'undefined' ? globalThis : window).createMangaDownloaderUI = createMangaDownloaderUI;
 })(typeof window !== 'undefined' ? window : this);

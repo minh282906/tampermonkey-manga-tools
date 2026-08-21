@@ -85,8 +85,5 @@
     PureZipWriter.crcTable[i] = c;
   }
 
-  if (typeof window !== 'undefined') window.PureZipWriter = PureZipWriter;
-  if (typeof unsafeWindow !== 'undefined') unsafeWindow.PureZipWriter = PureZipWriter;
-  if (typeof globalThis !== 'undefined') globalThis.PureZipWriter = PureZipWriter;
-  global.PureZipWriter = PureZipWriter;
+  (typeof globalThis !== 'undefined' ? globalThis : window).PureZipWriter = PureZipWriter;
 })(typeof window !== 'undefined' ? window : this);

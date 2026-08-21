@@ -104,33 +104,46 @@
     }).join('');
   }
 
-  // BẮT BUỘC: [Tên Truyện] - [Tên Tập/Chap].zip
+  // BẮT BUỘC CHUẨN: [Tên Truyện] - [Tên Tập/Chap].zip
   function getCleanTitle(manifestTitle, manifestSubTitle) {
     try {
-      let seriesTitle = cleanString(manifestTitle);
-      let episodeTitle = cleanString(manifestSubTitle);
+      let raw = manifestTitle || DOC.title || "";
 
-      // 1. Phân tích từ DOC.title nếu manifest thiếu
-      if (!seriesTitle || !episodeTitle) {
-        let raw = DOC.title || "";
-        raw = raw.split(/[|｜]/)[0].trim();
-        raw = raw.replace(/\s*[-|｜]\s*コミックシーモア.*/i, '').trim();
-        raw = raw.replace(/【[^】]*】/g, '').trim();
+      // 1. Logic cũ của bạn: Cắt lấy vế đầu tiên trước dấu ｜ hoặc |
+      raw = raw.split(/[|｜]/)[0].trim();
 
-        const match = raw.match(/^(.*?)\s+(第?\s*\d+\s*(?:話|巻|章|節|部|エピソード|分冊版|単話)?.*)$/i);
-        if (match) {
-          if (!seriesTitle) seriesTitle = cleanString(match[1]);
-          if (!episodeTitle) episodeTitle = cleanString(match[2]);
+      // 2. Xóa sạch các tiền tố rác của Cmoa
+      raw = raw.replace(/^(?:無料・試し読みページ|無料・試し読み|無料版|試し読み|公式)\s*/i, '').trim();
+      raw = raw.replace(/【[^】]*】/g, '').trim();
+
+      // 3. Xóa nhãn NXB ở cuối (ví dụ: （GAコミック）, (コロナ・コミックス)...)
+      raw = raw.replace(/（[^）]*(?:コミック|文庫|レーベル|出版|COMIC)[^）]*）$/i, '').trim();
+      raw = raw.replace(/\([^)]*(?:コミック|文庫|レーベル|出版|COMIC)[^)]*\)$/i, '').trim();
+
+      let seriesTitle = cleanString(raw);
+
+      // 4. Bóc tách tên chap từ manifestSubTitle (ví dụ: "イマリさんは旅上戸（コミック）　１話" -> "１話")
+      let episodeTitle = "";
+      if (manifestSubTitle) {
+        let sub = cleanString(manifestSubTitle);
+        sub = sub.replace(/【[^】]*】/g, '').trim();
+        
+        // Nếu SubTitle có chứa cả tên truyện, chỉ lấy phần số tập / số chap ở đuôi
+        const epMatch = sub.match(/(第?\s*\d+\s*(?:話|巻|章|節|部|エピソード|分冊版|単話)?.*)$/i);
+        if (epMatch) {
+          episodeTitle = cleanString(epMatch[1]);
         } else {
-          if (!seriesTitle) seriesTitle = cleanString(raw);
-          if (!episodeTitle) episodeTitle = getCid();
+          episodeTitle = sub;
         }
       }
 
+      if (!episodeTitle) {
+        episodeTitle = getCid();
+      }
+
+      // Ghép theo đúng chuẩn: [Tên Truyện] - [Tên Tập/Chap]
       if (seriesTitle && episodeTitle && !seriesTitle.includes(episodeTitle)) {
         return `${seriesTitle} - ${episodeTitle}`;
-      } else if (seriesTitle && episodeTitle) {
-        return episodeTitle;
       } else if (seriesTitle) {
         return `${seriesTitle} - ${getCid()}`;
       }

@@ -1,8 +1,8 @@
-// decoders/SpeedReaderTools.js
+// decoders/SpeedBinderTools.js
 (function(global) {
   'use strict';
 
-  const SpeedReaderTools = (() => {
+  const SpeedBinderTools = (() => {
     function generateRandomString32(id) {
       function generateRandomString16() {
         let e = "";

@@ -2,6 +2,19 @@
 (function(global) {
   'use strict';
 
+  function getContrastColor(hexColor) {
+    if (!hexColor || typeof hexColor !== 'string') return '#ffffff';
+    const hex = hexColor.replace('#', '');
+    if (hex.length === 6) {
+      const r = parseInt(hex.slice(0, 2), 16);
+      const g = parseInt(hex.slice(2, 4), 16);
+      const b = parseInt(hex.slice(4, 6), 16);
+      const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+      return luminance > 0.6 ? '#18181b' : '#ffffff'; // Nền sáng -> Chữ Đen, Nền tối -> Chữ Trắng
+    }
+    return '#ffffff';
+  }
+
   function createMangaDownloaderUI(options) {
     const {
       storagePrefix = "manga-dl",
@@ -14,6 +27,9 @@
       onDownload = () => {},
       onJpgChange = (checked) => {}
     } = options;
+
+    // Tự động tính màu chữ nút bấm dựa trên màu nền themeColor
+    const btnTextColor = getContrastColor(themeColor);
 
     const DOC = document;
     const PANEL_WIDTH = 220;
@@ -56,7 +72,7 @@
     collapseBtn.style.cssText = [
       "all:initial", "position:absolute", "left:0px", "top:0px", "width:24px", "height:24px",
       "display:flex", "align-items:center", "justify-content:center",
-      "border-radius:12px 0 8px 0", `background:${themeColor}`, "color:#ffffff",
+      "border-radius:12px 0 8px 0", `background:${themeColor}`, `color:${btnTextColor}`,
       "font:900 10px system-ui,sans-serif", "cursor:pointer", "z-index:2"
     ].join(';');
 
@@ -69,7 +85,7 @@
     btn.textContent = "Download";
     btn.style.cssText = [
       "all:initial", "display:block", "box-sizing:border-box", "width:100%", "padding:8px 0",
-      "border:0", "border-radius:6px", `background:${themeColor}`, "color:#ffffff",
+      "border:0", "border-radius:6px", `background:${themeColor}`, `color:${btnTextColor}`,
       "font:800 14px/1.2 system-ui,sans-serif", "text-align:center", "cursor:pointer",
       `box-shadow:0 3px 10px ${themeColor}55`
     ].join(';');

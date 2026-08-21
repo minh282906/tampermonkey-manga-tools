@@ -3,7 +3,7 @@
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
 // @version      2.0.0
 // @icon         https://www.google.com/s2/favicons?domain=yanmaga.jp&sz=128
-// @description  Tải manga trên Yanmaga Web.
+// @description  Tải manga trên Yanmaga Web siêu tốc qua API trực tiếp & giải mã SpeedBinbTools.
 // @author       anonymous & AI
 // @match        https://yanmaga.jp/*
 // @run-at       document-start
@@ -18,7 +18,7 @@
 // @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/cores/UniversalUI.js
 // @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/cores/RouteWatcher.js
 // @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/cores/MangaUtils.js
-// @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/decoders/SpeedBinderTools.js
+// @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/decoders/SpeedBinbTools.js
 // ==/UserScript==
 
 (function yanmagaUniversalDownloader() {
@@ -44,9 +44,8 @@
     chapterData: null
   };
 
-  // Khởi tạo UI đa năng dùng chung
-  const createUI = window.createMangaDownloaderUI || globalThis.createMangaDownloaderUI;
-  const ui = createUI({
+  // Khởi tạo UI trực tiếp từ window.createMangaDownloaderUI
+  const ui = (window.createMangaDownloaderUI || globalThis.createMangaDownloaderUI)({
     storagePrefix: "yanmaga-dl",
     title: "Yanmaga Downloader",
     themeColor: "#eab308",
@@ -90,11 +89,14 @@
    * API CLIENT SPEEDBINB & GIẢI MÃ MA TRẬN
    * ========================================================================= */
   async function fetchSpeedBinbManifest(cid) {
-    const Tools = window.SpeedBinderTools || globalThis.SpeedBinderTools;
+    const Tools = window.SpeedBinbTools || globalThis.SpeedBinbTools;
     const Utils = window.MangaUtils || globalThis.MangaUtils;
+    if (!Tools || !Utils) throw new Error("Chưa nạp xong SpeedBinbTools/MangaUtils.");
+
     const randomString = Tools.generateRandomString32(cid);
     const infoUrl = `https://yanmaga.jp/viewer/bibGetCntntInfo?cid=${cid}&dmytime=${Date.now()}&k=${randomString}&type=comics`;
 
+    // Gọi API lấy thông tin cấu hình qua MangaUtils.fetchBuffer
     const infoBuffer = await Utils.fetchBuffer(infoUrl);
     const infoRes = JSON.parse(new TextDecoder().decode(infoBuffer)).items[0];
 
@@ -105,6 +107,7 @@
       ptbl: Tools.getDecryptedTable(cid, randomString, infoRes.ptbl)
     };
 
+    // Lấy cấu trúc TTX qua MangaUtils.fetchBuffer
     const ttxBuffer = await Utils.fetchBuffer(`${config.contentServer}/content`);
     const ttxText = JSON.parse(new TextDecoder().decode(ttxBuffer)).ttx;
 
@@ -128,7 +131,7 @@
   }
 
   async function descrambleAndFormatImage(fileObj, config, isJpg) {
-    const Tools = window.SpeedBinderTools || globalThis.SpeedBinderTools;
+    const Tools = window.SpeedBinbTools || globalThis.SpeedBinbTools;
     const Utils = window.MangaUtils || globalThis.MangaUtils;
 
     const rawBuffer = await Utils.fetchBuffer(fileObj.src);
@@ -142,6 +145,7 @@
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, fileObj.width, fileObj.height);
 
+    // Giải mã mảnh ghép bằng CoordDecoder
     const key = Tools.getDecryptionKey(fileObj.filename, config.ctbl, config.ptbl);
     const decoder = new Tools.CoordDecoder(key[0], key[1]);
     const coords = decoder.getCoords(img);
@@ -205,7 +209,7 @@
         if (res?.data) zip.addFile(res.fileName, res.data);
       }
 
-      // Kích hoạt tải ZIP trực tiếp bằng phương thức tích hợp sẵn
+      // Kích hoạt tải ZIP
       zip.download(`${getCleanMangaTitle()}.zip`);
 
       ui.updateProgress({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
@@ -233,7 +237,10 @@
     ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
 
     const cid = await waitForCid(15000);
-    if (!cid) return;
+    if (!cid) {
+      ui.updateProgress({ status: "Lỗi: Không tìm thấy CID." });
+      return;
+    }
 
     try {
       const data = await fetchSpeedBinbManifest(cid);
@@ -245,10 +252,11 @@
       });
     } catch (e) {
       console.error("[yanmaga-dl] Boot error:", e);
+      ui.updateProgress({ status: "Lỗi: " + (e?.message || e) });
     }
   }
 
-  // Khởi động SPA Route Watcher
+  // Khởi động SPA Route Watcher trực tiếp từ window.initRouteWatcher
   const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
   if (typeof watchRoute === "function") {
     watchRoute(() => {

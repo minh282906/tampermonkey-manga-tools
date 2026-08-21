@@ -1,8 +1,8 @@
-// decoders/SpeedBinderTools.js
+// decoders/SpeedBinbTools.js
 (function(global) {
   'use strict';
 
-  const SpeedBinderTools = (() => {
+  const SpeedBinbTools = (() => {
     function generateRandomString32(id) {
       function generateRandomString16() {
         let e = "";
@@ -103,9 +103,8 @@
     return { generateRandomString32, getDecryptedTable, getDecryptionKey, CoordDecoder };
   })();
 
-  // Gán thẳng vào tất cả các đối tượng global để không bao giờ bị undefined
-  if (typeof window !== 'undefined') window.SpeedBinderTools = SpeedBinderTools;
-  if (typeof unsafeWindow !== 'undefined') unsafeWindow.SpeedBinderTools = SpeedBinderTools;
-  if (typeof globalThis !== 'undefined') globalThis.SpeedBinderTools = SpeedBinderTools;
-  global.SpeedBinderTools = SpeedBinderTools;
+  if (typeof window !== 'undefined') window.SpeedBinbTools = SpeedBinbTools;
+  if (typeof unsafeWindow !== 'undefined') unsafeWindow.SpeedBinbTools = SpeedBinbTools;
+  if (typeof globalThis !== 'undefined') globalThis.SpeedBinbTools = SpeedBinbTools;
+  global.SpeedBinbTools = SpeedBinbTools;
 })(typeof window !== 'undefined' ? window : this);

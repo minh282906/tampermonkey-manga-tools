@@ -101,7 +101,7 @@
       let seriesTitle = "";
       let episodeTitle = "";
 
-      // 1. Trích xuất từ DOM các khối tiêu đề chuẩn của Gaugau
+      // 1. Ưu tiên lấy từ DOM nếu có
       const sEl = DOC.querySelector('.works_detail__title, .episode_header__title, .c-series-title, .works_tateyomi__title');
       if (sEl) seriesTitle = cleanString(sEl.textContent);
 
@@ -111,34 +111,25 @@
       // 2. Phân tích bóc tách từ document.title
       if (!seriesTitle || !episodeTitle) {
         let raw = DOC.title || "";
+        
+        // Bỏ toàn bộ phần slogan sau dấu ｜ hoặc |
+        raw = raw.split(/[|｜]/)[0].trim();
         raw = raw.replace(/^公式\s*[-－_]?\s*/i, '').trim();
-        raw = raw.replace(/\s*[-|｜]\s*(?:がうがうモンスター|モンスターコミックス|がうがう|双葉社).*/i, '').trim();
         raw = raw.replace(/【[^】]*】/g, '').trim();
 
-        const parts = raw.split(/[|｜/]/).map(p => cleanString(p)).filter(Boolean);
-        if (parts.length >= 2) {
-          if (!seriesTitle) seriesTitle = parts[0];
-          if (!episodeTitle) episodeTitle = parts[1];
-        } else if (parts.length === 1) {
-          const match = parts[0].match(/^(.*?)\s+(第?\s*\d+\s*(?:話|章|節|部|エピソード|前編|中編|後編)?.*)$/i);
-          if (match) {
-            if (!seriesTitle) seriesTitle = cleanString(match[1]);
-            if (!episodeTitle) episodeTitle = cleanString(match[2]);
-          } else {
-            seriesTitle = parts[0];
-          }
+        // Tách: [Tên truyện] [Tên chap] -> Group 1: Truyện, Group 2: Chap
+        const match = raw.match(/^(.*?)\s+(第?\s*\d+\s*(?:話|章|節|部|エピソード|前編|中編|後編)?.*)$/i);
+        if (match) {
+          seriesTitle = cleanString(match[1]);
+          episodeTitle = cleanString(match[2]);
+        } else {
+          seriesTitle = cleanString(raw);
+          episodeTitle = getEpisodeId();
         }
       }
 
-      seriesTitle = cleanString(seriesTitle);
-      episodeTitle = cleanString(episodeTitle);
-
-      if (seriesTitle && episodeTitle && !seriesTitle.includes(episodeTitle)) {
+      if (seriesTitle && episodeTitle) {
         return `${seriesTitle} - ${episodeTitle}`;
-      } else if (seriesTitle && episodeTitle) {
-        return episodeTitle;
-      } else if (seriesTitle) {
-        return `${seriesTitle} - ${getEpisodeId()}`;
       }
     } catch (e) {}
 
@@ -387,7 +378,6 @@
       state.chapterData = data;
 
       if (ui) {
-        ui.updateFormatUI("jpg");
         ui.updateProgress({
           completed: 0,
           total: data.files.length,

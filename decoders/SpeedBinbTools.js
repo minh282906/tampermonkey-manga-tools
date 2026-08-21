@@ -103,8 +103,5 @@
     return { generateRandomString32, getDecryptedTable, getDecryptionKey, CoordDecoder };
   })();
 
-  if (typeof window !== 'undefined') window.SpeedBinbTools = SpeedBinbTools;
-  if (typeof unsafeWindow !== 'undefined') unsafeWindow.SpeedBinbTools = SpeedBinbTools;
-  if (typeof globalThis !== 'undefined') globalThis.SpeedBinbTools = SpeedBinbTools;
-  global.SpeedBinbTools = SpeedBinbTools;
+  (typeof globalThis !== 'undefined' ? globalThis : window).SpeedBinbTools = SpeedBinbTools;
 })(typeof window !== 'undefined' ? window : this);

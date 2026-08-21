@@ -91,32 +91,30 @@
       let rawTitle = DOC.title || "";
       let clean = rawTitle.split('｜')[0].split('|')[0].trim();
       clean = clean.replace(/[\\/*?:"<>|]/g, '').trim();
-      return clean || getCidPrefix() || "Yanmaga_Manga";
+      return clean || "Yanmaga_Manga";
     } catch (e) {
-      return getCidPrefix() || "Yanmaga_Manga";
+      return "Yanmaga_Manga";
     }
   }
 
-  function getCidPrefix() {
-    try {
-      const contentEl = DOC.getElementById('content');
-      const cid = contentEl?.getAttribute('data-ptbinb-cid') || contentEl?.dataset?.ptbinbCid;
-      if (cid) return cid.trim();
-    } catch (e) {}
-    const cid = new URLSearchParams(WIN.location.search).get("cid");
-    if (cid) return cid;
-    const match = WIN.location.href.match(/([a-zA-Z0-9_-]{8,})/);
-    return match ? match[1] : "Yanmaga_Episode";
-  }
-
+  // ĐỢI ĐÚNG THẺ #content ĐƯỢC REACT GÁN CID (0.1 - 0.5s)
   async function waitForCid(timeoutMs = 15000) {
     const startTime = Date.now();
     while (Date.now() - startTime < timeoutMs) {
-      const cid = getCidPrefix();
-      if (cid && cid !== "Yanmaga_Episode") return cid;
+      const contentEl = DOC.getElementById('content');
+      const cid = contentEl?.getAttribute('data-ptbinb-cid') || contentEl?.dataset?.ptbinbCid;
+      if (cid && cid.trim()) {
+        return cid.trim();
+      }
+      
+      const searchCid = new URLSearchParams(WIN.location.search).get("cid");
+      if (searchCid && searchCid.trim()) {
+        return searchCid.trim();
+      }
+
       await sleep(100);
     }
-    return getCidPrefix();
+    return null;
   }
 
   /* =========================================================================
@@ -312,7 +310,7 @@
     if (state.running) return;
 
     const cid = await waitForCid(5000);
-    if (!cid || cid === "Yanmaga_Episode") {
+    if (!cid) {
       ui.updateProgress({ status: "Lỗi: Không tìm thấy CID." });
       return;
     }
@@ -389,8 +387,12 @@
     if (ui?.panel) ui.panel.style.display = "block";
     ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
 
-    const cid = await waitForCid(10000);
-    if (!cid || cid === "Yanmaga_Episode") return;
+    // Đợi đúng thẻ #content có thuộc tính data-ptbinb-cid thực sự
+    const cid = await waitForCid(15000);
+    if (!cid) {
+      console.warn("[yanmaga-dl] Không tìm thấy CID.");
+      return;
+    }
 
     try {
       const data = await fetchSpeedBinbManifest(cid);
@@ -401,11 +403,7 @@
         status: "Sẵn sàng."
       });
     } catch (err) {
-      ui.updateProgress({
-        completed: 0,
-        total: 0,
-        status: "Đang kiểm tra..."
-      });
+      console.error("[yanmaga-dl] Boot API error:", err);
     }
   }
 

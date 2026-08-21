@@ -109,7 +109,7 @@
     try {
       let raw = manifestTitle || DOC.title || "";
 
-      // 1. Logic cũ của bạn: Cắt lấy vế đầu tiên trước dấu ｜ hoặc |
+      // 1. Cắt lấy vế đầu tiên trước dấu ｜ hoặc |
       raw = raw.split(/[|｜]/)[0].trim();
 
       // 2. Xóa sạch các tiền tố rác của Cmoa
@@ -122,18 +122,24 @@
 
       let seriesTitle = cleanString(raw);
 
-      // 4. Bóc tách tên chap từ manifestSubTitle (ví dụ: "イマリさんは旅上戸（コミック）　１話" -> "１話")
+      // 4. Bóc tách tên chap (Xử lý triệt để số tiếng Nhật ０-９ và cắt trùng tên truyện)
       let episodeTitle = "";
       if (manifestSubTitle) {
         let sub = cleanString(manifestSubTitle);
         sub = sub.replace(/【[^】]*】/g, '').trim();
-        
-        // Nếu SubTitle có chứa cả tên truyện, chỉ lấy phần số tập / số chap ở đuôi
-        const epMatch = sub.match(/(第?\s*\d+\s*(?:話|巻|章|節|部|エピソード|分冊版|単話)?.*)$/i);
+
+        // Nếu SubTitle bị dính tên truyện ở đầu -> Cắt bỏ phần tên truyện đi
+        let baseSeries = seriesTitle.replace(/\s*[0-9０-９]+\s*巻.*$/i, '').trim();
+        if (baseSeries && sub.startsWith(baseSeries)) {
+          sub = sub.substring(baseSeries.length).trim();
+        }
+
+        // Regex nhận diện cả số tiếng Anh (0-9) lẫn số tiếng Nhật (０-９) và số La Mã
+        const epMatch = sub.match(/((?:第\s*)?[0-9０-９IVXLCDMivxlcdm一二三四五六七八九十百千万]+\s*(?:話|巻|章|節|部|エピソード|分冊版|単話)?.*)$/i);
         if (epMatch) {
           episodeTitle = cleanString(epMatch[1]);
         } else {
-          episodeTitle = sub;
+          episodeTitle = cleanString(sub);
         }
       }
 
@@ -144,6 +150,8 @@
       // Ghép theo đúng chuẩn: [Tên Truyện] - [Tên Tập/Chap]
       if (seriesTitle && episodeTitle && !seriesTitle.includes(episodeTitle)) {
         return `${seriesTitle} - ${episodeTitle}`;
+      } else if (seriesTitle && episodeTitle) {
+        return episodeTitle;
       } else if (seriesTitle) {
         return `${seriesTitle} - ${getCid()}`;
       }

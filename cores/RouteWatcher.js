@@ -1,8 +1,8 @@
-// core/RouteWatcher.js
+// cores/RouteWatcher.js
 (function(global) {
   'use strict';
 
-  global.initRouteWatcher = function(onRouteChange) {
+  function initRouteWatcher(onRouteChange) {
     if (typeof onRouteChange !== 'function') return;
 
     let lastUrl = window.location.href;
@@ -34,5 +34,11 @@
 
     // Dự phòng Polling kiểm tra mỗi 500ms
     window.setInterval(checkUrl, 500);
-  };
+  }
+
+  // GÁN BIẾN 4 TẦNG AN TOÀN TUYỆT ĐỐI
+  if (typeof window !== 'undefined') window.initRouteWatcher = initRouteWatcher;
+  if (typeof unsafeWindow !== 'undefined') unsafeWindow.initRouteWatcher = initRouteWatcher;
+  if (typeof globalThis !== 'undefined') globalThis.initRouteWatcher = initRouteWatcher;
+  global.initRouteWatcher = initRouteWatcher;
 })(typeof window !== 'undefined' ? window : this);

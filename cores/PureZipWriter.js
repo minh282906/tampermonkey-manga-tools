@@ -1,9 +1,11 @@
 // core/PureZipWriter.js
 (function(global) {
   'use strict';
+
   class PureZipWriter {
     constructor() { this.files = []; }
     addFile(filename, uint8Array) { this.files.push({ name: filename, data: uint8Array }); }
+    
     static crc32(data) {
       let crc = -1;
       for (let i = 0; i < data.length; i++) {
@@ -11,6 +13,7 @@
       }
       return (crc ^ -1) >>> 0;
     }
+
     generateBlob() {
       const parts = [], centralEntries = [];
       let offset = 0;
@@ -58,12 +61,32 @@
       parts.push(eocd);
       return new Blob(parts, { type: 'application/zip' });
     }
+
+    // TÍCH HỢP HÀM TẢI FILE TỰ ĐỘNG (DÙNG CHUNG CHO MỌI WEB)
+    download(fileName) {
+      const blob = this.generateBlob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      a.rel = "noopener";
+      a.style.display = "none";
+      document.documentElement.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    }
   }
+
   PureZipWriter.crcTable = new Uint32Array(256);
   for (let i = 0; i < 256; i++) {
     let c = i;
     for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
     PureZipWriter.crcTable[i] = c;
   }
+
+  if (typeof window !== 'undefined') window.PureZipWriter = PureZipWriter;
+  if (typeof unsafeWindow !== 'undefined') unsafeWindow.PureZipWriter = PureZipWriter;
+  if (typeof globalThis !== 'undefined') globalThis.PureZipWriter = PureZipWriter;
   global.PureZipWriter = PureZipWriter;
 })(typeof window !== 'undefined' ? window : this);

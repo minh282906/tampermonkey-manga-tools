@@ -1,13 +1,13 @@
-// core/UniversalUI.js
+// cores/UniversalUI.js
 (function(global) {
   'use strict';
 
-  global.createMangaDownloaderUI = function(options) {
+  function createMangaDownloaderUI(options) {
     const {
       storagePrefix = "manga-dl",
       title = "Manga Downloader",
       themeColor = "#e52865",        // Màu nút & viền
-      themeBg = "#171113",           // Màu nền đen
+      themeBg = "#18181b",           // Màu nền đen
       titleColor = "#f472b6",        // Màu chữ tiêu đề
       topOffset = "70px",            // Vị trí top
       defaultJpgText = "Xuất file JPG (mặc định PNG)",
@@ -169,5 +169,11 @@
         }
       }
     };
-  };
+  }
+
+  // GÁN BIẾN 4 TẦNG AN TOÀN TUYỆT ĐỐI
+  if (typeof window !== 'undefined') window.createMangaDownloaderUI = createMangaDownloaderUI;
+  if (typeof unsafeWindow !== 'undefined') unsafeWindow.createMangaDownloaderUI = createMangaDownloaderUI;
+  if (typeof globalThis !== 'undefined') globalThis.createMangaDownloaderUI = createMangaDownloaderUI;
+  global.createMangaDownloaderUI = createMangaDownloaderUI;
 })(typeof window !== 'undefined' ? window : this);

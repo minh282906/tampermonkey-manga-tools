@@ -41,21 +41,28 @@
   const state = {
     running: false,
     convertJpeg: localStorage.getItem("yanmaga-dl:convert-jpeg") === '1',
-    chapterData: null
+    chapterData: null,
+    ui: null
   };
 
-  // Khởi tạo UI trực tiếp từ window.createMangaDownloaderUI
-  const ui = (window.createMangaDownloaderUI || globalThis.createMangaDownloaderUI)({
-    storagePrefix: "yanmaga-dl",
-    title: "Yanmaga Downloader",
-    themeColor: "#eab308",
-    themeBg: "#18181b",
-    titleColor: "#fde047",
-    topOffset: "76px",
-    defaultJpgText: "Xuất file JPG (mặc định PNG)",
-    onDownload: startDownload,
-    onJpgChange: (checked) => { state.convertJpeg = checked; }
-  });
+  function getUI() {
+    if (state.ui) return state.ui;
+    const createUI = window.createMangaDownloaderUI || globalThis.createMangaDownloaderUI;
+    if (typeof createUI === "function" && DOC.body) {
+      state.ui = createUI({
+        storagePrefix: "yanmaga-dl",
+        title: "Yanmaga Downloader",
+        themeColor: "#eab308",
+        themeBg: "#18181b",
+        titleColor: "#fde047",
+        topOffset: "76px",
+        defaultJpgText: "Xuất file JPG (mặc định PNG)",
+        onDownload: startDownload,
+        onJpgChange: (checked) => { state.convertJpeg = checked; }
+      });
+    }
+    return state.ui;
+  }
 
   /* =========================================================================
    * HELPER FUNCTIONS
@@ -96,7 +103,6 @@
     const randomString = Tools.generateRandomString32(cid);
     const infoUrl = `https://yanmaga.jp/viewer/bibGetCntntInfo?cid=${cid}&dmytime=${Date.now()}&k=${randomString}&type=comics`;
 
-    // Gọi API lấy thông tin cấu hình qua MangaUtils.fetchBuffer
     const infoBuffer = await Utils.fetchBuffer(infoUrl);
     const infoRes = JSON.parse(new TextDecoder().decode(infoBuffer)).items[0];
 
@@ -107,7 +113,6 @@
       ptbl: Tools.getDecryptedTable(cid, randomString, infoRes.ptbl)
     };
 
-    // Lấy cấu trúc TTX qua MangaUtils.fetchBuffer
     const ttxBuffer = await Utils.fetchBuffer(`${config.contentServer}/content`);
     const ttxText = JSON.parse(new TextDecoder().decode(ttxBuffer)).ttx;
 
@@ -145,7 +150,6 @@
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, fileObj.width, fileObj.height);
 
-    // Giải mã mảnh ghép bằng CoordDecoder
     const key = Tools.getDecryptionKey(fileObj.filename, config.ctbl, config.ptbl);
     const decoder = new Tools.CoordDecoder(key[0], key[1]);
     const coords = decoder.getCoords(img);
@@ -172,15 +176,19 @@
    * ========================================================================= */
   async function startDownload() {
     if (state.running) return;
+    const ui = getUI();
 
     const cid = await waitForCid(5000);
-    if (!cid) return ui.updateProgress({ status: "Lỗi: Không tìm thấy CID." });
+    if (!cid) {
+      if (ui) ui.updateProgress({ status: "Lỗi: Không tìm thấy CID." });
+      return;
+    }
 
     state.running = true;
-    ui.setBusy(true);
+    if (ui) ui.setBusy(true);
 
     try {
-      ui.updateProgress({ completed: 0, total: 0, status: "Đang tải..." });
+      if (ui) ui.updateProgress({ completed: 0, total: 0, status: "Đang tải..." });
 
       let data = state.chapterData || await fetchSpeedBinbManifest(cid);
       state.chapterData = data;
@@ -195,30 +203,29 @@
       const zip = new ZipClass();
 
       zip.addFile(`${cid}.txt`, new Uint8Array(0));
-      ui.updateProgress({ completed: 0, total: totalPages, status: "Đang tải..." });
+      if (ui) ui.updateProgress({ completed: 0, total: totalPages, status: "Đang tải..." });
 
       const tasks = files.map(fileObj => () => descrambleAndFormatImage(fileObj, config, useJpeg));
       const results = await Utils.runParallelQueue(tasks, CONFIG.MAX_CONCURRENT, (completed, total) => {
-        ui.updateProgress({ completed, total, status: "Đang tải..." });
+        if (ui) ui.updateProgress({ completed, total, status: "Đang tải..." });
       });
 
-      ui.updateProgress({ completed: totalPages, total: totalPages, status: "Đang đóng gói file ZIP..." });
+      if (ui) ui.updateProgress({ completed: totalPages, total: totalPages, status: "Đang đóng gói file ZIP..." });
       await sleep(50);
 
       for (const res of results) {
         if (res?.data) zip.addFile(res.fileName, res.data);
       }
 
-      // Kích hoạt tải ZIP
       zip.download(`${getCleanMangaTitle()}.zip`);
 
-      ui.updateProgress({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
+      if (ui) ui.updateProgress({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
     } catch (err) {
-      ui.updateProgress({ status: "Lỗi: " + (err?.message || err) });
+      if (ui) ui.updateProgress({ status: "Lỗi: " + (err?.message || err) });
       console.error("[yanmaga-dl] Error:", err);
     } finally {
       state.running = false;
-      ui.setBusy(false);
+      if (ui) ui.setBusy(false);
     }
   }
 
@@ -226,7 +233,10 @@
    * KHỞI CHẠY VÀ SPA WATCHER
    * ========================================================================= */
   async function boot() {
-    while (!DOC.body) await sleep(50);
+    // Đảm bảo document.body ĐÃ XUẤT HIỆN 100% trước khi vẽ UI
+    while (!DOC.body) await sleep(30);
+
+    const ui = getUI();
 
     if (!isEpisodeUrl()) {
       if (ui?.panel) ui.panel.style.display = "none";
@@ -234,35 +244,38 @@
     }
 
     if (ui?.panel) ui.panel.style.display = "block";
-    ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
+    if (ui) ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
 
     const cid = await waitForCid(15000);
     if (!cid) {
-      ui.updateProgress({ status: "Lỗi: Không tìm thấy CID." });
+      if (ui) ui.updateProgress({ status: "Lỗi: Không tìm thấy CID." });
       return;
     }
 
     try {
       const data = await fetchSpeedBinbManifest(cid);
       state.chapterData = data;
-      ui.updateProgress({
-        completed: 0,
-        total: data.files.length,
-        status: "Sẵn sàng."
-      });
+      if (ui) {
+        ui.updateProgress({
+          completed: 0,
+          total: data.files.length,
+          status: "Sẵn sàng."
+        });
+      }
     } catch (e) {
       console.error("[yanmaga-dl] Boot error:", e);
-      ui.updateProgress({ status: "Lỗi: " + (e?.message || e) });
+      if (ui) ui.updateProgress({ status: "Lỗi: " + (e?.message || e) });
     }
   }
 
-  // Khởi động SPA Route Watcher trực tiếp từ window.initRouteWatcher
+  // Khởi động SPA Route Watcher
   const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
   if (typeof watchRoute === "function") {
     watchRoute(() => {
       state.chapterData = null;
       state.running = false;
-      ui.setBusy(false);
+      const ui = getUI();
+      if (ui) ui.setBusy(false);
       boot();
     });
   }

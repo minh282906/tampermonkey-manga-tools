@@ -103,6 +103,9 @@
     return { generateRandomString32, getDecryptedTable, getDecryptionKey, CoordDecoder };
   })();
 
-  // Xuất ra biến toàn cục an toàn
+  // Gán thẳng vào tất cả các đối tượng global để không bao giờ bị undefined
+  if (typeof window !== 'undefined') window.SpeedBinderTools = SpeedBinderTools;
+  if (typeof unsafeWindow !== 'undefined') unsafeWindow.SpeedBinderTools = SpeedBinderTools;
+  if (typeof globalThis !== 'undefined') globalThis.SpeedBinderTools = SpeedBinderTools;
   global.SpeedBinderTools = SpeedBinderTools;
 })(typeof window !== 'undefined' ? window : this);

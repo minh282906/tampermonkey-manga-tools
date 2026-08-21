@@ -120,7 +120,7 @@
     "getsumagakichi.com":      { name: "GetsuMagakichi",  sub: "GIGAVIEWER", top: "68px", color: "#3b82f6", bg: "#0b1739", text: "#93c5fd" },
     "bibliosirius.com":        { name: "Sirius",          sub: "GIGAVIEWER", top: "68px", color: "#6366f1", bg: "#1e1b4b", text: "#a5b4fc" },
     "comicbunch-kai.com":      { name: "ComicBunch Kai",  sub: "GIGAVIEWER", top: "68px", color: "#0ea5e9", bg: "#082f49", text: "#7dd3fc" },
-    "viewer.heros-web.com":    { name: "HERO'S Web",      sub: "GIGAVIEWER", top: "68px", color: "#e11d48", bg: "#4c0519", text: "#fda4af" }
+    "heros-web.com":           { name: "HERO'S Web",      sub: "GIGAVIEWER", top: "68px", color: "#e11d48", bg: "#4c0519", text: "#fda4af" }
   };
 
   function getActiveTheme() {

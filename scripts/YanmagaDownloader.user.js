@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         Yanmaga Downloader
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
-// @version      3.0.0
+// @version      2.0.0
 // @icon         https://www.google.com/s2/favicons?domain=yanmaga.jp&sz=128
-// @description  Tải manga trên Yanmaga Web siêu tốc qua API trực tiếp & giải mã CoordDecoder.
+// @description  Tải manga trên Yanmaga Web
 // @author       anonymous & AI
 // @match        https://yanmaga.jp/*
 // @run-at       document-start
@@ -12,12 +12,6 @@
 // @connect      *
 // @connect      yanmaga.jp
 // @connect      *.yanmaga.jp
-//
-// --- GỌI CÁC MODULE DÙNG CHUNG TỪ REPO CỦA BẠN ---
-// @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/core/PureZipWriter.js
-// @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/core/UniversalUI.js
-// @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/core/RouteWatcher.js
-// @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/decoders/SpeedReaderTools.js
 // ==/UserScript==
 
 (function yanmagaUniversalDownloader() {
@@ -37,14 +31,43 @@
 
   if (WIN.top !== WIN.self) return;
 
+  function getSpeedBinderTools() {
+    return (typeof SpeedBinderTools !== 'undefined' ? SpeedBinderTools : null) ||
+           (typeof window !== 'undefined' ? window.SpeedBinderTools : null) ||
+           (typeof unsafeWindow !== 'undefined' ? unsafeWindow.SpeedBinderTools : null) ||
+           (typeof globalThis !== 'undefined' ? globalThis.SpeedBinderTools : null);
+  }
+
+  function getUniversalUI() {
+    return (typeof createMangaDownloaderUI !== 'undefined' ? createMangaDownloaderUI : null) ||
+           (typeof window !== 'undefined' ? window.createMangaDownloaderUI : null) ||
+           (typeof unsafeWindow !== 'undefined' ? unsafeWindow.createMangaDownloaderUI : null) ||
+           (typeof globalThis !== 'undefined' ? globalThis.createMangaDownloaderUI : null);
+  }
+
+  function getPureZipWriter() {
+    return (typeof PureZipWriter !== 'undefined' ? PureZipWriter : null) ||
+           (typeof window !== 'undefined' ? window.PureZipWriter : null) ||
+           (typeof unsafeWindow !== 'undefined' ? unsafeWindow.PureZipWriter : null) ||
+           (typeof globalThis !== 'undefined' ? globalThis.PureZipWriter : null);
+  }
+
+  function getRouteWatcher() {
+    return (typeof initRouteWatcher !== 'undefined' ? initRouteWatcher : null) ||
+           (typeof window !== 'undefined' ? window.initRouteWatcher : null) ||
+           (typeof unsafeWindow !== 'undefined' ? unsafeWindow.initRouteWatcher : null) ||
+           (typeof globalThis !== 'undefined' ? globalThis.initRouteWatcher : null);
+  }
+
   const state = {
     running: false,
     convertJpeg: localStorage.getItem("yanmaga-dl:convert-jpeg") === '1',
     chapterData: null
   };
 
-  // Khởi tạo UI đa năng dùng chung từ core/UniversalUI.js
-  const ui = (window.createMangaDownloaderUI || globalThis.createMangaDownloaderUI)({
+  // Khởi tạo UI
+  const createUI = getUniversalUI();
+  const ui = createUI({
     storagePrefix: "yanmaga-dl",
     title: "Yanmaga Downloader",
     themeColor: "#eab308",
@@ -100,7 +123,9 @@
    * API CLIENT SPEEDBINB & GIẢI MÃ MA TRẬN
    * ========================================================================= */
   async function fetchSpeedBinbManifest(cid) {
-    const Tools = window.SpeedReaderTools || globalThis.SpeedReaderTools;
+    const Tools = getSpeedBinderTools();
+    if (!Tools) throw new Error("Chưa tải xong SpeedBinderTools.");
+
     const randomString = Tools.generateRandomString32(cid);
     const infoUrl = `https://yanmaga.jp/viewer/bibGetCntntInfo?cid=${cid}&dmytime=${Date.now()}&k=${randomString}&type=comics`;
 
@@ -192,7 +217,7 @@
   }
 
   async function descrambleAndFormatImage(fileObj, config, isJpg) {
-    const Tools = window.SpeedReaderTools || globalThis.SpeedReaderTools;
+    const Tools = getSpeedBinderTools();
     const rawBuffer = await fetchImageArrayBuffer(fileObj.src);
     const blob = new Blob([rawBuffer], { type: 'image/jpeg' });
     const objUrl = WIN.URL.createObjectURL(blob);
@@ -309,7 +334,7 @@
       if (!totalPages) throw new Error("Không tìm thấy trang truyện.");
 
       const useJpeg = Boolean(state.convertJpeg);
-      const ZipClass = window.PureZipWriter || globalThis.PureZipWriter;
+      const ZipClass = getPureZipWriter();
       const zip = new ZipClass();
 
       zip.addFile(`${cid}.txt`, new Uint8Array(0));
@@ -384,8 +409,8 @@
     }
   }
 
-  // Khởi động SPA Route Watcher từ core/RouteWatcher.js
-  const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
+  // Khởi động SPA Route Watcher
+  const watchRoute = getRouteWatcher();
   if (typeof watchRoute === "function") {
     watchRoute(() => {
       state.chapterData = null;

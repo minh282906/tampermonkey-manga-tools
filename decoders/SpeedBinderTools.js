@@ -104,5 +104,5 @@
   })();
 
   // Xuất ra biến toàn cục an toàn
-  global.SpeedReaderTools = SpeedReaderTools;
+  global.SpeedBinderTools = SpeedBinderTools;
 })(typeof window !== 'undefined' ? window : this);

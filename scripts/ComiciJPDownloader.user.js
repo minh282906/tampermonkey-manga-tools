@@ -56,7 +56,7 @@
         storagePrefix: "comicijp-dl",
         title: "ComiciJP",
         engine: "COMICI.JP",
-        themeColor: "#c8232c",
+        themeColor: "#FA6C7A",
         themeBg: "#ffffff",
         titleColor: "#000000",
         topOffset: "59px",

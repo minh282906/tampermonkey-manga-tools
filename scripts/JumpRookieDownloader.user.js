@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Jump Rookie Downloader
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
-// @version      2.0.0
+// @version      1.0.0
 // @icon         https://rookie.shonenjump.com/resources/images/common/favicon.ico
 // @description  Tải manga chất lượng gốc trên Shonen Jump Rookie (rookie.shonenjump.com).
 // @author       anonymous & AI

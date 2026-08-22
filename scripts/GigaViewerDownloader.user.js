@@ -126,15 +126,14 @@
   };
 
   function resolveSiteTheme() {
-    const context = `${WIN.location.href} ${DOC.title || ''}`.toLowerCase();
+    const ctx = `${WIN.location.href} ${DOC.title || ''} ${DOC.querySelector('header, .header, #header')?.textContent || ''}`.toLowerCase();
 
-    for (const domain in SITE_THEMES) {
-      const item = SITE_THEMES[domain];
-      if (context.includes(domain) || item.match?.some(k => context.includes(k))) {
+    for (const k in SITE_THEMES) {
+      const item = SITE_THEMES[k];
+      if (item.match?.some(m => ctx.includes(m.toLowerCase())) || ctx.includes(k)) {
         return item;
       }
     }
-
     return { name: "GigaViewer", top: "70px", color: "#eb544b", bg: "#1c0d0e", text: "#fca5a5" };
   }
 

@@ -37,7 +37,7 @@
 // @grant        unsafeWindow
 // @grant        GM_xmlhttpRequest
 // @connect      *
-// @connect      *.comici.jp
+
 // @connect      *.championcross.jp
 // @connect      *.comic-growl.com
 // @connect      *.youngchampion.jp

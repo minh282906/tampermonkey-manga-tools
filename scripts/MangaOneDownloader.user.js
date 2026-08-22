@@ -3,7 +3,7 @@
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
 // @version      2.0.0
 // @icon         https://www.google.com/s2/favicons?domain=manga-one.com&sz=128
-// @description  Tải manga trên Manga-One (Shogakukan) giải mã AES-CBC phần cứng siêu tốc trong RAM.
+// @description  Tải manga trên Manga-One.
 // @author       anonymous & AI
 // @match        https://manga-one.com/*
 // @run-at       document-start

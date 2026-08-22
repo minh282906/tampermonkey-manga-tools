@@ -177,7 +177,7 @@
   }
 
   /* =========================================================================
-   * BỘ HỖ TRỢ XỬ LÝ CHUỖI & TÊN FILE CHUẨN (GOLDEN RULES)
+   * BỘ HỖ TRỢ XỬ LÝ CHUỖI & TÊN FILE CHUẨN
    * ========================================================================= */
   function isEpisodeUrl() {
     return /\/(?:episodes?|articles?)\/[a-zA-Z0-9_-]+/.test(WIN.location.pathname);

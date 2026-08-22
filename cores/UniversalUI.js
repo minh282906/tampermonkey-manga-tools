@@ -28,12 +28,11 @@
       onJpgChange = (checked) => {}
     } = options;
 
-    // Tự động tính toán màu sắc tương phản hoàn hảo theo Nền Nút và Nền Bảng
     const btnTextColor = getContrastColor(themeColor);
     const isLightBg = getContrastColor(themeBg) === '#18181b';
-    const bodyTextColor = isLightBg ? '#1e293b' : '#ffffff'; // Chữ chính (0/0, 0%)
-    const subTextColor = isLightBg ? '#475569' : '#cbd5e1';  // Chữ phụ (Status, Checkbox)
-    const trackBg = isLightBg ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.15)'; // Rãnh thanh trượt
+    const bodyTextColor = isLightBg ? '#1e293b' : '#ffffff'; 
+    const subTextColor = isLightBg ? '#475569' : '#cbd5e1';  
+    const trackBg = isLightBg ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.15)'; 
     const panelShadow = isLightBg ? '0 8px 24px rgba(0,0,0,0.12), -2px 0 8px rgba(0,0,0,0.04)' : '0 8px 24px rgba(0,0,0,0.85)';
     const btnShadow = isLightBg ? '0 2px 6px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.06)' : `0 3px 10px ${themeColor}55`;
 
@@ -42,14 +41,15 @@
     const TAB_WIDTH = 14;
     let isCollapsed = localStorage.getItem(`${storagePrefix}:collapsed`) === '1';
 
+    // TỐI ƯU: Padding giảm xuống 8px 12px để bảng gọn gàng
     const panel = DOC.createElement("div");
     panel.id = `${storagePrefix}-panel`;
     panel.style.cssText = [
       "all:initial", "position:fixed", "right:0px", `top:${topOffset}`,
       "z-index:2147483647", "box-sizing:border-box", `width:${PANEL_WIDTH}px`,
-      "padding:10px 14px", `border:1px solid ${themeColor}`, "border-right:none",
+      "padding:8px 12px", `border:1px solid ${themeColor}`, "border-right:none",
       "border-radius:12px 0 0 12px", `background:${themeBg}`, `color:${bodyTextColor}`,
-      "font:12px/1.3 system-ui,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif",
+      "font:12px/1.2 system-ui,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif",
       "user-select:none", `box-shadow:${panelShadow}`,
       "transition:transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)",
       `transform:${isCollapsed ? `translateX(calc(100% - ${TAB_WIDTH}px))` : "translateX(0)"}`,
@@ -76,34 +76,37 @@
     collapseBtn.textContent = "▶";
     collapseBtn.title = "Thu gọn";
     collapseBtn.style.cssText = [
-      "all:initial", "position:absolute", "left:0px", "top:0px", "width:24px", "height:24px",
+      "all:initial", "position:absolute", "left:0px", "top:0px", "width:22px", "height:22px",
       "display:flex", "align-items:center", "justify-content:center",
       "border-radius:12px 0 8px 0", `background:${themeColor}`, `color:${btnTextColor}`,
       "font:900 10px system-ui,sans-serif", "cursor:pointer", "z-index:2"
     ].join(';');
 
+    // TỐI ƯU: margin-bottom giảm còn 5px
     const titleEl = DOC.createElement("div");
     titleEl.textContent = title;
-    titleEl.style.cssText = `all:initial;display:block;color:${titleColor};font:800 13px system-ui;margin-bottom:8px;text-align:center;padding-left:14px;`;
+    titleEl.style.cssText = `all:initial;display:block;color:${titleColor};font:800 13px system-ui;margin-bottom:5px;text-align:center;padding-left:14px;`;
 
+    // TỐI ƯU: padding nút Download giảm còn 7px
     const btn = DOC.createElement("button");
     btn.type = "button";
     btn.textContent = "Download";
     btn.style.cssText = [
-      "all:initial", "display:block", "box-sizing:border-box", "width:100%", "padding:8px 0",
+      "all:initial", "display:block", "box-sizing:border-box", "width:100%", "padding:7px 0",
       "border:0", "border-radius:6px", `background:${themeColor}`, `color:${btnTextColor}`,
       "font:800 14px/1.2 system-ui,sans-serif", "text-align:center", "cursor:pointer",
       `box-shadow:${btnShadow}`
     ].join(';');
     btn.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); onDownload(); });
 
+    // TỐI ƯU: margin-top giảm còn 5px
     const label = DOC.createElement("label");
-    label.style.cssText = `all:initial;display:inline-flex;align-items:center;gap:6px;margin-top:8px;color:${subTextColor};font:700 11px system-ui;cursor:pointer;`;
+    label.style.cssText = `all:initial;display:inline-flex;align-items:center;gap:6px;margin-top:5px;color:${subTextColor};font:700 11px system-ui;cursor:pointer;`;
 
     const jpgInput = DOC.createElement("input");
     jpgInput.type = "checkbox";
     jpgInput.checked = localStorage.getItem(`${storagePrefix}:convert-jpeg`) === '1';
-    jpgInput.style.cssText = `all:initial;appearance:auto;width:14px;height:14px;accent-color:${themeColor};cursor:pointer;`;
+    jpgInput.style.cssText = `all:initial;appearance:auto;width:13px;height:13px;accent-color:${themeColor};cursor:pointer;`;
     jpgInput.addEventListener("change", () => {
       localStorage.setItem(`${storagePrefix}:convert-jpeg`, jpgInput.checked ? '1' : '0');
       onJpgChange(jpgInput.checked);
@@ -114,8 +117,9 @@
     spanJpg.style.cssText = `all:initial;color:${subTextColor};font:700 11px system-ui;`;
     label.append(jpgInput, spanJpg);
 
+    // TỐI ƯU: margin-top giảm còn 6px
     const progressRow = DOC.createElement("div");
-    progressRow.style.cssText = `all:initial;display:flex;justify-content:space-between;align-items:center;margin-top:10px;color:${bodyTextColor};font:800 12px system-ui;`;
+    progressRow.style.cssText = `all:initial;display:flex;justify-content:space-between;align-items:center;margin-top:6px;color:${bodyTextColor};font:800 12px system-ui;`;
 
     const countText = DOC.createElement("span");
     countText.textContent = "0/0";
@@ -126,16 +130,18 @@
     percentText.style.cssText = `all:initial;color:${bodyTextColor};font:800 12px system-ui;`;
     progressRow.append(countText, percentText);
 
+    // TỐI ƯU: track margin-top giảm còn 4px, cao 5px
     const track = DOC.createElement("div");
-    track.style.cssText = `all:initial;display:block;height:6px;overflow:hidden;border-radius:3px;background:${trackBg};margin-top:6px;`;
+    track.style.cssText = `all:initial;display:block;height:5px;overflow:hidden;border-radius:3px;background:${trackBg};margin-top:4px;`;
 
     const fill = DOC.createElement("div");
     fill.style.cssText = `all:initial;display:block;width:100%;height:100%;background:${themeColor};transform:scaleX(0);transform-origin:left center;transition:transform .22s ease;`;
     track.appendChild(fill);
 
+    // TỐI ƯU: statusText margin-top giảm còn 5px
     const statusText = DOC.createElement("div");
     statusText.textContent = "Đang kiểm tra...";
-    statusText.style.cssText = `all:initial;display:block;margin-top:8px;color:${subTextColor};font:11px system-ui;word-break:break-word;`;
+    statusText.style.cssText = `all:initial;display:block;margin-top:5px;color:${subTextColor};font:11px system-ui;word-break:break-word;`;
 
     mainContent.append(collapseBtn, titleEl, btn, label, progressRow, track, statusText);
     panel.append(collapsedStrip, mainContent);

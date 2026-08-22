@@ -3,7 +3,7 @@
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
 // @version      2.0.0
 // @icon         https://www.google.com/s2/favicons?domain=manga-one.com&sz=128
-// @description  Tải manga trên Manga-One.
+// @description  Tải manga trên Manga-One (Shogakukan) giải mã AES-CBC phần cứng siêu tốc trong RAM.
 // @author       anonymous & AI
 // @match        https://manga-one.com/*
 // @run-at       document-start
@@ -52,21 +52,36 @@
     if (typeof createUI === "function" && DOC.body) {
       state.ui = createUI({
         storagePrefix: "mangaone-dl",
-        title: "MangaOne Downloader",
+        title: "MangaONE",
         themeColor: "#e52865",
-        themeBg: "#171113",
+        themeBg: "#18181b",
         titleColor: "#f472b6",
-        topOffset: "70px",
+        topOffset: "80px",
         defaultJpgText: "Xuất file JPG (ảnh gốc là WebP)",
         onDownload: startDownload,
-        onJpgChange: (checked) => { state.convertJpeg = checked; }
+        onJpgChange: (checked) => {
+          state.convertJpeg = checked;
+          localStorage.setItem("mangaone-dl:convert-jpeg", checked ? '1' : '0');
+        }
       });
+
+      // Tạm comment dòng SHOGAKUKAN (sau này mở cmt ra là ăn ngay 2 tầng)
+      if (state.ui?.panel) {
+        const titleEl = state.ui.panel.querySelector('[style*="font: 800 13px"], [style*="font:800 13px"]');
+        if (titleEl) {
+          titleEl.innerHTML = `
+              <div style="all:initial;display:block;font:800 13px/1.2 system-ui,sans-serif;color:#f472b6;letter-spacing:0.2px;">MangaONE</div>
+              <!-- Khi nào muốn hiện chữ SHOGAKUKAN, bạn chỉ cần XÓA đoạn ";visibility:hidden;" ở cuối style -->
+              <div style="all:initial;display:block;font:700 9px/1.2 system-ui,sans-serif;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;margin-top:1px;visibility:hidden;">SHOGAKUKAN</div>
+            `;
+        }
+      }
     }
     return state.ui;
   }
 
   /* =========================================================================
-   * HELPER FUNCTIONS
+   * BỘ HỖ TRỢ XỬ LÝ CHUỖI & TÊN FILE CHUẨN (GOLDEN RULES)
    * ========================================================================= */
   function isEpisodeUrl() {
     return /\/manga\/\d+\/chapter\/\d+/.test(WIN.location.pathname);
@@ -82,7 +97,12 @@
 
   function cleanString(str) {
     if (!str) return "";
-    return str.replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ').replace(/【[^】]*】/g, '').replace(/[\\/*?:"<>|]/g, '').trim();
+    return str
+      .replace(/[\r\n\t]+/g, ' ')
+      .replace(/\s{2,}/g, ' ')
+      .replace(/【[^】]*】/g, '')
+      .replace(/[\\/*?:"<>|]/g, '')
+      .trim();
   }
 
   function getCleanTitle() {
@@ -92,13 +112,20 @@
 
       const ogTitle = DOC.querySelector('meta[property="og:title"]')?.getAttribute('content');
       let rawTitle = (ogTitle || DOC.title || "").split('｜')[0].split('|')[0].trim();
+      rawTitle = rawTitle.replace(/【[^】]*】/g, '').trim();
 
-      const match = rawTitle.match(/^(.*?)\s+(第?\s*\d+\s*(?:話|曲|局|話目|限目|時限目|部|エピソード)?.*)$/i);
+      const match = rawTitle.match(/^(.*?)(?:\s+[-－–—]\s+|\s+)((?:第\s*)?[0-9０-９IVXLCDMivxlcdm一二三四五六七八九十百千万\s\-\–\—\ー\~〜\.]+(?:話|曲|局|話目|限目|時限目|部|エピソード|分冊版|単話|前編|中編|後編)?.*)$/i);
       if (match) {
         seriesTitle = cleanString(match[1]);
         episodeTitle = cleanString(match[2]);
       } else {
         seriesTitle = cleanString(rawTitle);
+      }
+
+      // Cắt bỏ phần tên truyện nếu bị lặp lại trong tên chap
+      let baseWithoutVol = seriesTitle.replace(/\s*[0-9０-９]+\s*巻.*$/i, '').trim();
+      if (baseWithoutVol && episodeTitle.startsWith(baseWithoutVol)) {
+        episodeTitle = cleanString(episodeTitle.substring(baseWithoutVol.length));
       }
 
       if (seriesTitle && episodeTitle && !seriesTitle.includes(episodeTitle)) {
@@ -114,10 +141,8 @@
    * API CLIENT V2 & GIẢI MÃ AES-CBC PHẦN CỨNG
    * ========================================================================= */
   async function fetchChapterConfig(titleId, chapterId) {
-    const Utils = window.MangaUtils || globalThis.MangaUtils;
     const apiUrl = `https://manga-one.com/api/client?rq=viewer_v2&title_id=${titleId}&chapter_id=${chapterId}`;
     
-    // Gửi POST request lấy chuỗi cấu hình
     return new Promise((resolve, reject) => {
       GM_xmlhttpRequest({
         method: "POST",
@@ -170,7 +195,7 @@
     const Utils = window.MangaUtils || globalThis.MangaUtils;
     let buffer = await Utils.fetchBuffer(pageItem.url, { "Referer": "https://manga-one.com/" });
 
-    // 1. Giải mã AES-CBC nếu có cờ .enc
+    // 1. Giải mã phần cứng AES-CBC qua crypto.subtle
     if (pageItem.isEncrypted && pageItem.crypto?.key && pageItem.crypto?.iv) {
       const cryptoKey = await WIN.crypto.subtle.importKey('raw', unhex(pageItem.crypto.key), { name: 'AES-CBC' }, false, ['decrypt']);
       buffer = await WIN.crypto.subtle.decrypt({ name: 'AES-CBC', iv: unhex(pageItem.crypto.iv) }, cryptoKey, buffer);
@@ -178,7 +203,7 @@
 
     const uint8 = new Uint8Array(buffer);
 
-    // 2. Nhận diện Magic Bytes
+    // 2. Nhận diện Magic Bytes gốc
     let ext = 'jpg';
     if (uint8[0] === 0x52 && uint8[1] === 0x49 && uint8[2] === 0x46 && uint8[3] === 0x46) ext = 'webp';
     else if (uint8[0] === 0x89 && uint8[1] === 0x50 && uint8[2] === 0x4E && uint8[3] === 0x47) ext = 'png';
@@ -204,7 +229,7 @@
   }
 
   /* =========================================================================
-   * CHƯƠNG TRÌNH TẢI CHÍNH
+   * TIẾN TRÌNH TẢI CHÍNH (6 LUỒNG TRONG RAM)
    * ========================================================================= */
   async function startDownload() {
     if (state.running) return;
@@ -237,10 +262,10 @@
       const Utils = window.MangaUtils || globalThis.MangaUtils;
       const zip = new ZipClass();
 
+      // File rỗng ID định danh tại thư mục gốc ZIP
       zip.addFile(`${chapterId}.txt`, new Uint8Array(0));
       if (ui) ui.updateProgress({ completed: 0, total: totalPages, status: "Đang tải..." });
 
-      // Tải và giải mã song song 6 luồng
       const tasks = pages.map(pageItem => () => decryptAndFormatImage(pageItem, forceJpg));
       const results = await Utils.runParallelQueue(tasks, CONFIG.MAX_CONCURRENT, (completed, total) => {
         if (ui) ui.updateProgress({ completed, total, status: "Đang tải..." });
@@ -266,7 +291,7 @@
   }
 
   /* =========================================================================
-   * KHỞI CHẠY VÀ SPA WATCHER
+   * KHỞI CHẠY VÀ THEO DÕI SPA
    * ========================================================================= */
   async function boot() {
     while (!DOC.body) await sleep(30);
@@ -301,14 +326,17 @@
     }
   }
 
-  // Khởi động SPA Route Watcher
+  // Hook SPA History
   const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
   if (typeof watchRoute === "function") {
     watchRoute(() => {
       state.chapterData = null;
       state.running = false;
       const ui = getUI();
-      if (ui) ui.setBusy(false);
+      if (ui) {
+        ui.setBusy(false);
+        ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
+      }
       boot();
     });
   }

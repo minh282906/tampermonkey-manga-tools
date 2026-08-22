@@ -26,7 +26,6 @@
 // @match        https://rimacomiplus.jp/*
 // @match        https://comicride.jp/*
 // @match        https://comics.manga-bang.com/*
-// @match        https://web-viewer.manga-bang.com/
 // @match        https://mangaspa.nikkan-spa.jp/*
 // @match        https://asacomi.jp/*
 // @match        https://namicomic.jp/*
@@ -57,6 +56,7 @@
 // @connect      *.bibibi-comic.com
 // @connect      *.mangalt.jp
 // @connect      *.rimacomiplus.jp
+// @connect      *.comics.comici.jp
 // @connect      *.comicride.jp
 // @connect      *.manga-bang.com
 // @connect      *.nikkan-spa.jp

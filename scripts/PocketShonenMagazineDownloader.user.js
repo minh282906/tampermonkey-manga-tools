@@ -3,7 +3,7 @@
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
 // @version      2.0.0
 // @icon         https://pocket.shonenmagazine.com/img/favicon.ico
-// @description  Tải manga trên MagaPoke (pocket.shonenmagazine.com).
+// @description  Tải manga trên MagaPoke (pocket.shonenmagazine.com) - Single-Flight Fetch Hook, X-Manga-Hash & PRNG Xorshift 4x4.
 // @author       Fuku & anonymous & AI
 // @match        https://pocket.shonenmagazine.com/*
 // @run-at       document-start
@@ -29,7 +29,7 @@
    * CẤU HÌNH HỆ THỐNG
    * ========================================================================= */
   const CONFIG = {
-    MAX_CONCURRENT: 4,   // 4 luồng tải song song (chuẩn an toàn Kodansha)
+    MAX_CONCURRENT: 4,   // 4 luồng tải song song
     JPEG_QUALITY: 0.95   // Chất lượng xuất JPG nếu chọn
   };
 
@@ -42,14 +42,53 @@
   const state = {
     running: false,
     convertJpeg: localStorage.getItem("pocket-dl:convert-jpeg") === '1',
-    episodeData: null,
-    ui: null
+    chapterData: null,
+    capturedApiData: null,
+    ui: null,
+    lastEpisodeId: null
   };
 
+  /* =========================================================================
+   * 1. SINGLE-FLIGHT FETCH HOOK (CHỐNG LỖI 3106)
+   * ========================================================================= */
+  function installFetchHook() {
+    const targetWindow = WIN;
+    const origFetch = targetWindow.fetch;
+    if (!origFetch || origFetch.__manga_hooked) return;
+
+    const hookedFetch = async function(...args) {
+      const response = await origFetch.apply(this, args);
+      try {
+        const url = typeof args[0] === 'string' ? args[0] : (args[0]?.url || '');
+        if (url.includes('/web/episode/viewer')) {
+          const clone = response.clone();
+          clone.json().then(data => {
+            if (data && Array.isArray(data.page_list) && data.page_list.length > 0) {
+              state.capturedApiData = data;
+              const curId = getEpisodeId();
+              // Chỉ kích hoạt sync khi ID gói tin khớp với URL hiện tại
+              if (String(data.episode_id) === String(curId)) {
+                syncChapterData();
+              }
+            }
+          }).catch(() => {});
+        }
+      } catch (e) {}
+      return response;
+    };
+
+    hookedFetch.__manga_hooked = true;
+    targetWindow.fetch = hookedFetch;
+  }
+
+  installFetchHook();
+
+  /* =========================================================================
+   * 2. GIAO DIỆN UNIVERSAL UI 2 TẦNG
+   * ========================================================================= */
   function getUI() {
     if (state.ui) return state.ui;
     const createUI = window.createMangaDownloaderUI || globalThis.createMangaDownloaderUI;
-
     if (typeof createUI === "function" && DOC.body) {
       const uiConfig = {
         storagePrefix: "pocket-dl",
@@ -83,7 +122,59 @@
   }
 
   /* =========================================================================
-   * BỘ HỖ TRỢ XỬ LÝ CHUỖI & TÊN FILE
+   * 3. BỘ BĂM X-MANGA-HASH DỰ PHÒNG (NATIVE CRYPTO.SUBTLE)
+   * ========================================================================= */
+  async function sha256Hex(str) {
+    const buf = new TextEncoder().encode(str);
+    const digest = await WIN.crypto.subtle.digest('SHA-256', buf);
+    return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  async function sha512Hex(str) {
+    const buf = new TextEncoder().encode(str);
+    const digest = await WIN.crypto.subtle.digest('SHA-512', buf);
+    return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  async function computeMangaHash(params) {
+    const keys = Object.keys(params).sort();
+    const arr = [];
+    for (const key of keys) {
+      const kHash = await sha256Hex(key);
+      const vHash = await sha512Hex(String(params[key]));
+      arr.push(`${kHash}_${vHash}`);
+    }
+    const part1 = await sha256Hex(arr.join(','));
+    const empty256 = await sha256Hex('');
+    const empty512 = await sha512Hex('');
+    const part2 = `${empty256}_${empty512}`;
+    return await sha512Hex(`${part1}${part2}`);
+  }
+
+  async function fetchDirectApiFallback(episodeId) {
+    const Utils = window.MangaUtils || globalThis.MangaUtils;
+    if (!Utils) return null;
+
+    const apiUrl = `https://se-api.pocket.shonenmagazine.com/web/episode/viewer?episode_id=${episodeId}`;
+    const hash = await computeMangaHash({ episode_id: episodeId });
+
+    const apiHeaders = {
+      'Accept': 'application/json',
+      'X-Manga-Hash': hash,
+      'X-Manga-Is-Crawler': 'false',
+      'X-Manga-Platform': '3'
+    };
+
+    try {
+      const buffer = await Utils.fetchBuffer(apiUrl, apiHeaders);
+      return JSON.parse(new TextDecoder().decode(buffer));
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /* =========================================================================
+   * 4. BỘ XỬ LÝ CHUỖI & TIÊU ĐỀ CHUẨN [Tên Truyện] - [Tên Chap]
    * ========================================================================= */
   function isEpisodeUrl() {
     return /\/episode\/\d+/.test(WIN.location.pathname);
@@ -94,13 +185,11 @@
     return str
       .replace(/[\r\n\t]+/g, ' ')
       .replace(/\s{2,}/g, ' ')
-      .replace(/【[^】]*】/g, '')
       .replace(/[\\/*?:"<>|]/g, '')
       .trim();
   }
 
   function getEpisodeId() {
-    if (state.episodeData?.episodeId) return String(state.episodeData.episodeId);
     const match = WIN.location.pathname.match(/\/episode\/(\d+)/);
     return match ? match[1] : "pocket_episode";
   }
@@ -119,13 +208,12 @@
     return defaultExt;
   }
 
-  // BẮT BUỘC: [Tên Truyện] - [Tên Tập/Chap].zip
   function getCleanTitle() {
     try {
       let seriesTitle = "";
       let episodeTitle = "";
 
-      const sEl = DOC.querySelector('.p-episode__header-series-ttl, .p-series__ttl, [class*="series-ttl"], .p-episode__series-title');
+      const sEl = DOC.querySelector('.p-episode__comic-ttl, .p-episode__header-series-ttl, .p-series__ttl, [class*="series-ttl"], .p-episode__series-title');
       if (sEl) seriesTitle = sEl.textContent.trim();
 
       const eEl = DOC.querySelector('h2.p-episode__header-ttl, .p-episode__header-ttl, [class*="episode-ttl"], .p-episode__title');
@@ -134,7 +222,6 @@
       if (!seriesTitle || !episodeTitle) {
         let raw = (DOC.title || "").split(/[|｜]/)[0].trim();
         raw = raw.replace(/^公式\s*[-－_]?\s*/i, '').trim();
-        raw = raw.replace(/【[^】]*】/g, '').trim();
 
         const match = raw.match(/^(.*?)(?:\s+[-－–—]\s+|\s+)((?:第\s*)?[0-9０-９IVXLCDMivxlcdm一二三四五六七八九十百千万\s\-\–\—\ー\~〜\.]+(?:話|巻|章|節|部|エピソード|分冊版|単話|前編|中編|後編)?.*)$/i);
         if (match) {
@@ -146,16 +233,26 @@
         }
       }
 
+      episodeTitle = episodeTitle.replace(/【(?:期間限定|無料|マガポケ限定|単行本|デジタル版)[^】]*】/gi, '').trim();
+
+      episodeTitle = episodeTitle
+        .replace(/【\s*((?:第\s*)?[0-9０-９IVXLCDMivxlcdm一二三四五六七八九十百千万\.]+\s*(?:話|巻|章|節|部|エピソード|分冊版|単話)?)\s*】/gi, '$1\u3000')
+        .replace(/[\[\]「」『』【】]/g, '')
+        .trim();
+
       let cleanSeries = cleanString(seriesTitle);
       cleanSeries = cleanSeries.replace(/（[^）]*(?:コミック|文庫|レーベル|出版|COMIC|WEB)[^）]*）$/i, '').trim();
       cleanSeries = cleanSeries.replace(/\([^)]*(?:コミック|文庫|レーベル|出版|COMIC|WEB)[^)]*\)$/i, '').trim();
 
       let cleanEpisode = cleanString(episodeTitle);
 
+      // Cắt bỏ phần tên truyện nếu bị lặp lại bên trong episodeTitle
       let baseWithoutVol = cleanSeries.replace(/\s*[0-9０-９]+\s*巻.*$/i, '').trim();
       if (baseWithoutVol && cleanEpisode.startsWith(baseWithoutVol)) {
         cleanEpisode = cleanString(cleanEpisode.substring(baseWithoutVol.length));
       }
+
+      cleanEpisode = cleanEpisode.replace(/^[・･\s\-_:：\u3000]+/, '').trim();
 
       if (cleanSeries && cleanEpisode && cleanEpisode !== getEpisodeId() && !cleanSeries.includes(cleanEpisode)) {
         return `${cleanSeries} - ${cleanEpisode}`;
@@ -169,103 +266,125 @@
     return `Pocket_${getEpisodeId()}`;
   }
 
-  async function getDomPrImages(timeoutMs = 400) {
-    const selectors = [
-      '.c-viewer__comic img',
-      '.c-viewer__pages-item img',
-      'img[src*="/static/ads/"]',
-      'img[src*="/ads/"]',
-      '.p-episode__end-banner img',
-      '.p-viewer__end img'
-    ];
-
+  /* =========================================================================
+   * 5. BÓC TÁCH TOÀN BỘ ẢNH PR (ĐỢI RENDER ĐỦ 100%)
+   * ========================================================================= */
+  async function waitForAllDomPrImages(maxWaitMs = 2500) {
     const startTime = Date.now();
-    const prList = [];
+    let prList = [];
 
-    while (Date.now() - startTime < timeoutMs) {
-      const imgs = DOC.querySelectorAll(selectors.join(', '));
-      for (const img of imgs) {
+    while (Date.now() - startTime < maxWaitMs) {
+      // 1. Ảnh quảng cáo thương mại đầu trang
+      const topEls = DOC.querySelectorAll('.c-viewer__comic img, img[src*="/static/ads/"], img[src*="/ads/"]');
+
+      // 2. Toàn bộ ảnh thương mại & banner cuối trang (c-viewer__last-items)
+      const endEls = DOC.querySelectorAll('.c-viewer__last-items img, .c-viewer__recommend-item img, .c-viewer__last img, .p-episode__end-banner img, .p-viewer__end img');
+
+      const currentList = [];
+      for (const img of [...topEls, ...endEls]) {
         let src = img.getAttribute('data-src') || img.getAttribute('src') || '';
         if (!src || src.startsWith('data:')) continue;
-
-        const w = img.naturalWidth || parseInt(img.getAttribute('width') || '0', 10);
-        const h = img.naturalHeight || parseInt(img.getAttribute('height') || '0', 10);
-
-        if ((w > 0 && h > 0) && (h < 300 || (w / h) > 1.8)) continue;
-
         if (src.startsWith('//')) src = 'https:' + src;
-        if (!prList.includes(src)) prList.push(src);
+        if (!currentList.includes(src)) currentList.push(src);
       }
-      if (prList.length > 0) break;
-      await sleep(100);
+
+      // ĐIỀU KIỆN CHỐNG THOÁT SỚM: Phải có cụm cuối (endEls >= 3 ảnh) VÀ tổng số PR >= 4 ảnh
+      if (endEls.length >= 3 && currentList.length >= 4) {
+        return currentList;
+      }
+
+      prList = currentList;
+      await sleep(150);
     }
+
+    // Dự phòng sau 2.5s nếu chương thực sự không có cụm cuối
     return prList;
   }
 
   /* =========================================================================
-   * HOOK GÓI TIN /web/episode/viewer
+   * 6. TỔNG HỢP TRANG TRUYỆN
    * ========================================================================= */
-  function injectFetchHook() {
-    const script = DOC.createElement("script");
-    script.textContent = `
-      (() => {
-        const originalFetch = window.fetch;
-        window.fetch = async (...args) => {
-          const response = await originalFetch(...args);
-          try {
-            const url = typeof args[0] === 'string' ? args[0] : args[0]?.url;
-            if (url?.includes('/web/episode/viewer')) {
-              const data = await response.clone().json();
-              if (Array.isArray(data.page_list)) {
-                window.postMessage(
-                  {
-                    type: 'POCKET_PAGE_LIST',
-                    pages: data.page_list,
-                    seed: data.scramble_seed,
-                    ver: data.scramble_ver,
-                    mangaId: data.title_id,
-                    episodeId: data.episode_id
-                  },
-                  '*'
-                );
-              }
-            }
-          } catch {}
-          return response;
-        };
-      })();
-    `;
-    DOC.documentElement.appendChild(script);
-  }
+  async function syncChapterData() {
+    const currentEpId = getEpisodeId();
+    if (!currentEpId || currentEpId.includes("episode")) return;
 
-  function onPageListMessage(e) {
-    if (e.data?.type !== "POCKET_PAGE_LIST") return;
+    // Kiểm tra tính hợp lệ của API Data (tránh dính ID của chap cũ khi đổi URL)
+    if (state.capturedApiData && String(state.capturedApiData.episode_id) !== String(currentEpId)) {
+      state.capturedApiData = null;
+    }
 
-    state.episodeData = {
-      pages: e.data.pages,
-      seed: e.data.seed,
-      ver: e.data.ver,
-      mangaId: e.data.mangaId,
-      episodeId: e.data.episodeId,
+    let apiData = state.capturedApiData;
+
+    // Nếu hook chưa bắt được, đợi 1s rồi gọi fallback bằng X-Manga-Hash
+    if (!apiData) {
+      await sleep(1000);
+      apiData = state.capturedApiData;
+      if (!apiData || String(apiData.episode_id) !== String(currentEpId)) {
+        apiData = await fetchDirectApiFallback(currentEpId);
+        if (apiData) state.capturedApiData = apiData;
+      }
+    }
+
+    if (!apiData || !Array.isArray(apiData.page_list) || apiData.page_list.length === 0) return;
+
+    // Đợi DOM render đủ 100% cụm ảnh PR
+    const domPrs = await waitForAllDomPrImages(2500);
+
+    const allPages = [];
+    let prCount = 0;
+    let mainPageNo = 1;
+
+    // 1. Nạp ảnh PR thương mại
+    for (const prUrl of domPrs) {
+      const inMain = apiData.page_list.some(pUrl => pUrl.includes(prUrl.split('?')[0]));
+      if (!inMain) {
+        prCount++;
+        allPages.push({ isPR: true, prNo: prCount, url: prUrl });
+      }
+    }
+
+    // 2. Nạp trang truyện chính từ API
+    for (const url of apiData.page_list) {
+      const isAdUrl = url.includes('/static/ads/') || url.includes('/ads/');
+      if (isAdUrl) {
+        prCount++;
+        allPages.push({ isPR: true, prNo: prCount, url: url });
+      } else {
+        allPages.push({ isPR: false, pageNo: mainPageNo++, url: url });
+      }
+    }
+
+    allPages.forEach(p => {
+      if (p.isPR) p.singlePR = (prCount === 1);
+    });
+
+    state.chapterData = {
+      episodeId: apiData.episode_id || currentEpId,
+      mangaId: apiData.title_id,
+      seed: apiData.scramble_seed,
+      ver: apiData.scramble_ver,
+      pages: allPages
     };
 
+    state.lastEpisodeId = currentEpId;
+
     const ui = getUI();
-    if (ui) {
+    if (ui && !state.running) {
       ui.updateProgress({
         completed: 0,
-        total: state.episodeData.pages.length,
+        total: allPages.length,
         status: "Sẵn sàng."
       });
     }
   }
 
   /* =========================================================================
-   * THUẬT TOÁN GIẢI MÃ MA TRẬN PRNG XORSHIFT32 TRONG RAM
+   * 7. THUẬT TOÁN GIẢI MÃ MA TRẬN PRNG XORSHIFT32
    * ========================================================================= */
   const CHARSET_EVEN = "svdk0m7acl";
   const CHARSET_ODD = "q6jtf2xnog";
   const MULTIPLE_NUM = 8;
-  const GRID_SIZE = 4; // Hằng số ma trận 4x4 nằm tại đây
+  const GRID_SIZE = 4;
 
   function* xorshift(seed) {
     const x = Uint32Array.of(seed);
@@ -333,13 +452,10 @@
     canvas.width = width;
     canvas.height = height;
 
-    const ctx = canvas.getContext("2d", { alpha: !isJpg });
+    const ctx = canvas.getContext("2d", { alpha: false });
     ctx.imageSmoothingEnabled = false;
-
-    if (isJpg) {
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, width, height);
-    }
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, width, height);
 
     let finalSeed = seed;
     if (typeof seed === "string") {
@@ -384,13 +500,17 @@
   }
 
   /* =========================================================================
-   * TIẾN TRÌNH TẢI CHÍNH (4 LUỒNG TRONG RAM)
+   * 8. TIẾN TRÌNH TẢI CHÍNH (4 LUỒNG TRONG RAM)
    * ========================================================================= */
   async function startDownload() {
     if (state.running) return;
     const ui = getUI();
 
-    if (!state.episodeData?.pages?.length) {
+    if (!state.chapterData?.pages?.length) {
+      await syncChapterData();
+    }
+
+    if (!state.chapterData?.pages?.length) {
       if (ui) ui.updateProgress({ status: "Chưa có dữ liệu trang." });
       return;
     }
@@ -398,7 +518,8 @@
     state.running = true;
     if (ui) ui.setBusy(true);
 
-    const { pages, seed, ver, mangaId, episodeId } = state.episodeData;
+    const { pages, seed, ver, mangaId, episodeId } = state.chapterData;
+    const totalPages = pages.length;
     const useJpeg = Boolean(state.convertJpeg);
 
     try {
@@ -410,49 +531,19 @@
       const currentEpId = getEpisodeId();
       zip.addFile(`${currentEpId}.txt`, new Uint8Array(0));
 
-      const allTaskObjects = [];
-      let prCount = 0;
-      let mainPageNo = 1;
+      if (ui) ui.updateProgress({ completed: 0, total: totalPages, status: "Đang tải..." });
 
-      // 1. Quét Ảnh PR thương mại từ DOM
-      const domPrs = await getDomPrImages(400);
-      for (const prUrl of domPrs) {
-        const inMain = pages.some(pUrl => pUrl.includes(prUrl.split('?')[0]));
-        if (!inMain) {
-          prCount++;
-          allTaskObjects.push({ isPR: true, prNo: prCount, url: prUrl });
-        }
-      }
-
-      // 2. Phân loại danh sách trang
-      for (const url of pages) {
-        const isAdUrl = url.includes('/static/ads/') || url.includes('/ads/');
-        if (isAdUrl) {
-          prCount++;
-          allTaskObjects.push({ isPR: true, prNo: prCount, url: url });
-        } else {
-          allTaskObjects.push({ isPR: false, pageNo: mainPageNo++, url: url });
-        }
-      }
-
-      allTaskObjects.forEach(p => {
-        if (p.isPR) p.singlePR = (prCount === 1);
-      });
-
-      const totalItems = allTaskObjects.length;
-      if (ui) ui.updateProgress({ completed: 0, total: totalItems, status: "Đang tải..." });
-
-      const tasks = allTaskObjects.map((item) => async () => {
+      const tasks = pages.map((item) => async () => {
         const rawBuffer = await Utils.fetchBuffer(item.url);
 
-        // Ảnh PR: Giữ nguyên bytes gốc zero-copy từ CDN
+        // 1. Ảnh PR: Giữ nguyên bytes gốc zero-copy từ CDN
         if (item.isPR) {
           const ext = getExtensionFromUrl(item.url);
           const fileName = item.singlePR ? `PR.${ext}` : `PR_${item.prNo}.${ext}`;
           return { fileName, data: new Uint8Array(rawBuffer) };
         }
 
-        // Trang truyện chính: Giải mã ma trận hoán vị PRNG Xorshift 4x4
+        // 2. Trang truyện chính: Giải mã ma trận hoán vị PRNG Xorshift 4x4
         if (seed) {
           const decoded = await descramblePocketImage(rawBuffer, seed, ver, mangaId, episodeId, useJpeg);
           return {
@@ -468,12 +559,11 @@
         }
       });
 
-      // Chạy 4 luồng song song an toàn
       const results = await Utils.runParallelQueue(tasks, CONFIG.MAX_CONCURRENT, (completed, total) => {
         if (ui) ui.updateProgress({ completed, total, status: "Đang tải..." });
       });
 
-      if (ui) ui.updateProgress({ completed: totalItems, total: totalItems, status: "Đang đóng gói file ZIP..." });
+      if (ui) ui.updateProgress({ completed: totalPages, total: totalPages, status: "Đang đóng gói file ZIP..." });
       await sleep(50);
 
       for (const res of results) {
@@ -483,7 +573,7 @@
       const zipName = `${getCleanTitle()}.zip`;
       zip.download(zipName);
 
-      if (ui) ui.updateProgress({ completed: totalItems, total: totalItems, status: "Hoàn tất." });
+      if (ui) ui.updateProgress({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
     } catch (e) {
       console.error("[pocket-dl] Download failed", e);
       if (ui) ui.updateProgress({ status: `Lỗi: ${e?.message || e}` });
@@ -494,7 +584,7 @@
   }
 
   /* =========================================================================
-   * KHỞI CHẠY VÀ THEO DÕI SPA
+   * 9. KHỞI CHẠY VÀ THEO DÕI SPA ROUTE
    * ========================================================================= */
   async function boot() {
     while (!DOC.body) await sleep(30);
@@ -507,25 +597,17 @@
     }
 
     if (ui?.panel) ui.panel.style.display = "block";
+    if (ui) ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
 
-    if (state.episodeData?.pages?.length) {
-      if (ui) {
-        ui.updateProgress({
-          completed: 0,
-          total: state.episodeData.pages.length,
-          status: "Sẵn sàng."
-        });
-      }
-    } else {
-      if (ui) ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
-    }
+    await syncChapterData();
   }
 
-  // Khởi động SPA Route Watcher
+  // Hook SPA History Change
   const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
   if (typeof watchRoute === "function") {
     watchRoute(() => {
-      state.episodeData = null;
+      state.chapterData = null;
+      state.capturedApiData = null;
       state.running = false;
       const ui = getUI();
       if (ui) {
@@ -536,16 +618,9 @@
     });
   }
 
-  function main() {
-    injectFetchHook();
-    WIN.addEventListener("message", onPageListMessage);
-
-    if (DOC.readyState === "loading") {
-      DOC.addEventListener("DOMContentLoaded", boot);
-    } else {
-      boot();
-    }
+  if (DOC.readyState === "loading") {
+    DOC.addEventListener("DOMContentLoaded", boot);
+  } else {
+    boot();
   }
-
-  main();
 })();

@@ -28,8 +28,7 @@
    * CẤU HÌNH HỆ THỐNG
    * ========================================================================= */
   const CONFIG = {
-    MAX_CONCURRENT: 4,
-    JPEG_QUALITY: 0.95
+    JPEG_QUALITY: 0.95   // Chất lượng xuất JPG nếu chọn
   };
 
   const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;
@@ -45,6 +44,9 @@
     ui: null
   };
 
+  /* =========================================================================
+   * 1. GIAO DIỆN UNIVERSAL UI CHUẨN 2 TẦNG
+   * ========================================================================= */
   function getUI() {
     if (state.ui) return state.ui;
     const createUI = window.createMangaDownloaderUI || globalThis.createMangaDownloaderUI;
@@ -54,9 +56,15 @@
         storagePrefix: "bw-dl",
         title: "BookWalker",
         engine: "PUBLUS",
-        themeColor: "#0284c7",
-        themeBg: "#ffffff",
-        titleColor: "#0284c7",
+        themeColor: "#0284c7",              // Viền ngoài panel và màu nhấn chính
+        themeBg: "#ffffff",                 // Nền bảng màu trắng
+        titleColor: "#0284c7",              // Chữ tiêu đề màu xanh
+        btnBg: "#ffffff",                   // Nền nút màu trắng
+        btnColor: "#0284c7",                // Chữ nút Download màu xanh
+        btnBorder: "1px solid #0284c7",     // Viền nút Download màu xanh
+        tabBg: "#ffffff",                   // Nền nút ▶ màu trắng
+        tabColor: "#0284c7",                // Mũi tên ▶ màu xanh
+        tabBorder: "1px solid #0284c7",     // Viền nút ▶ màu xanh
         topOffset: "44px",
         defaultJpgText: "Xuất file JPG (mặc định PNG)",
         onDownload: startDownload,
@@ -68,7 +76,6 @@
 
       state.ui = createUI(uiConfig);
 
-      // Tiêu đề 2 tầng (ẩn tầng 2 bằng visibility: hidden để cố định khoảng trống)
       if (state.ui?.panel) {
         const titleEl = state.ui.panel.querySelector('[style*="font: 800 13px"], [style*="font:800 13px"]');
         if (titleEl) {
@@ -83,7 +90,7 @@
   }
 
   /* =========================================================================
-   * HẰNG SỐ NỘI BỘ VÀ BỘ HỖ TRỢ NFBR (PUBLUS)
+   * 2. HẰNG SỐ NỘI BỘ VÀ BỘ HỖ TRỢ NFBR (PUBLUS)
    * ========================================================================= */
   const FALLBACK_WIDTH  = 1440;
   const FALLBACK_HEIGHT = 2048;
@@ -262,7 +269,143 @@
   }
 
   /* =========================================================================
-   * SILENT IFRAME WORKER VÀ QUY TRÌNH CHỤP ẢNH CANVAS
+   * 3. MAIN-WORLD HOOK: CÀI ĐẶT SỚM VÀO HÀM GHÉP MẢNH CỦA PUBLUS
+   * ========================================================================= */
+  function ensureIframeBridge(win) {
+    if (win.__bw_bridge) return;
+    try {
+      win.eval(`
+        (function() {
+          var capturedPages = new Map();
+
+          // Tự động gán cờ CORS anonymous cho toàn bộ Image bên trong Iframe
+          try {
+            var nativeImg = window.Image;
+            window.Image = class extends nativeImg {
+              constructor(w, h) {
+                super(w, h);
+                this.crossOrigin = 'anonymous';
+              }
+            };
+          } catch(e) {}
+
+          function installNFBRHook() {
+            var proto = window.NFBR?.a6G?.a5x?.prototype;
+            if (!proto || proto.__bw_hooked) return;
+            proto.__bw_hooked = true;
+
+            for (var key in proto) {
+              (function(methodName) {
+                var orig = proto[methodName];
+                if (typeof orig === 'function' && orig.length === 5) {
+                  proto[methodName] = function() {
+                    var args = Array.prototype.slice.call(arguments);
+                    var page = args[1];
+                    var image = args[2];
+                    var flag = args[4];
+
+                    if (image && (image.naturalWidth || image.width) && (image.naturalHeight || image.height)) {
+                      try {
+                        var imgW = image.naturalWidth || image.width;
+                        var imgH = image.naturalHeight || image.height;
+                        
+                        var cleanCanvas = document.createElement('canvas');
+                        cleanCanvas.width = imgW;
+                        cleanCanvas.height = imgH;
+                        var ctx = cleanCanvas.getContext('2d', { alpha: false });
+                        ctx.fillStyle = '#ffffff';
+                        ctx.fillRect(0, 0, imgW, imgH);
+                        ctx.imageSmoothingEnabled = false;
+
+                        // Vẽ trực tiếp các lát cắt từ image gốc vào Canvas sạch
+                        orig.call(this, cleanCanvas, page, image, { x: 0, y: 0, width: imgW, height: imgH }, flag);
+
+                        var pIdx = Number(page?.index ?? window.NFBR?.a6G?.Initializer?.T1V?.menu?.model?.get?.('viewerPage') ?? 0);
+                        capturedPages.set(pIdx, cleanCanvas);
+                      } catch (e) {}
+                    }
+
+                    return orig.apply(this, arguments);
+                  };
+                }
+              })(key);
+            }
+          }
+
+          installNFBRHook();
+          var timer = setInterval(function() {
+            if (window.NFBR?.a6G?.a5x?.prototype) {
+              installNFBRHook();
+              if (window.NFBR?.a6G?.a5x?.prototype.__bw_hooked) clearInterval(timer);
+            }
+          }, 30);
+
+          window.__bw_bridge = {
+            capturedPages: capturedPages,
+            capture: function(pIdx, targetW, targetH, mimeType, quality) {
+              return new Promise(function(resolve, reject) {
+                try {
+                  var canvas = capturedPages.get(Number(pIdx));
+
+                  // Nếu hook chưa bắt kịp, fallback sang screen.canvas
+                  if (!canvas) {
+                    var init = window.NFBR?.a6G?.Initializer?.T1V || window.NFBR?.a6G?.Initial?.T1V;
+                    var menu = init?.menu?.a6l || init?.a6l || init?.menu;
+                    var renderer = init?.renderer || menu?.renderer;
+                    var screen = renderer?.currentScreen;
+                    canvas = screen?.canvas;
+                  }
+
+                  if (!canvas || !canvas.width || !canvas.height) {
+                    return reject(new Error("Canvas chưa sẵn sàng để xuất ảnh."));
+                  }
+
+                  var outCanvas = document.createElement('canvas');
+                  outCanvas.width = targetW;
+                  outCanvas.height = targetH;
+                  var ctx = outCanvas.getContext('2d', { alpha: false });
+                  ctx.fillStyle = '#ffffff';
+                  ctx.fillRect(0, 0, targetW, targetH);
+                  ctx.imageSmoothingEnabled = false;
+
+                  if (canvas.width === targetW && canvas.height === targetH) {
+                    ctx.drawImage(canvas, 0, 0);
+                  } else {
+                    ctx.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, targetW, targetH);
+                  }
+
+                  if (typeof outCanvas.toBlob === 'function') {
+                    outCanvas.toBlob(function(blob) {
+                      if (!blob) return reject(new Error("toBlob null"));
+                      var reader = new FileReader();
+                      reader.onload = function() { resolve(reader.result); };
+                      reader.onerror = reject;
+                      reader.readAsArrayBuffer(blob);
+                    }, mimeType, quality);
+                  } else {
+                    var dataUrl = outCanvas.toDataURL(mimeType, quality);
+                    var base64 = dataUrl.split(',')[1];
+                    var bin = atob(base64);
+                    var ab = new ArrayBuffer(bin.length);
+                    var ua = new Uint8Array(ab);
+                    for (var i = 0; i < bin.length; i++) ua[i] = bin.charCodeAt(i);
+                    resolve(ab);
+                  }
+                } catch (err) {
+                  reject(err);
+                }
+              });
+            }
+          };
+        })();
+      `);
+    } catch (e) {
+      console.error("[bw-dl] Lỗi khởi tạo Main-World Bridge:", e);
+    }
+  }
+
+  /* =========================================================================
+   * 4. SILENT IFRAME WORKER VÀ QUY TRÌNH CHỤP ẢNH
    * ========================================================================= */
   function updateIframeSize(iframeEl, pageDim) {
     const targetW = parsePositiveInt(pageDim?.width, FALLBACK_WIDTH);
@@ -302,6 +445,13 @@
 
     updateIframeSize(iframe, getTargetPageDimensions(initialPage));
 
+    // CÀI ĐẶT HOOK NGAY KHI IFRAME VỪA XUẤT HIỆN
+    iframe.addEventListener('load', () => {
+      try {
+        ensureIframeBridge(iframe.contentWindow);
+      } catch (e) {}
+    });
+
     (DOC.body || DOC.documentElement).appendChild(iframe);
     return iframe;
   }
@@ -318,6 +468,15 @@
         continue;
       }
 
+      // Đảm bảo Bridge luôn được cài đặt trước khi đọc dữ liệu
+      ensureIframeBridge(win);
+
+      // Nếu Hook đã tóm được canvas sạch của trang này trong RAM
+      if (win.__bw_bridge?.capturedPages?.has(Number(pageIndex))) {
+        await sleep(40);
+        return { runtime: rt, fromHook: true };
+      }
+
       const screen = rt.renderer?.currentScreen;
       const spread = getModelProperty(rt.model, "viewerSpread");
       const side = getPageSide(spread, pageIndex);
@@ -326,7 +485,7 @@
 
       if (side && drawn === true && canvas && canvas.width > 0 && canvas.height > 0) {
         await new Promise(resolve => win.requestAnimationFrame(() => win.requestAnimationFrame(resolve)));
-        await sleep(90);
+        await sleep(80);
         return { runtime: rt, screen, side };
       }
 
@@ -342,7 +501,7 @@
         } catch (e) {}
       }
 
-      await sleep(90);
+      await sleep(80);
     }
 
     throw new Error(`Render trang ${pageIndex + 1} timeout.`);
@@ -356,6 +515,8 @@
       const win = iframeEl.contentWindow;
       rt = getNFBRRuntime(win);
       if (rt && (typeof rt.menu?.moveToPage === "function" || typeof rt.menu?.a6l?.moveToPage === "function")) {
+        // Cài đặt Bridge ngay TRƯỚC KHI gọi moveToPage
+        ensureIframeBridge(win);
         break;
       }
       await sleep(100);
@@ -374,45 +535,22 @@
   }
 
   async function renderCanvasToBlob(iframeEl, pageObj, renderResult, isJpg) {
-    const screen = renderResult.screen || renderResult.runtime?.renderer?.currentScreen;
-    const srcCanvas = screen?.canvas;
+    const win = iframeEl.contentWindow;
+    ensureIframeBridge(win);
 
-    if (!srcCanvas || srcCanvas.width === 0 || srcCanvas.height === 0) {
-      throw new Error("Canvas nguồn chưa sẵn sàng.");
-    }
-
-    const canvasDim = { width: srcCanvas.width, height: srcCanvas.height };
+    const canvasDim = { width: renderResult.screen?.canvas?.width || FALLBACK_WIDTH, height: renderResult.screen?.canvas?.height || FALLBACK_HEIGHT };
     const targetDim = getTargetPageDimensions(pageObj, canvasDim);
-
-    const outCanvas = DOC.createElement("canvas");
-    outCanvas.width = targetDim.width;
-    outCanvas.height = targetDim.height;
-
-    const ctx = outCanvas.getContext("2d", { alpha: false });
-    if (!ctx) throw new Error("Không thể tạo Context 2D.");
-
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, outCanvas.width, outCanvas.height);
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
-
-    ctx.drawImage(
-      srcCanvas,
-      0, 0, srcCanvas.width, srcCanvas.height,
-      0, 0, targetDim.width, targetDim.height
-    );
 
     const mimeType = isJpg ? 'image/jpeg' : 'image/png';
     const quality = isJpg ? CONFIG.JPEG_QUALITY : undefined;
 
-    const blob = await new Promise((resolve, reject) => {
-      outCanvas.toBlob(b => b ? resolve(b) : reject(new Error("Lỗi toBlob")), mimeType, quality);
-    });
+    let arrayBuffer = null;
+    if (win.__bw_bridge?.capture) {
+      arrayBuffer = await win.__bw_bridge.capture(pageObj.index, targetDim.width, targetDim.height, mimeType, quality);
+    } else {
+      throw new Error("Không thể kết nối tới Bridge trích xuất ảnh sạch.");
+    }
 
-    outCanvas.width = 0;
-    outCanvas.height = 0;
-
-    const arrayBuffer = await blob.arrayBuffer();
     return {
       data: new Uint8Array(arrayBuffer),
       ext: isJpg ? 'jpg' : 'png'
@@ -420,7 +558,7 @@
   }
 
   /* =========================================================================
-   * TIẾN TRÌNH TẢI CHÍNH
+   * 5. TIẾN TRÌNH TẢI CHÍNH
    * ========================================================================= */
   async function startDownload() {
     if (state.running || !state.episodeData) return;
@@ -445,7 +583,7 @@
       const ZipClass = window.PureZipWriter || globalThis.PureZipWriter;
       const zip = new ZipClass();
 
-      // Đính kèm file txt định danh ID tập
+      // Đính kèm file txt định danh ID tập tại thư mục gốc ZIP
       const episodeId = getEpisodeId();
       zip.addFile(`${episodeId}.txt`, new Uint8Array(0));
 
@@ -468,7 +606,7 @@
           });
         }
 
-        await sleep(60);
+        await sleep(50);
       }
 
       if (ui) ui.updateProgress({ completed: totalPages, total: totalPages, status: "Đang đóng gói file ZIP..." });
@@ -498,7 +636,7 @@
   }
 
   /* =========================================================================
-   * KHỞI CHẠY VÀ THEO DÕI SPA
+   * 6. KHỞI CHẠY VÀ THEO DÕI SPA
    * ========================================================================= */
   async function boot() {
     while (!DOC.body) await sleep(30);
@@ -543,7 +681,6 @@
     }
   }
 
-  // Khởi động SPA Route Watcher
   const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
   if (typeof watchRoute === "function") {
     watchRoute(() => {

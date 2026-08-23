@@ -19,29 +19,35 @@
     const {
       storagePrefix = "manga-dl",
       title = "Manga Downloader",
-      themeColor = "#e52865",        // Màu nút & viền
-      themeBg = "#18181b",           // Màu nền
+      themeColor = "#e52865",        // Màu nút & viền chính
+      themeBg = "#18181b",           // Màu nền panel
       titleColor = "#f472b6",        // Màu chữ tiêu đề
       topOffset = "70px",            // Vị trí top
       defaultJpgText = "Xuất file JPG (mặc định PNG)",
+      // --- CÁC THAM SỐ TÙY BIẾN MỚI (TỰ ĐỘNG TƯƠNG THÍCH NGƯỢC 100%) ---
+      btnBg = options.themeColor || "#e52865",
+      btnBorder = options.btnBorder || (options.btnBg && options.btnBg !== themeColor ? `1px solid ${themeColor}` : "0"),
+      btnColor = options.btnColor || (options.btnBg ? themeColor : getContrastColor(btnBg)),
+      tabBg = options.tabBg || themeColor,
+      tabColor = options.tabColor || getContrastColor(tabBg),
+      tabBorder = options.tabBorder || (options.tabBg && options.tabBg !== themeColor ? `1px solid ${themeColor}` : "none"),
       onDownload = () => {},
       onJpgChange = (checked) => {}
     } = options;
 
-    const btnTextColor = getContrastColor(themeColor);
+    const btnTextColor = btnColor;
     const isLightBg = getContrastColor(themeBg) === '#18181b';
     const bodyTextColor = isLightBg ? '#1e293b' : '#ffffff'; 
     const subTextColor = isLightBg ? '#475569' : '#cbd5e1';  
     const trackBg = isLightBg ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.15)'; 
     const panelShadow = isLightBg ? '0 8px 24px rgba(0,0,0,0.12), -2px 0 8px rgba(0,0,0,0.04)' : '0 8px 24px rgba(0,0,0,0.85)';
-    const btnShadow = isLightBg ? '0 2px 6px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.06)' : `0 3px 10px ${themeColor}55`;
+    const btnShadow = (btnBorder !== "0" && btnBg === "#ffffff") ? "none" : (isLightBg ? '0 2px 6px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.06)' : `0 3px 10px ${themeColor}55`);
 
     const DOC = document;
     const PANEL_WIDTH = 220;
     const TAB_WIDTH = 14;
     let isCollapsed = localStorage.getItem(`${storagePrefix}:collapsed`) === '1';
 
-    // TỐI ƯU: Padding giảm xuống 8px 12px để bảng gọn gàng
     const panel = DOC.createElement("div");
     panel.id = `${storagePrefix}-panel`;
     panel.style.cssText = [
@@ -76,30 +82,28 @@
     collapseBtn.textContent = "▶";
     collapseBtn.title = "Thu gọn";
     collapseBtn.style.cssText = [
-      "all:initial", "position:absolute", "left:0px", "top:0px", "width:22px", "height:22px",
+      "all:initial", "position:absolute", "left:-1px", "top:-1px", "width:23px", "height:23px",
       "display:flex", "align-items:center", "justify-content:center",
-      "border-radius:12px 0 8px 0", `background:${themeColor}`, `color:${btnTextColor}`,
+      "border-radius:12px 0 8px 0", `background:${tabBg}`, `color:${tabColor}`,
+      `border:${tabBorder}`, "box-sizing:border-box",
       "font:900 10px system-ui,sans-serif", "cursor:pointer", "z-index:2"
     ].join(';');
 
-    // TỐI ƯU: margin-bottom giảm còn 5px
     const titleEl = DOC.createElement("div");
     titleEl.textContent = title;
     titleEl.style.cssText = `all:initial;display:block;color:${titleColor};font:800 13px system-ui;margin-bottom:5px;text-align:center;padding-left:14px;`;
 
-    // TỐI ƯU: padding nút Download giảm còn 7px
     const btn = DOC.createElement("button");
     btn.type = "button";
     btn.textContent = "Download";
     btn.style.cssText = [
       "all:initial", "display:block", "box-sizing:border-box", "width:100%", "padding:7px 0",
-      "border:0", "border-radius:6px", `background:${themeColor}`, `color:${btnTextColor}`,
+      `border:${btnBorder}`, "border-radius:6px", `background:${btnBg}`, `color:${btnTextColor}`,
       "font:800 14px/1.2 system-ui,sans-serif", "text-align:center", "cursor:pointer",
       `box-shadow:${btnShadow}`
     ].join(';');
     btn.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); onDownload(); });
 
-    // TỐI ƯU: margin-top giảm còn 5px
     const label = DOC.createElement("label");
     label.style.cssText = `all:initial;display:inline-flex;align-items:center;gap:6px;margin-top:5px;color:${subTextColor};font:700 11px system-ui;cursor:pointer;`;
 
@@ -117,7 +121,6 @@
     spanJpg.style.cssText = `all:initial;color:${subTextColor};font:700 11px system-ui;`;
     label.append(jpgInput, spanJpg);
 
-    // TỐI ƯU: margin-top giảm còn 6px
     const progressRow = DOC.createElement("div");
     progressRow.style.cssText = `all:initial;display:flex;justify-content:space-between;align-items:center;margin-top:6px;color:${bodyTextColor};font:800 12px system-ui;`;
 
@@ -130,7 +133,6 @@
     percentText.style.cssText = `all:initial;color:${bodyTextColor};font:800 12px system-ui;`;
     progressRow.append(countText, percentText);
 
-    // TỐI ƯU: track margin-top giảm còn 4px, cao 5px
     const track = DOC.createElement("div");
     track.style.cssText = `all:initial;display:block;height:5px;overflow:hidden;border-radius:3px;background:${trackBg};margin-top:4px;`;
 
@@ -138,7 +140,6 @@
     fill.style.cssText = `all:initial;display:block;width:100%;height:100%;background:${themeColor};transform:scaleX(0);transform-origin:left center;transition:transform .22s ease;`;
     track.appendChild(fill);
 
-    // TỐI ƯU: statusText margin-top giảm còn 5px
     const statusText = DOC.createElement("div");
     statusText.textContent = "Đang kiểm tra...";
     statusText.style.cssText = `all:initial;display:block;margin-top:5px;color:${subTextColor};font:11px system-ui;word-break:break-word;`;

@@ -3,7 +3,7 @@
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
 // @version      2.0.0
 // @icon         https://sp.manga.nicovideo.jp/favicon.ico
-// @description  Tải manga trên Niconico Manga.
+// @description  Tải manga trên Niconico Manga (Hỗ trợ PC WebP & Mobile JPG).
 // @author       anonymous & AI
 // @match        https://sp.manga.nicovideo.jp/watch/*
 // @match        https://manga.nicovideo.jp/watch/*
@@ -40,18 +40,26 @@
 
   if (WIN.top !== WIN.self) return;
 
+  const isMobileSp = WIN.location.hostname.startsWith('sp.');
+
   const state = {
     running: false,
     convertJpeg: localStorage.getItem("nico-dl:convert-jpeg") === '1',
+    detectedSourceFormat: isMobileSp ? 'jpg' : 'webp',
     chapterData: null,
     ui: null
   };
 
+  /* =========================================================================
+   * 1. GIAO DIỆN UNIVERSAL UI CHUẨN 2 TẦNG
+   * ========================================================================= */
   function getUI() {
     if (state.ui) return state.ui;
     const createUI = window.createMangaDownloaderUI || globalThis.createMangaDownloaderUI;
 
     if (typeof createUI === "function" && DOC.body) {
+      const defaultText = isMobileSp ? "Xuất file JPG (ảnh gốc là JPG)" : "Xuất file JPG (ảnh gốc là WebP)";
+
       const uiConfig = {
         storagePrefix: "nico-dl",
         title: "Niconico",
@@ -60,7 +68,7 @@
         themeBg: "#ffffff",
         titleColor: "#77C238",
         topOffset: "48px",
-        defaultJpgText: "Xuất file JPG (mặc định PNG)",
+        defaultJpgText: defaultText,
         onDownload: startDownload,
         onJpgChange: (checked) => {
           state.convertJpeg = checked;
@@ -70,7 +78,8 @@
 
       state.ui = createUI(uiConfig);
 
-      // Tiêu đề 2 tầng (tạm ẩn tầng 2 bằng visibility: hidden để cố định khoảng trống)
+      state.ui.updateFormatUI(state.detectedSourceFormat);
+
       if (state.ui?.panel) {
         const titleEl = state.ui.panel.querySelector('[style*="font: 800 13px"], [style*="font:800 13px"]');
         if (titleEl) {
@@ -85,7 +94,7 @@
   }
 
   /* =========================================================================
-   * BỘ HỖ TRỢ XỬ LÝ CHUỖI & TÊN FILE CHUẨN
+   * 2. BỘ HỖ TRỢ XỬ LÝ CHUỖI & TÊN FILE CHUẨN
    * ========================================================================= */
   function isEpisodeUrl() {
     return /\/watch\/(mg\d+|\d+)/.test(WIN.location.pathname);
@@ -142,7 +151,6 @@
       if (!seriesTitle || !episodeTitle) {
         let raw = DOC.title || "";
         raw = raw.replace(/\s*[-|｜]\s*ニコニコ漫画.*/i, '').trim();
-        // CẮT SẠCH TOÀN BỘ PHẦN TÊN TÁC GIẢ ĐỨNG SAU DẤU "/"
         raw = raw.split(/\s*\/\s*/)[0].trim();
         raw = raw.replace(/【[^】]*】/g, '').trim();
 
@@ -159,7 +167,6 @@
       let cleanSeries = cleanString(seriesTitle);
       cleanSeries = cleanSeries.replace(/（[^）]*(?:コミック|文庫|レーベル|出版|COMIC|WEB)[^）]*）$/i, '').trim();
       cleanSeries = cleanSeries.replace(/\([^)]*(?:コミック|文庫|レーベル|出版|COMIC|WEB)[^)]*\)$/i, '').trim();
-      // Xóa nhãn tác giả nếu còn sót
       cleanSeries = cleanSeries.replace(/\s*\([^)]*(?:著者|原作|作画|漫画)[^)]*\)/gi, '').trim();
 
       let cleanEpisode = cleanString(episodeTitle);
@@ -183,40 +190,73 @@
     return `Niconico_${getEpisodeId()}`;
   }
 
-  async function getDomPrImages(timeoutMs = 300) {
-    const selectors = [
-      '.episode-end-banner img',
-      '.next-episode-banner img',
-      '.recommend-banner img',
-      '[class*="endBanner"] img',
-      '[class*="recommend"] img'
-    ];
+  /* =========================================================================
+   * 3. BÓC TÁCH CHÍNH XÁC ẢNH
+   * ========================================================================= */
+  function extractPrUrlsFromDom() {
+    const list = [];
 
-    const startTime = Date.now();
-    const prList = [];
-
-    while (Date.now() - startTime < timeoutMs) {
-      const imgs = DOC.querySelectorAll(selectors.join(', '));
+    // 1. NẾU LÀ TRÊN PC: Quét CHỈ bên trong #book_promotion_banners
+    const pcContainer = DOC.getElementById('book_promotion_banners') || DOC.querySelector('.book_promotion_banners');
+    if (pcContainer) {
+      const imgs = pcContainer.querySelectorAll('img');
       for (const img of imgs) {
-        let src = img.getAttribute('data-src') || img.getAttribute('src') || '';
+        let src = img.getAttribute('data-original') || img.getAttribute('data-src') || img.getAttribute('src') || '';
         if (!src || src.startsWith('data:')) continue;
-
-        const w = img.naturalWidth || parseInt(img.getAttribute('width') || '0', 10);
-        const h = img.naturalHeight || parseInt(img.getAttribute('height') || '0', 10);
-
-        if (w > 0 && h > 0 && (h < 300 || (w / h) > 1.8)) continue;
-
         if (src.startsWith('//')) src = 'https:' + src;
-        if (!prList.includes(src)) prList.push(src);
+
+        const lower = src.toLowerCase();
+        const parentA = img.closest('a');
+        const href = (parentA?.getAttribute('href') || '').toLowerCase();
+        const alt = (img.getAttribute('alt') || '').toLowerCase();
+
+        // Chặn 2 nút tải App Store & Google Play
+        if (
+          href.includes('apple.com') || href.includes('itunes') || href.includes('play.google.com') ||
+          lower.includes('appstore') || lower.includes('googleplay') || lower.includes('badge') ||
+          alt.includes('app store') || alt.includes('google play')
+        ) {
+          continue;
+        }
+
+        if (!list.includes(src)) list.push(src);
       }
-      if (prList.length > 0) break;
-      await sleep(100);
+      if (list.length > 0) return list;
     }
-    return prList;
+
+    // 2. NẾU LÀ TRÊN MOBILE: Quét CHỈ bên trong khung thẻ <li> (div.mt-4.px-5 ul li)
+    const mobileContainer = DOC.querySelector('main div[class*="mt-4"][class*="px-5"] ul, main .mt-4.px-5 ul');
+    if (mobileContainer) {
+      const imgs = mobileContainer.querySelectorAll('li img');
+      for (const img of imgs) {
+        let src = img.getAttribute('data-original') || img.getAttribute('data-src') || img.getAttribute('src') || '';
+        if (!src || src.startsWith('data:')) continue;
+        if (src.startsWith('//')) src = 'https:' + src;
+
+        const lower = src.toLowerCase();
+        const parentA = img.closest('a');
+        const href = (parentA?.getAttribute('href') || '').toLowerCase();
+        const alt = (img.getAttribute('alt') || '').toLowerCase();
+
+        // Chặn nút tải App
+        if (
+          href.includes('apple.com') || href.includes('itunes') || href.includes('play.google.com') ||
+          lower.includes('appstore') || lower.includes('googleplay') || lower.includes('badge') ||
+          alt.includes('app store') || alt.includes('google play')
+        ) {
+          continue;
+        }
+
+        if (!list.includes(src)) list.push(src);
+      }
+      if (list.length > 0) return list;
+    }
+
+    return list;
   }
 
   /* =========================================================================
-   * THUẬT TOÁN GIẢI MÃ DRM NICONICO (CYCLIC 8-BYTE XOR DECRYPTION)
+   * 4. THUẬT TOÁN GIẢI MÃ DRM NICONICO (CYCLIC 8-BYTE XOR DECRYPTION)
    * ========================================================================= */
   function extractDrmHashFromUrl(url) {
     if (!url) return null;
@@ -250,7 +290,7 @@
   }
 
   /* =========================================================================
-   * BÓC TÁCH PAYLOAD TỪ BIẾN TOÀN CỤC VÀ DOM
+   * 5. BỘ TỔNG HỢP TOÀN DIỆN
    * ========================================================================= */
   function extractImageUrlsFromScriptPayload() {
     const foundItems = [];
@@ -274,14 +314,12 @@
     return foundItems;
   }
 
-  async function fetchNiconicoPages() {
+  function buildResultPages(mainItems, prUrls) {
     const resultPages = [];
     let prCount = 0;
-    let mainItems = [];
 
-    // 1. Quét PR Bìa Quảng cáo từ DOM nếu có
-    const domPrs = await getDomPrImages(300);
-    for (const prUrl of domPrs) {
+    // 1. Nạp ảnh PR thương mại chính thức
+    for (const prUrl of prUrls) {
       prCount++;
       resultPages.push({
         isPR: true,
@@ -290,32 +328,7 @@
       });
     }
 
-    // 2. Ưu tiên lấy trực tiếp từ biến toàn cục của Niconico (nhanh 0ms trên PC)
-    if (WIN.args?.pages && Array.isArray(WIN.args.pages)) {
-      mainItems = WIN.args.pages.map(p => ({
-        url: p.url,
-        drmHash: extractDrmHashFromUrl(p.url)
-      }));
-    }
-
-    // 3. Dự phòng: Quét payload Next.js hoặc thẻ <img> cho bản Mobile
-    if (mainItems.length === 0) {
-      mainItems = extractImageUrlsFromScriptPayload();
-    }
-
-    if (mainItems.length === 0) {
-      const imgEls = DOC.querySelectorAll('img[src*="p?"], [data-src*="p?"]');
-      for (const img of imgEls) {
-        let src = img.getAttribute('data-src') || img.getAttribute('src') || '';
-        if (src && !src.startsWith('data:')) {
-          if (src.startsWith('//')) src = 'https:' + src;
-          if (!mainItems.some(i => i.url === src)) {
-            mainItems.push({ url: src, drmHash: extractDrmHashFromUrl(src) });
-          }
-        }
-      }
-    }
-
+    // 2. Nạp các trang truyện chính
     let mainPageNo = 1;
     for (const item of mainItems) {
       resultPages.push({
@@ -333,93 +346,132 @@
     return resultPages;
   }
 
+  async function waitForCompleteEpisodeData(maxWaitMs = 2500) {
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < maxWaitMs) {
+      let mainItems = [];
+
+      // 1. Lấy danh sách trang truyện chính
+      if (WIN.args?.pages && Array.isArray(WIN.args.pages)) {
+        mainItems = WIN.args.pages.map(p => ({
+          url: p.url,
+          drmHash: extractDrmHashFromUrl(p.url)
+        }));
+      }
+
+      if (mainItems.length === 0) {
+        mainItems = extractImageUrlsFromScriptPayload();
+      }
+
+      if (mainItems.length === 0) {
+        const imgEls = DOC.querySelectorAll('img[src*="p?"], [data-src*="p?"]');
+        for (const img of imgEls) {
+          let src = img.getAttribute('data-src') || img.getAttribute('src') || '';
+          if (src && !src.startsWith('data:')) {
+            if (src.startsWith('//')) src = 'https:' + src;
+            if (!mainItems.some(i => i.url === src)) {
+              mainItems.push({ url: src, drmHash: extractDrmHashFromUrl(src) });
+            }
+          }
+        }
+      }
+
+      // 2. Lấy danh sách ảnh PR chính thức
+      const prUrls = extractPrUrlsFromDom();
+
+      if (mainItems.length > 0) {
+        if (prUrls.length > 0) {
+          return buildResultPages(mainItems, prUrls);
+        }
+        if (Date.now() - startTime > 1500) {
+          return buildResultPages(mainItems, prUrls);
+        }
+      }
+
+      await sleep(150);
+    }
+
+    return null;
+  }
+
   /* =========================================================================
-   * GIẢI MÃ XOR VÀ XỬ LÝ ĐỊNH DẠNG ẢNH
+   * 6. GIẢI MÃ XOR VÀ XỬ LÝ ĐỊNH DẠNG ẢNH
    * ========================================================================= */
-  async function processNiconicoImage(pageObj, isJpgRequested) {
+  async function processNiconicoImage(pageObj, forceJpg) {
     const Utils = window.MangaUtils || globalThis.MangaUtils;
     const rawBuffer = await Utils.fetchBuffer(pageObj.url);
     const rawUint8 = new Uint8Array(rawBuffer);
 
-    // 1. Kiểm tra và giải mã XOR nếu có khóa DRM
+    // 1. Giải mã XOR nếu có khóa DRM
     const finalHash = pageObj.drmHash || extractDrmHashFromUrl(pageObj.url);
     const isDrmUrl = pageObj.url.includes('/image/') || pageObj.url.startsWith('https://drm.cdn');
     const decryptedBytes = (isDrmUrl && finalHash) ? decryptNiconicoXor(rawUint8, finalHash) : rawUint8;
 
-    // 2. Nhận diện định dạng qua Magic Bytes
-    let nativeExt = 'jpg';
-    if (decryptedBytes[0] === 0x89 && decryptedBytes[1] === 0x50) nativeExt = 'png';
-    else if (decryptedBytes[0] === 0x52 && decryptedBytes[1] === 0x49) nativeExt = 'webp';
-    else if (decryptedBytes[0] === 0xFF && decryptedBytes[1] === 0xD8) nativeExt = 'jpg';
+    // 2. Nhận diện định dạng qua Magic Bytes thực tế
+    let ext = 'jpg';
+    if (decryptedBytes[0] === 0x52 && decryptedBytes[1] === 0x49 && decryptedBytes[2] === 0x46 && decryptedBytes[3] === 0x46) ext = 'webp';
+    else if (decryptedBytes[0] === 0x89 && decryptedBytes[1] === 0x50 && decryptedBytes[2] === 0x4E && decryptedBytes[3] === 0x47) ext = 'png';
+    else if (decryptedBytes[0] === 0xFF && decryptedBytes[1] === 0xD8 && decryptedBytes[2] === 0xFF) ext = 'jpg';
 
-    // 3. Xử lý xuất file
-    if (isJpgRequested) {
-      if (nativeExt === 'jpg') {
-        return { fileName: `${pageObj.pageNo}.jpg`, data: decryptedBytes };
-      }
-      const img = await Utils.loadImage(decryptedBytes, `image/${nativeExt}`);
-      const canvas = DOC.createElement('canvas');
-      canvas.width = img.naturalWidth || img.width;
-      canvas.height = img.naturalHeight || img.height;
-      const ctx = canvas.getContext('2d', { alpha: false });
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, 0, 0);
-
-      const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', CONFIG.JPEG_QUALITY));
-      canvas.width = 0; canvas.height = 0;
-      return { fileName: `${pageObj.pageNo}.jpg`, data: new Uint8Array(await blob.arrayBuffer()) };
-    } else {
-      if (nativeExt === 'png') {
-        return { fileName: `${pageObj.pageNo}.png`, data: decryptedBytes };
-      }
-      const img = await Utils.loadImage(decryptedBytes, `image/${nativeExt}`);
-      const canvas = DOC.createElement('canvas');
-      canvas.width = img.naturalWidth || img.width;
-      canvas.height = img.naturalHeight || img.height;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0);
-
-      const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
-      canvas.width = 0; canvas.height = 0;
-      return { fileName: `${pageObj.pageNo}.png`, data: new Uint8Array(await blob.arrayBuffer()) };
+    // 3. Xuất trực tiếp byte gốc (Zero-Copy) nếu không yêu cầu đổi format
+    if (!forceJpg || ext === 'jpg') {
+      return {
+        fileName: `${pageObj.pageNo}.${ext}`,
+        data: decryptedBytes
+      };
     }
+
+    // 4. Chuyển đổi JPG nếu người dùng chọn
+    const img = await Utils.loadImage(decryptedBytes, `image/${ext}`);
+    const canvas = DOC.createElement('canvas');
+    canvas.width = img.naturalWidth || img.width;
+    canvas.height = img.naturalHeight || img.height;
+    const ctx = canvas.getContext('2d', { alpha: false });
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0);
+
+    const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', CONFIG.JPEG_QUALITY));
+    canvas.width = 0; canvas.height = 0;
+
+    return {
+      fileName: `${pageObj.pageNo}.jpg`,
+      data: new Uint8Array(await blob.arrayBuffer())
+    };
   }
 
   /* =========================================================================
-   * TIẾN TRÌNH TẢI CHÍNH (6 LUỒNG TRONG RAM)
+   * 7. TIẾN TRÌNH TẢI CHÍNH
    * ========================================================================= */
   async function startDownload() {
     if (state.running) return;
     const ui = getUI();
 
+    if (!state.chapterData || state.chapterData.length === 0) {
+      if (ui) ui.updateProgress({ status: "Chưa có dữ liệu trang." });
+      return;
+    }
+
     state.running = true;
     if (ui) ui.setBusy(true);
 
     try {
-      if (ui) ui.updateProgress({ completed: 0, total: 0, status: "Đang tải..." });
-
-      let pages = state.chapterData;
-      if (!pages || pages.length === 0) {
-        pages = await fetchNiconicoPages();
-        state.chapterData = pages;
-      }
-
+      const pages = state.chapterData;
       const totalPages = pages.length;
-      if (!totalPages) throw new Error("Không tìm thấy trang truyện.");
-
-      const useJpeg = Boolean(state.convertJpeg);
+      const forceJpg = Boolean(state.convertJpeg);
       const ZipClass = window.PureZipWriter || globalThis.PureZipWriter;
       const Utils = window.MangaUtils || globalThis.MangaUtils;
       const zip = new ZipClass();
 
-      // File rỗng ID định danh
+      // File rỗng ID định danh tại thư mục gốc ZIP
       const episodeId = getEpisodeId();
       zip.addFile(`${episodeId}.txt`, new Uint8Array(0));
 
       if (ui) ui.updateProgress({ completed: 0, total: totalPages, status: "Đang tải..." });
 
       const tasks = pages.map((pageObj) => async () => {
+        // Ảnh PR: Giữ nguyên bytes gốc zero-copy
         if (pageObj.isPR) {
           const rawBuffer = await Utils.fetchBuffer(pageObj.url);
           const ext = getExtensionFromUrl(pageObj.url);
@@ -427,7 +479,7 @@
           return { fileName, data: new Uint8Array(rawBuffer) };
         }
 
-        return await processNiconicoImage(pageObj, useJpeg);
+        return await processNiconicoImage(pageObj, forceJpg);
       });
 
       const results = await Utils.runParallelQueue(tasks, CONFIG.MAX_CONCURRENT, (completed, total) => {
@@ -455,7 +507,7 @@
   }
 
   /* =========================================================================
-   * KHỞI CHẠY VÀ THEO DÕI SPA
+   * 8. KHỞI CHẠY VÀ THEO DÕI SPA
    * ========================================================================= */
   async function boot() {
     while (!DOC.body) await sleep(30);
@@ -470,20 +522,29 @@
     if (ui?.panel) ui.panel.style.display = "block";
     if (ui) ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
 
-    let pages = [];
-    let retries = 0;
+    const pages = await waitForCompleteEpisodeData(2500);
 
-    while (retries < 25) {
-      try {
-        pages = await fetchNiconicoPages();
-        if (pages.length > 0) break;
-      } catch (e) {}
-      await sleep(150);
-      retries++;
-    }
-
-    if (pages.length > 0) {
+    if (pages && pages.length > 0) {
       state.chapterData = pages;
+
+      try {
+        const Utils = window.MangaUtils || globalThis.MangaUtils;
+        const samplePage = pages.find(p => !p.isPR) || pages[0];
+        const testBuffer = await Utils.fetchBuffer(samplePage.url);
+        const testUint8 = new Uint8Array(testBuffer);
+        const finalHash = samplePage.drmHash || extractDrmHashFromUrl(samplePage.url);
+        const isDrmUrl = samplePage.url.includes('/image/') || samplePage.url.startsWith('https://drm.cdn');
+        const dec = (isDrmUrl && finalHash) ? decryptNiconicoXor(testUint8, finalHash) : testUint8;
+
+        let detected = 'jpg';
+        if (dec[0] === 0x52 && dec[1] === 0x49) detected = 'webp';
+        else if (dec[0] === 0x89 && dec[1] === 0x50) detected = 'png';
+        else if (dec[0] === 0xFF && dec[1] === 0xD8) detected = 'jpg';
+
+        state.detectedSourceFormat = detected;
+        if (ui) ui.updateFormatUI(detected);
+      } catch (e) {}
+
       if (ui) {
         ui.updateProgress({
           completed: 0,
@@ -496,7 +557,6 @@
     }
   }
 
-  // Khởi động SPA Route Watcher
   const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
   if (typeof watchRoute === "function") {
     watchRoute(() => {

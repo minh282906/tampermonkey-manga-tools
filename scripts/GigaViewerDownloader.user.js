@@ -121,7 +121,7 @@
     "comic-seasons.com":    { name: "Seasons",        top: "90px" , color: "#70b5f9", bg: "#eaf5e3", text: "#4a92e6" },
     "comic-y-ours.com":     { name: "COMIC Y-OURS",   top: "90px" , color: "#5c8699", bg: "#18181b", text: "#8bb2c4" },
     "ichicomi.com":         { name: "Ichicomi",       top: "68px" , color: "#0284c7", bg: "#082f49", text: "#7dd3fc" },
-    "mangatime-square.com": { name: "TimeSquare",     top: "100px", color: "#65c417", bg: "#ffffff", text: "#18181b" },
+    "mangatime-square.com": { name: "TimeSquare",     top: "100px", color: "#A3E900", bg: "#ffffff", text: "#A3E900" },
     "ourfeel.jp":           { name: "OUR FEEL",       top: "150px", color: "#18181b", bg: "#f6f3f2", text: "#18181b" }
   };
 

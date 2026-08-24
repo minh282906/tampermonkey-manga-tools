@@ -19,23 +19,28 @@
     const {
       storagePrefix = "manga-dl",
       title = "Manga Downloader",
-      themeColor = "#e52865",        // Màu nút & viền chính
+      themeColor = "#e52865",        // Màu nhấn & viền chính
       themeBg = "#18181b",           // Màu nền panel
-      titleColor = "#f472b6",        // Màu chữ tiêu đề
+      titleColor = options.titleColor || (getContrastColor(options.themeBg || "#18181b") === '#18181b' ? '#0f172a' : '#ffffff'),
       topOffset = "70px",            // Vị trí top
       defaultJpgText = "Xuất file JPG (mặc định PNG)",
-      // --- CÁC THAM SỐ TÙY BIẾN MỚI (TỰ ĐỘNG TƯƠNG THÍCH NGƯỢC 100%) ---
-      btnBg = options.themeColor || "#e52865",
-      btnBorder = options.btnBorder || (options.btnBg && options.btnBg !== themeColor ? `1px solid ${themeColor}` : "0"),
-      btnColor = options.btnColor || (options.btnBg ? themeColor : getContrastColor(btnBg)),
-      tabBg = options.tabBg || themeColor,
-      tabColor = options.tabColor || getContrastColor(tabBg),
-      tabBorder = options.tabBorder || (options.tabBg && options.tabBg !== themeColor ? `1px solid ${themeColor}` : "none"),
       onDownload = () => {},
       onJpgChange = (checked) => {}
     } = options;
 
-    const btnTextColor = btnColor;
+    // 1. Tự động tính toán màu sắc & viền nút Download thông minh
+    const btnBg = options.btnBg || themeColor;
+    const btnTextColor = options.btnColor || getContrastColor(btnBg);
+    
+    // Nếu nút và nền bảng cùng màu sáng (nút outline), tự động thêm viền 1px
+    const isOutlineBtn = btnBg.toLowerCase() === themeBg.toLowerCase() || btnBg.toLowerCase() === '#ffffff';
+    const btnBorder = options.btnBorder || (isOutlineBtn ? `1px solid ${themeColor === '#ffffff' ? '#18181b' : themeColor}` : "0");
+
+    // 2. Nút gập ▶ (Collapse tab)
+    const tabBg = options.tabBg || (isOutlineBtn ? themeBg : themeColor);
+    const tabColor = options.tabColor || (isOutlineBtn ? (themeColor === '#ffffff' ? '#18181b' : themeColor) : getContrastColor(tabBg));
+    const tabBorder = options.tabBorder || (isOutlineBtn ? `1px solid ${themeColor === '#ffffff' ? '#18181b' : themeColor}` : "none");
+
     const isLightBg = getContrastColor(themeBg) === '#18181b';
     const bodyTextColor = isLightBg ? '#1e293b' : '#ffffff'; 
     const subTextColor = isLightBg ? '#475569' : '#cbd5e1';  

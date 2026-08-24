@@ -1,0 +1,154 @@
+================================================================================
+          PROJECT MASTER DOCUMENT: TAMPERMONKEY MANGA TOOLS
+          Repository: minh282906/tampermonkey-manga-tools
+          Tài liệu bàn giao bối cảnh & kiến trúc dự án (Context Handoff v2.1)
+================================================================================
+
+1. TỔNG QUAN DỰ ÁN
+--------------------------------------------------------------------------------
+- Mục đích: Bộ công cụ Userscript (Tampermonkey/Violentmonkey) chuyên dụng để 
+  bóc tách, giải mã DRM và tải truyện tranh (Manga) chất lượng gốc từ các 
+  nền tảng web đọc truyện bản quyền lớn nhất (Nhật Bản và quốc tế).
+- Cơ chế vận hành cốt lõi: 100% Client-side trong RAM (in-memory), giải mã 
+  Canvas/Wasm/XOR/AES-CBC/PRNG và đóng gói file ZIP trực tiếp trên trình duyệt, 
+  không phụ thuộc vào bất kỳ server backend trung gian nào.
+- Phương thức phân phối:
+  + Cài đặt độc lập từng script lẻ (Stand-alone via jsDelivr CDN @require).
+  + Cài đặt qua Bộ điều phối trung tâm (MangaDownloader.user.js) tự động nạp module động.
+
+
+2. CẤU TRÚC THƯ MỤC & TRẠNG THÁI CÁC FILE (FILE INVENTORY & STATUS)
+--------------------------------------------------------------------------------
+tampermonkey-manga-tools/
+├── cores/                              [BỘ THƯ VIỆN LÕI DÙNG CHUNG]
+│   ├── PureZipWriter.js                -> [v2.0] Đóng gói ZIP trong RAM + CRC32
+│   ├── UniversalUI.js                  -> [v2.0 TỐI ƯU] Giao diện nổi 220px, micro-spacing ~175px, thích ứng Light/Dark
+│   ├── RouteWatcher.js                 -> [v2.0] Theo dõi SPA history change
+│   └── MangaUtils.js                   -> [v2.0] Worker Pool tải song song, fetchBuffer, loadImage
+│
+├── decoders/                           [BỘ GIẢI MÃ TÁCH RỜI DÙNG CHUNG]
+│   └── SpeedBinbTools.js               -> [v2.0] Giải mã ma trận SpeedBinb (ctbl/ptbl/CoordDecoder)
+│
+├── scripts/                            [SCRIPTS ĐÃ HOÀN THIỆN REFACTOR v2.0]
+│   ├── GigaViewerDownloader.user.js    -> [ĐÃ HOÀN THIỆN v2.0] (Gom ~24 web Hatena, 4x4 matrix, 2-tier UI, theme map)
+│   ├── SpeedBinbDownloader.user.js     -> [ĐÃ GOM HOÀN THIỆN v2.0] (Gom Cmoa, Yanmaga, Gaugau... theo mô hình Adapter)
+│   ├── Comici+Downloader.user.js       -> [ĐÃ HOÀN THIỆN v2.0] (Gom ~28 web tạp chí Comici+, ma trận 4x4, chống SPA race condition)
+│   ├── ComiciJPDownloader.user.js      -> [ĐÃ TÁCH HOÀN THIỆN v2.0] (Tải bài viết cuộn comici.jp raw zero-copy)
+│   ├── JumpRookieDownloader.user.js    -> [ĐÃ TÁCH HOÀN THIỆN v2.0] (Tách khỏi GigaViewer, tải raw zero-copy Shueisha)
+│   ├── MangaOneDownloader.user.js      -> [ĐÃ CẬP NHẬT v2.0] (AES-CBC hardware decrypt qua crypto.subtle, UI 2 tầng)
+│   ├── PocketShonenMagazineDownloader.user.js -> [ĐÃ HOÀN THIỆN v2.0] (MagaPoke PRNG Xorshift 4x4 thuần JS, 4 luồng an toàn)
+│   ├── NiconicoDownloader.user.js      -> [ĐÃ HOÀN THIỆN v2.0] (XOR 8-byte Cyclic Decrypt, đọc WIN.args 0ms cho PC)
+│   ├── PiccomaDownloader.user.js       -> [ĐÃ HOÀN THIỆN v2.0] (Wasm dd + 50px Tile Matrix, 4 luồng an toàn)
+│   ├── BookWalkerDownloader.user.js    -> [ĐÃ HOÀN THIỆN v2.0] (Engine ACCESS Publus / NFBR - Silent Iframe, fallback 2K 1440x2048)
+│   ├── EbookJPDownloader.user.js       -> [ĐÃ HOÀN THIỆN v2.0] (Yahoo Japan React Fiber/Shuffle, Zero-taint Canvas, Iframe bypass)
+│   ├── KMANGADownloader.user.js        -> [CHƯA REFACTOR - CẦN LÀM] (Kodansha US PRNG Shuffle)
+│   └── AmazonDownloader.user.js        -> [TẠM GIỮ NGUYÊN - XỬ LÝ SAU CÙNG]
+│
+├── MangaDownloader.user.js             -> [BẢN RELEASE GITHUB] Script tổng nạp module qua jsDelivr CDN
+└── .gitignore                          -> [CẤU HÌNH GIT]
+
+
+3. CÁC QUY CHUẨN BẮT BUỘC TRONG MỌI SCRIPT (GOLDEN RULES - CẬP NHẬT v2.1)
+--------------------------------------------------------------------------------
+1. QUY CHUẨN TÊN FILE ZIP ĐẦU RA:
+   - BẮT BUỘC cú pháp: [Tên Truyện] - [Tên Tập/Chap].zip
+   - Tuyệt đối không fallback về mỗi [Tên Truyện].zip (nếu thiếu chap là Bug cần sửa regex).
+   - Tự động lọc sạch ký tự cấm Windows: \ / * ? : " < > |
+   - Xóa bỏ tag rác tiếng Nhật: 【...】 (【期間限定 無料】, 【デジタル版限定特典】...) và tiền tố (公式-).
+   - Hỗ trợ số toàn giác tiếng Nhật: [0-9０-９] và khoảng trắng toàn giác \u3000.
+   - Cắt bỏ tên tác giả ở đuôi (ví dụ: / 凪水そう(著者) trên Niconico).
+   - Tự động cắt bỏ tên truyện nếu nó bị lặp lại bên trong tên chap/subtitle.
+
+2. QUY CHUẨN CẤU TRÚC BÊN TRONG FILE ZIP:
+   - BẮT BUỘC có 1 file .txt rỗng mang tên ID tập truyện ở thư mục gốc: ${id}.txt (ví dụ: ${cid}.txt, ${episodeId}.txt, ${bookCode}.txt).
+   - Trang truyện chính: Đánh số thứ tự tăng dần bắt đầu từ 1 (1.png/1.jpg, 2.png/2.jpg...).
+   - Ảnh PR / Quảng cáo thương mại (nếu có): Đặt tên PR.ext (nếu có 1 ảnh) hoặc PR_1.ext, PR_2.ext (nếu có nhiều ảnh).
+
+3. HAI ĐIỀU KIỆN HOẠT ĐỘNG QUAN TRỌNG NHẤT:
+   - [ĐIỀU KIỆN 1]: Bấm Download ở bất kỳ trang nào (trang giữa, trang cuối...) đều phải tự động tải đủ từ trang 1 đến hết.
+   - [ĐIỀU KIỆN 2]: Tiến trình tải chạy 100% ngầm trong RAM. Người dùng có thể thoải mái lật trang, đọc truyện trên viewer chính mà không làm gián đoạn hay đứt tiến trình tải.
+
+4. QUY TẮC SỬ DỤNG `updateFormatUI` TRONG `UniversalUI.js`:
+   - [Web CÓ MÃ HÓA/SCRAMBLE]: (GigaViewer, SpeedBinb, Comici+, Piccoma, KManga, Pocket, Niconico, BookWalker, EbookJapan...)
+     -> TUYỆT ĐỐI KHÔNG GỌI `updateFormatUI`. Mặc định xuất ảnh chất lượng cao PNG qua Canvas toBlob, có checkbox tùy chọn JPG (chất lượng 0.95).
+   - [Web KHÔNG MÃ HÓA/RAW BYTES]: (Jump Rookie, ComiciJP Articles, ảnh gốc Manga-One...)
+     -> BẮT BUỘC GỌI `updateFormatUI(format)` để nhận diện format gốc CDN (WebP/PNG/JPG) và giữ nguyên zero-copy (0ms, không suy hao chất lượng).
+
+5. PHÂN BỔ SỐ LUỒNG TẢI (`CONFIG.MAX_CONCURRENT`):
+   - Mức 6 luồng: Áp dụng cho các web API nhẹ, CDN mạnh (GigaViewer, SpeedBinb, Manga-One, Niconico, Comici+, Jump Rookie, ComiciJP).
+   - Mức 4 luồng: Áp dụng cho web nặng Canvas/Wasm/Rate-limit (Piccoma Wasm, KManga, PocketShonen, BookWalker).
+   - Xử lý tuần tự + Preload ngầm: Áp dụng cho EbookJapan (để tránh xung đột bộ nhớ openParam/shuffle của React Fiber).
+
+6. CHUẨN `CONFIG` VÀ GIAO DIỆN `UniversalUI.js` (QUY CHUẨN MỚI):
+   - `CONFIG` ở đầu file tối giản: CHỈ chứa `MAX_CONCURRENT` và `JPEG_QUALITY`. Mọi hằng số giải mã (GRID_SIZE, TILE_SIZE, MULTIPLE...) đưa xuống phần hàm giải mã.
+   - Panel cố định 220px, dải bookmark thu gọn 14px, vi chỉnh micro-spacing đạt chiều cao chuẩn mực ~175px đồng đều mọi trang.
+   - Tiêu đề 2 tầng căn trái sát nút `▶`:
+     + Dòng 1: Tên thương hiệu riêng (13px Bold, bỏ chữ "Downloader").
+     + Dòng 2: Tên Engine / NXB (9px Bold Uppercase).
+     + *Chính sách hiện tại:* Tạm thời ẩn chữ tầng 2 bằng `visibility: hidden;` để cố định layout và khoảng trống bằng khít nhau 100% giữa mọi trang web.
+   - Thích ứng màu thông minh (getContrastColor): Tự đổi chữ nút bấm sang Đen nếu nền nút sáng; Tự đổi chữ thông số sang xám đậm nếu nền bảng Trắng.
+
+7. QUẢN LÝ VÒNG ĐỜI SPA & CHỐNG RACE CONDITION:
+   - Tất cả script đặt `@run-at document-start`.
+   - Dùng `cores/RouteWatcher.js` hook history pushState/replaceState/popstate.
+   - Bắt buộc kiểm tra `lastId` khi chuyển chap trong SPA để chống lỗi Race Condition (tránh việc script đọc nhầm ID cũ của DOM trước khi framework Vue/React kịp cập nhật).
+
+
+4. PHÂN LOẠI CÁC NHÓM NỀN TẢNG (ENGINE TAXONOMY)
+--------------------------------------------------------------------------------
+A. NHÓM 3 ENGINE LỚN (CHIẾM >80% THỊ PHƯỜNG):
+   1. GigaViewer Engine (Hatena): Gom ~24 web trong 1 script GigaViewerDownloader.user.js
+      (Shonen Jump+, Tonari no YJ, Sunday Webry, Comic Days, Kurage Bunch, MAGCOMI, Gardo, Zenon+,
+       Web Action, Comic Trail, FEEL web, Earth Star, Comic Border, OGYAAA!!, Seasons, COMIC Y-OURS,
+       Ichicomi, TimeSquare, OUR FEEL, &Sofa, Morning Two, 月マガ基地, Biblio Sirius, Bunch Kai).
+   2. SpeedBinb Engine (Voyager): Gom Cmoa, Yanmaga, Gaugau... trong 1 script SpeedBinbDownloader.user.js
+      dùng chung decoder SpeedBinbTools.js.
+   3. Comici+ Engine (Comici): Gom ~28 web tạp chí bản quyền trong 1 script Comici+Downloader.user.js
+      (Champion Cross, Young Animal, Comic Growl, HERO'S Web, Comic Ride, Manga Bang Comics,
+       Hana to Yume, Big Comics, Takecomic, Hayacomic, MAGKAN, G-Comi, Comic PASH! neo, KimiComi,
+       Comic Room Base, Comirela, BiBiBi Comic, Mangalt, Rimacomi+, Asacomi, Namicomi, Pia Comic,
+       Comic J-N Books, Booklista Studio, Manga Zegra...).
+
+B. NHÓM NỀN TẢNG ĐỘC LẬP / ENGINE RIÊNG:
+   - BookWalker (ACCESS Publus / NFBR - Silent Iframe, Fallback 2K 1440x2048)
+   - EbookJapan (Yahoo Japan - React Fiber / Loader Shuffle, Zero-taint Canvas)
+   - Piccoma (Kakao - Wasm dd + 50px Tile Scramble)
+   - Pocket Shonen Magazine (MagaPoke - PRNG Xorshift 4x4 thuần JS)
+   - Manga-One (Shogakukan - AES-CBC Hardware Decrypt qua crypto.subtle)
+   - Niconico Manga (Dwango/Kadokawa - XOR 8-byte Cyclic Decrypt, WIN.args fast-path)
+   - K MANGA (Kodansha US - PRNG Xorshift 4x4 Grid) [Đang chờ làm]
+   - Amazon Kindle (Amazon - Xử lý sau cùng)
+
+C. NHÓM ẢNH TĨNH / RAW ZERO-COPY:
+   - Shonen Jump Rookie (`JumpRookieDownloader.user.js`)
+   - Comici.jp Articles (`ComiciJPDownloader.user.js`)
+
+
+5. QUY TRÌNH PHÁT TRIỂN & TEST (DEVELOPMENT WORKFLOW v3.0)
+--------------------------------------------------------------------------------
+A. CẤU HÌNH LOCAL SERVER:
+   - Chạy lệnh tại thư mục gốc của repo: `npx serve . -p 8080 --cors`
+   - Server phát file tại: `http://127.0.0.1:8080/`
+
+B. SCRIPT "DEV BRIDGE" V3.0 (CẦU NỐI PROXY TRONG SUỐT):
+   - File: `Manga Downloader DEV Bridge` (~50 dòng siêu gọn).
+   - Cơ chế:
+     + Không chứa danh sách domain hay script configs (Tránh nhân bản code).
+     + Khi 8080 BẬT: Hook `GM_xmlhttpRequest` để tự động bẻ lái mọi request CDN 
+       `https://cdn.jsdelivr.net/gh/...` về `http://127.0.0.1:8080/...`, sau đó nạp file `MangaDownloader.user.js` từ local.
+     + Hỗ trợ Iframe đặc thù của EbookJapan:
+       `const isBViewer = window.location.pathname.startsWith('/bviewer');`
+       `if (window.top !== window.self && !isBViewer) return;`
+     + Khi 8080 TẮT: Tự động chạy chế độ Production, lấy commit SHA mới nhất từ GitHub.
+     + Duy nhất 1 nguồn chân lý: Chỉ cần sửa file `MangaDownloader.user.js` là DEV Bridge tự ăn theo 100%.
+
+C. BẢN PRODUCTION TRÊN GITHUB / RELEASE (`MangaDownloader.user.js`):
+   - 100% chỉ chứa link CDN jsDelivr sạch sẽ.
+
+
+6. NHỮNG VIỆC CẦN THỰC HIỆN TIẾP THEO (NEXT STEPS)
+--------------------------------------------------------------------------------
+1. Refactor `KMANGADownloader.user.js` sang v2.0 (Kodansha US - PRNG Xorshift 4x4 Grid, chuẩn module cores).
+2. Xử lý `AmazonDownloader.user.js` (Amazon Kindle - Độc lập, xử lý sau cùng).
+3. Kiểm tra tổng thể toàn bộ hệ sinh thái trước khi đóng gói Release v2.0.
+================================================================================

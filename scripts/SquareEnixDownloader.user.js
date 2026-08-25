@@ -64,7 +64,7 @@
     
       // Vẫn thuộc web của Square Enix
       "/gangan/":               { name: "Shounen Gangan", top: "70px",  color: "#38b6e6", bg: "#ffffff", text: "#0284c7", sub: "SQUARE ENIX" },
-      "/gfantasy/":             { name: "G Fantasy",      top: "70px",  color: "#a855f7", bg: "#18181b", text: "#c084fc", sub: "SQUARE ENIX" },
+      "/gfantasy/":             { name: "GFantasy",      top: "70px",  color: "#a855f7", bg: "#18181b", text: "#c084fc", sub: "SQUARE ENIX" },
       "/joker/":                { name: "Gangan Joker",   top: "70px",  color: "#18181b", bg: "#ffffff", text: "#18181b", sub: "SQUARE ENIX" },
       "/yg/":                   { name: "Young Gangan",   top: "110px", color: "#e11d48", bg: "#ffffff", text: "#e11d48", sub: "SQUARE ENIX" },
       "/biggangan/":            { name: "Big Gangan",     top: "80px",  color: "#78be20", bg: "#ffffff", text: "#4c7c13", sub: "SQUARE ENIX" },

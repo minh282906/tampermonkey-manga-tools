@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         GigaViewer Universal Downloader
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
-// @version      2.0.0
+// @version      2.0.1
 // @icon         https://files.catbox.moe/tpd5zq.png
-// @description  Tải manga trên hơn 24 nền tảng GigaViewer (Hatena) siêu tốc qua API trực tiếp.
+// @description  Tải manga trên gần 30 nền tảng
 // @author       anonymous & AI
 // @match        https://comic-action.com/*
 // @match        https://comic-days.com/*
@@ -98,7 +98,7 @@
     "andsofa.com":          { name: "&Sofa",          top: "108px", color: "#656a73", bg: "#ffffff", text: "#18181b", match: ["andsofa", "アンドソファ"] },
     "morningtwo.com":       { name: "Morning Two",    top: "100px", color: "#2cb3ab", bg: "#ffffff", text: "#1e8780", match: ["morningtwo", "モーニング"] },
     "getsumagakichi.com":   { name: "月マガ基地",      top: "96px" , color: "#ffffff", bg: "#000000", text: "#ffffff", match: ["getsumagakichi", "gmagakichi", "月マガ基地"] },
-    "bibliosirius.com":     { name: "Biblio Sirius",  top: "160px", color: "#723E2B", bg: "#F7DEAC", text: "#5a180c", match: ["bibliosirius", "ビブリオシリウス"] },
+    "bibliosirius.com":     { name: "Biblio Sirius",  top: "165px", color: "#723E2B", bg: "#F7DEAC", text: "#5a180c", match: ["bibliosirius", "ビブリオシリウス"] },
 
     // 2. Tạp chí con trên Kurage Bunch
     "comicbunch-kai.com":   { name: "Bunch Kai",      top: "96px" , color: "#EFA20B", bg: "#ffffff", text: "#b4740e", match: ["comicbunch", "バンチkai", "コミックバンチ"] },
@@ -180,7 +180,8 @@
     return str
       .replace(/[\r\n\t]+/g, ' ')
       .replace(/\s{2,}/g, ' ')
-      .replace(/【[^】]*】/g, '')
+      .replace(/[【\[［](第\s*[0-9０-９IVXLCDMivxlcdm一二三四五六七八九十百千万\s\-\–\—\ー\~〜\.]+(?:話|巻|章|節|部|エピソード|前編|中編|後編)?)[】\]］]/g, '$1 ')
+      .replace(/[【\[［][^】\]］]*[】\]］]/g, '')
       .replace(/[\\/*?:"<>|]/g, '')
       .trim();
   }
@@ -218,7 +219,16 @@
         txt.innerHTML = raw;
         raw = txt.value;
       }
-      return JSON.parse(raw);
+      const json = JSON.parse(raw);
+
+      // KIỂM TRA ID: Nếu dữ liệu trong DOM vẫn là của chương cũ -> bỏ qua để đợi web cập nhật
+      const currentEpId = getEpisodeId();
+      const dataEpId = String(json?.readableProduct?.id || json?.episode?.id || '');
+      if (currentEpId && dataEpId && currentEpId !== "GigaViewer_Episode" && dataEpId !== currentEpId) {
+        return null;
+      }
+
+      return json;
     } catch (e) {
       return null;
     }
@@ -230,15 +240,23 @@
       let seriesTitle = cleanString(manifestSeriesTitle);
       let episodeTitle = cleanString(manifestTitle);
 
+      // Cắt bỏ phần quảng cáo sau dấu gạch chéo ／ ở cả tên truyện và tên chương
+      if (seriesTitle.includes('／') || seriesTitle.includes('/')) {
+        seriesTitle = seriesTitle.split(/[／/]/)[0].trim();
+      }
+      if (episodeTitle.includes('／') || episodeTitle.includes('/')) {
+        episodeTitle = episodeTitle.split(/[／/]/)[0].trim();
+      }
+
       // 1. Phân tích bóc tách từ DOM nếu manifest bị trống
       if (!seriesTitle) {
         const sEl = DOC.querySelector('.series-header-title, .series-title, [class*="series-title"], .series-title-text');
-        if (sEl) seriesTitle = cleanString(sEl.textContent);
+        if (sEl) seriesTitle = cleanString(sEl.textContent.split(/[／/]/)[0]);
       }
 
       if (!episodeTitle) {
         const eEl = DOC.querySelector('.episode-header-title, .episode-title, [class*="episode-title"], .episode-header-title-text');
-        if (eEl) episodeTitle = cleanString(eEl.textContent);
+        if (eEl) episodeTitle = cleanString(eEl.textContent.split(/[／/]/)[0]);
       }
 
       // 2. Dự phòng phân tích từ document.title
@@ -249,19 +267,21 @@
         // Nhận diện cả số tiếng Anh lẫn số tiếng Nhật (０-９) và số La Mã
         const match = raw.match(/^(.*?)\s+((?:第\s*)?[0-9０-９IVXLCDMivxlcdm一二三四五六七八九十百千万]+\s*(?:話|巻|章|節|部|エピソード|前編|中編|後編)?.*)$/i);
         if (match) {
-          if (!seriesTitle) seriesTitle = cleanString(match[1]);
-          if (!episodeTitle) episodeTitle = cleanString(match[2]);
+          if (!seriesTitle) seriesTitle = cleanString(match[1].split(/[／/]/)[0]);
+          if (!episodeTitle) episodeTitle = cleanString(match[2].split(/[／/]/)[0]);
         } else {
-          if (!seriesTitle) seriesTitle = cleanString(raw);
+          if (!seriesTitle) seriesTitle = cleanString(raw.split(/[／/]/)[0]);
           if (!episodeTitle) episodeTitle = getEpisodeId();
         }
       }
 
       // 3. Tự động cắt bỏ tên truyện nếu nó bị lặp lại bên trong episodeTitle
       let baseSeries = seriesTitle.replace(/\s*[0-9０-９]+\s*巻.*$/i, '').trim();
-      if (baseSeries && episodeTitle.startsWith(baseSeries)) {
-        episodeTitle = cleanString(episodeTitle.substring(baseSeries.length));
+      if (baseSeries && episodeTitle.includes(baseSeries)) {
+        episodeTitle = cleanString(episodeTitle.replace(baseSeries, ''));
       }
+
+      episodeTitle = episodeTitle.replace(/^[・･\s-]+|[・･\s-]+$/g, '').trim();
 
       if (seriesTitle && episodeTitle && !seriesTitle.includes(episodeTitle)) {
         return `${seriesTitle} - ${episodeTitle}`;
@@ -523,6 +543,7 @@
     }
 
     if (data && data.pages?.length > 0) {
+      await sleep(100);
       state.chapterData = data;
       if (ui) {
         ui.updateProgress({

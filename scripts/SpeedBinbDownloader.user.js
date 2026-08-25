@@ -1,13 +1,15 @@
 // ==UserScript==
 // @name         SpeedBinb Universal Downloader
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
-// @version      2.0.0
+// @version      2.2.0
 // @icon         https://files.catbox.moe/tpd5zq.png
-// @description  Tải manga trên các nền tảng SpeedBinb (Comic Cmoa, Yanmaga, Gaugau Futabanet...).
+// @description  Tải manga trên các nền tảng SpeedBinb (Booklive, Comic Cmoa, Yanmaga, Gaugau Futabanet, ...).
 // @author       anonymous & AI
 // @match        https://www.cmoa.jp/bib/speedreader/*
 // @match        https://yanmaga.jp/*
 // @match        https://gaugau.futabanet.jp/*
+// @match        https://booklive.jp/*
+// @match        https://*.booklive.jp/*
 // @run-at       document-start
 // @grant        unsafeWindow
 // @grant        GM_xmlhttpRequest
@@ -19,6 +21,8 @@
 // @connect      *.yanmaga.jp
 // @connect      gaugau.futabanet.jp
 // @connect      *.futabanet.jp
+// @connect      booklive.jp
+// @connect      *.booklive.jp
 //
 // --- TỰ ĐỘNG NẠP KHI CÀI ĐẶT ĐỘC LẬP QUA JSDELIVR ---
 // @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/cores/PureZipWriter.js
@@ -36,7 +40,7 @@
    * ========================================================================= */
   const CONFIG = {
     MAX_CONCURRENT: 6,   // 6 luồng tải & giải mã song song qua API
-    JPEG_QUALITY: 0.95   // Chất lượng xuất JPG nếu tick chọn
+    JPEG_QUALITY: 0.95   // Chất lượng xuất JPG nếu chọn
   };
 
   const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;
@@ -54,7 +58,7 @@
   };
 
   /* =========================================================================
-   * BỘ HỖ TRỢ XỬ LÝ CHUỖI & TÊN FILE CHUẨN (GOLDEN RULES)
+   * BỘ HỖ TRỢ XỬ LÝ CHUỖI & TÊN FILE
    * ========================================================================= */
   function cleanString(str) {
     if (!str) return "";
@@ -89,11 +93,18 @@
       }
     }
 
+    // 1. Trường hợp truyện có Chap lẻ ([Tên Truyện] - [Tên Chap])
     if (cleanSeries && cleanEpisode && !cleanSeries.includes(cleanEpisode)) {
       return `${cleanSeries} - ${cleanEpisode}`;
     } else if (cleanSeries && cleanEpisode) {
       return cleanEpisode;
     } else if (cleanSeries) {
+      // 2. Trường hợp là Tạp chí / Tập truyện đầy đủ (đã có sẵn số kỳ/số tập/năm tháng)
+      // Ví dụ: 2026年9月号, 13巻, No.35, 第10話... -> Giữ nguyên tên sạch, BỎ ID thừa
+      const hasIssueOrVol = /(?:[0-9０-９]+(?:\s*年\s*[0-9０-９]+\s*月)?\s*号|[0-9０-９]+\s*巻|第\s*[0-9０-９]+\s*(?:話|巻)|(?:No|Vol)\.?\s*[0-9０-９]+)/i.test(cleanSeries);
+      if (hasIssueOrVol) {
+        return cleanSeries;
+      }
       return `${cleanSeries} - ${fallbackId}`;
     }
     return `SpeedBinb_${fallbackId}`;
@@ -373,7 +384,157 @@
     }
   };
 
-  const ADAPTERS = [CmoaAdapter, YanmagaAdapter, GaugauAdapter];
+  // 4. BOOKLIVE (booklive.jp)
+  const BookliveAdapter = {
+    id: "booklive",
+    name: "BookLive",
+    theme: { color: "#D44C00", bg: "#ffffff", text: "#D44C00", top: "43px" },
+
+    isMatch: (url) => {
+      if (!url.includes("booklive.jp")) return false;
+      return (
+        url.includes("/bviewer") ||
+        url.includes("cid=") ||
+        Boolean(new URL(url, WIN.location.origin).searchParams.get('cid')) ||
+        Boolean(DOC.getElementById('content')?.getAttribute('data-ptbinb-cid'))
+      );
+    },
+
+    getCid: () => {
+      try {
+        const urlObj = new URL(WIN.location.href);
+        const cid = urlObj.searchParams.get('cid');
+        if (cid && cid.trim()) return cid.trim();
+      } catch (e) {}
+
+      const attr = DOC.getElementById('content')?.getAttribute('data-ptbinb-cid') || DOC.getElementById('content')?.dataset?.ptbinbCid;
+      if (attr && attr.trim()) return attr.trim();
+
+      const pathMatch = WIN.location.pathname.match(/bviewer\/(?:s\/)?([0-9a-zA-Z_-]+)/);
+      if (pathMatch && pathMatch[1] && pathMatch[1] !== 's' && pathMatch[1] !== 'index') {
+        return pathMatch[1].trim();
+      }
+
+      return "Booklive_Episode";
+    },
+
+    fetchManifest: async function(cid, Tools, Utils) {
+      const randomString = Tools.generateRandomString32(cid);
+      const infoUrl = `https://booklive.jp/bib-api/bibGetCntntInfo?cid=${cid}&dmytime=${Date.now()}&k=${randomString}`;
+
+      const infoBuffer = await Utils.fetchBuffer(infoUrl);
+      const infoJson = JSON.parse(new TextDecoder().decode(infoBuffer));
+      const data = infoJson.items?.[0];
+      if (!data?.ContentsServer) throw new Error("Không lấy được ContentsServer từ BookLive.");
+
+      const isTrial = data.ContentsServer.includes('trial');
+      const config = {
+        title: data.Title || "",
+        subTitle: data.SubTitle || "",
+        contentServer: data.ContentsServer,
+        p: data.p || "",
+        isTrial: isTrial,
+        ctbl: Tools.getDecryptedTable(cid, randomString, data.ctbl),
+        ptbl: Tools.getDecryptedTable(cid, randomString, data.ptbl)
+      };
+
+      let ttx = "";
+      if (isTrial) {
+        const contentUrl = `${config.contentServer}/content.js?dmytime=${Date.now()}`;
+        const contentBuffer = await Utils.fetchBuffer(contentUrl);
+        const rawText = new TextDecoder().decode(contentBuffer);
+        const jsonMatch = rawText.slice(rawText.indexOf('{'), rawText.lastIndexOf('}') + 1);
+        const contentData = JSON.parse(jsonMatch);
+        ttx = contentData.ttx || "";
+      } else {
+        const contentUrl = `${config.contentServer}/sbcGetCntnt.php?cid=${cid}&p=${config.p}&vm=1&dmytime=${Date.now()}`;
+        const contentBuffer = await Utils.fetchBuffer(contentUrl);
+        const contentData = JSON.parse(new TextDecoder().decode(contentBuffer));
+        ttx = contentData.ttx || "";
+      }
+
+      // Mỗi thẻ <t-img> trong TTX là 1 trang truyện độc lập
+      const seen = new Set();
+      const files = [];
+
+      try {
+        const doc = (new DOMParser()).parseFromString(ttx, 'text/html');
+        const imgEls = doc.querySelectorAll('t-img, img');
+        imgEls.forEach((el) => {
+          const filename = el.getAttribute('src');
+          const w = parseInt(el.getAttribute('orgwidth'), 10) || parseInt(el.getAttribute('width'), 10) || 0;
+          const h = parseInt(el.getAttribute('orgheight'), 10) || parseInt(el.getAttribute('height'), 10) || 0;
+
+          if (filename && !seen.has(filename)) {
+            seen.add(filename);
+            const src = isTrial
+              ? `${config.contentServer}/${filename}/M_H.jpg`
+              : `${config.contentServer}/sbcGetImg.php?cid=${cid}&src=${encodeURIComponent(filename)}&p=${config.p}&vm=1`;
+
+            files.push({
+              pageNo: files.length + 1,
+              filename: filename,
+              width: w,
+              height: h,
+              src: src
+            });
+          }
+        });
+      } catch (err) {
+        console.warn("[Booklive] Lỗi parse DOM TTX:", err);
+      }
+
+      // Dự phòng bằng Regex
+      if (files.length === 0) {
+        for (const match of ttx.matchAll(/<(?:t-img|img)[^>]+src=["']?([^"'\s>]+)["']?[^>]*>/gi)) {
+          const tagStr = match[0];
+          const filename = match[1];
+          const wMatch = tagStr.match(/orgwidth=["']?(\d+)["']?/i) || tagStr.match(/width=["']?(\d+)["']?/i);
+          const hMatch = tagStr.match(/orgheight=["']?(\d+)["']?/i) || tagStr.match(/height=["']?(\d+)["']?/i);
+
+          if (filename && !seen.has(filename)) {
+            seen.add(filename);
+            const w = wMatch ? parseInt(wMatch[1], 10) : 0;
+            const h = hMatch ? parseInt(hMatch[1], 10) : 0;
+            const src = isTrial
+              ? `${config.contentServer}/${filename}/M_H.jpg`
+              : `${config.contentServer}/sbcGetImg.php?cid=${cid}&src=${encodeURIComponent(filename)}&p=${config.p}&vm=1`;
+
+            files.push({
+              pageNo: files.length + 1,
+              filename: filename,
+              width: w,
+              height: h,
+              src: src
+            });
+          }
+        }
+      }
+
+      return { config, files };
+    },
+
+    getTitle: function(config, cid) {
+      let series = config.title || "";
+      let episode = config.subTitle || "";
+
+      if (!series) {
+        let raw = DOC.title || "";
+        raw = raw.split(/[|｜]/)[0].trim();
+        raw = raw.replace(/^【.*?】\s*/g, '').trim();
+        series = raw;
+      }
+
+      if (episode) {
+        const epMatch = episode.match(/((?:第\s*)?[0-9０-９IVXLCDMivxlcdm一二三四五六七八九十百千万]+\s*(?:話|巻|章|節|部|エピソード|分冊版|単話)?.*)$/i);
+        if (epMatch) episode = epMatch[1];
+      }
+
+      return resolveCleanFileName(series, episode, cid);
+    }
+  };
+
+  const ADAPTERS = [CmoaAdapter, YanmagaAdapter, GaugauAdapter, BookliveAdapter];
 
   function resolveSiteAdapter() {
     const currentUrl = WIN.location.href;
@@ -386,7 +547,7 @@
   }
 
   /* =========================================================================
-   * GIAO DIỆN UI UNIVERSAL 2 TẦNG (TÊN BRAND + SPEEDBINB)
+   * GIAO DIỆN UI UNIVERSAL 2 TẦNG
    * ========================================================================= */
   function getUI() {
     if (state.ui) return state.ui;
@@ -410,7 +571,6 @@
         }
       });
 
-      // Tùy biến Header 2 tầng: Dòng 1 Brand (13px Bold), Dòng 2 SPEEDBINB (9px Uppercase)
       if (state.ui?.panel) {
         const titleEl = state.ui.panel.querySelector('[style*="font: 800 13px"], [style*="font:800 13px"]');
         if (titleEl) {
@@ -425,7 +585,7 @@
   }
 
   /* =========================================================================
-   * LÕI GIẢI MÃ MA TRẬN SPEEDBINB TRÊN CANVAS (DÙNG CHUNG)
+   * LÕI GIẢI MÃ MA TRẬN SPEEDBINB TRÊN CANVAS
    * ========================================================================= */
   async function descrambleSpeedBinbImage(fileObj, config, isJpg) {
     const Tools = window.SpeedBinbTools || globalThis.SpeedBinbTools;
@@ -434,17 +594,23 @@
     const rawBuffer = await Utils.fetchBuffer(fileObj.src);
     const img = await Utils.loadImage(rawBuffer);
 
-    const canvas = DOC.createElement('canvas');
-    canvas.width = fileObj.width;
-    canvas.height = fileObj.height;
-
-    const ctx = canvas.getContext('2d', { alpha: false });
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, fileObj.width, fileObj.height);
-
     const key = Tools.getDecryptionKey(fileObj.filename, config.ctbl, config.ptbl);
     const decoder = new Tools.CoordDecoder(key[0], key[1]);
     const coords = decoder.getCoords(img);
+
+    let destW = 0, destH = 0;
+    for (const { destX, destY, width, height } of coords) {
+      if (destX + width > destW) destW = destX + width;
+      if (destY + height > destH) destH = destY + height;
+    }
+
+    const canvas = DOC.createElement('canvas');
+    canvas.width = destW || img.width;
+    canvas.height = destH || img.height;
+
+    const ctx = canvas.getContext('2d', { alpha: false });
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     for (const { srcX, srcY, destX, destY, width, height } of coords) {
       ctx.drawImage(img, srcX, srcY, width, height, destX, destY, width, height);

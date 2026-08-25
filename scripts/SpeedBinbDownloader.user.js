@@ -40,7 +40,7 @@
    * ========================================================================= */
   const CONFIG = {
     MAX_CONCURRENT: 6,   // 6 luồng tải & giải mã song song qua API
-    JPEG_QUALITY: 0.95   // Chất lượng xuất JPG nếu chọn
+    JPEG_QUALITY: 0.95   // Chất lượng xuất JPG nếu tick chọn
   };
 
   const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;
@@ -58,7 +58,7 @@
   };
 
   /* =========================================================================
-   * BỘ HỖ TRỢ XỬ LÝ CHUỖI & TÊN FILE
+   * BỘ HỖ TRỢ XỬ LÝ CHUỖI & TÊN FILE CHUẨN (GOLDEN RULES)
    * ========================================================================= */
   function cleanString(str) {
     if (!str) return "";
@@ -93,13 +93,13 @@
       }
     }
 
-    // 1. Trường hợp truyện có Chap lẻ ([Tên Truyện] - [Tên Chap])
+    // 1. Trường hợp truyện có Chap lẻ (Chuẩn Golden Rule: [Tên Truyện] - [Tên Chap])
     if (cleanSeries && cleanEpisode && !cleanSeries.includes(cleanEpisode)) {
       return `${cleanSeries} - ${cleanEpisode}`;
     } else if (cleanSeries && cleanEpisode) {
       return cleanEpisode;
     } else if (cleanSeries) {
-      // 2. Trường hợp là Tạp chí / Tập truyện đầy đủ (đã có sẵn số kỳ/số tập/năm tháng)
+      // 2. Trường hợp là Tạp chí / Tập sách đầy đủ (đã có sẵn số kỳ/số tập/năm tháng)
       // Ví dụ: 2026年9月号, 13巻, No.35, 第10話... -> Giữ nguyên tên sạch, BỎ ID thừa
       const hasIssueOrVol = /(?:[0-9０-９]+(?:\s*年\s*[0-9０-９]+\s*月)?\s*号|[0-9０-９]+\s*巻|第\s*[0-9０-９]+\s*(?:話|巻)|(?:No|Vol)\.?\s*[0-9０-９]+)/i.test(cleanSeries);
       if (hasIssueOrVol) {
@@ -462,8 +462,8 @@
         const imgEls = doc.querySelectorAll('t-img, img');
         imgEls.forEach((el) => {
           const filename = el.getAttribute('src');
-          const w = parseInt(el.getAttribute('orgwidth'), 10) || parseInt(el.getAttribute('width'), 10) || 0;
-          const h = parseInt(el.getAttribute('orgheight'), 10) || parseInt(el.getAttribute('height'), 10) || 0;
+          const w = parseInt(el.getAttribute('orgwidth'), 10) || 0;
+          const h = parseInt(el.getAttribute('orgheight'), 10) || 0;
 
           if (filename && !seen.has(filename)) {
             seen.add(filename);
@@ -547,7 +547,7 @@
   }
 
   /* =========================================================================
-   * GIAO DIỆN UI UNIVERSAL 2 TẦNG
+   * GIAO DIỆN UI UNIVERSAL 2 TẦNG (TÊN BRAND + SPEEDBINB)
    * ========================================================================= */
   function getUI() {
     if (state.ui) return state.ui;
@@ -571,6 +571,7 @@
         }
       });
 
+      // Tùy biến Header 2 tầng: Dòng 1 Brand (13px Bold), Dòng 2 SPEEDBINB (9px Uppercase)
       if (state.ui?.panel) {
         const titleEl = state.ui.panel.querySelector('[style*="font: 800 13px"], [style*="font:800 13px"]');
         if (titleEl) {
@@ -585,7 +586,7 @@
   }
 
   /* =========================================================================
-   * LÕI GIẢI MÃ MA TRẬN SPEEDBINB TRÊN CANVAS
+   * LÕI GIẢI MÃ MA TRẬN SPEEDBINB TRÊN CANVAS (DÙNG CHUNG)
    * ========================================================================= */
   async function descrambleSpeedBinbImage(fileObj, config, isJpg) {
     const Tools = window.SpeedBinbTools || globalThis.SpeedBinbTools;
@@ -598,6 +599,7 @@
     const decoder = new Tools.CoordDecoder(key[0], key[1]);
     const coords = decoder.getCoords(img);
 
+    // 1. Tính kích thước ma trận giải mã chính xác tuyệt đối
     let destW = 0, destH = 0;
     for (const { destX, destY, width, height } of coords) {
       if (destX + width > destW) destW = destX + width;
@@ -616,12 +618,52 @@
       ctx.drawImage(img, srcX, srcY, width, height, destX, destY, width, height);
     }
 
+    // 2. TỰ ĐỘNG GỌT SẠCH VIỀN ĐỆM ĐEN CỦA CDN (XÓA LỆCH KHUNG)
+    let realW = canvas.width;
+    let realH = canvas.height;
+
+    // Quét mép phải tìm điểm kết thúc tranh thật (bỏ dải đen ở rìa phải)
+    for (let x = canvas.width - 1; x >= 0; x--) {
+      const p1 = ctx.getImageData(x, 10, 1, 1).data;
+      const p2 = ctx.getImageData(x, Math.floor(canvas.height / 2), 1, 1).data;
+      const p3 = ctx.getImageData(x, canvas.height - 10, 1, 1).data;
+      if ((p1[0] | p1[1] | p1[2]) > 0 || (p2[0] | p2[1] | p2[2]) > 0 || (p3[0] | p3[1] | p3[2]) > 0) {
+        realW = x + 1;
+        break;
+      }
+    }
+
+    // Quét mép dưới tìm điểm kết thúc tranh thật (bỏ dải đen ở rìa dưới)
+    for (let y = canvas.height - 1; y >= 0; y--) {
+      const p1 = ctx.getImageData(10, y, 1, 1).data;
+      const p2 = ctx.getImageData(Math.floor(canvas.width / 2), y, 1, 1).data;
+      const p3 = ctx.getImageData(canvas.width - 10, y, 1, 1).data;
+      if ((p1[0] | p1[1] | p1[2]) > 0 || (p2[0] | p2[1] | p2[2]) > 0 || (p3[0] | p3[1] | p3[2]) > 0) {
+        realH = y + 1;
+        break;
+      }
+    }
+
+    let outCanvas = canvas;
+    if (realW < canvas.width || realH < canvas.height) {
+      const trimmed = DOC.createElement('canvas');
+      trimmed.width = realW;
+      trimmed.height = realH;
+      const tCtx = trimmed.getContext('2d');
+      tCtx.drawImage(canvas, 0, 0);
+      outCanvas = trimmed;
+    }
+
     const mimeType = isJpg ? 'image/jpeg' : 'image/png';
     const outExt = isJpg ? 'jpg' : 'png';
-    const blob = await new Promise(r => canvas.toBlob(r, mimeType, CONFIG.JPEG_QUALITY));
+    const blob = await new Promise(r => outCanvas.toBlob(r, mimeType, CONFIG.JPEG_QUALITY));
 
     canvas.width = 0;
     canvas.height = 0;
+    if (outCanvas !== canvas) {
+      outCanvas.width = 0;
+      outCanvas.height = 0;
+    }
 
     return {
       fileName: `${fileObj.pageNo}.${outExt}`,

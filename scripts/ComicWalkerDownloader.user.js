@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ComicWalker Downloader
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
-// @version      1.0.0
+// @version      1.0.2
 // @icon         https://comic-walker.com/favicon.ico
 // @description  Tải manga chất lượng gốc trên ComicWalker.
 // @author       anonymous & AI
@@ -90,7 +90,7 @@
    * 2. BỘ HỖ TRỢ XỬ LÝ CHUỖI & TÊN FILE
    * ========================================================================= */
   function isEpisodeUrl() {
-    return /\/detail\/[^\/]+\/episodes\/[^\/?#]+/.test(WIN.location.pathname) || /\/contents\/viewer/.test(WIN.location.pathname);
+    return /\/detail\/[^\/?#]+/.test(WIN.location.pathname) || /\/contents\/viewer/.test(WIN.location.pathname);
   }
 
   function cleanString(str) {
@@ -109,6 +109,9 @@
 
     const match = WIN.location.pathname.match(/\/detail\/([^\/]+)\/episodes\/([^\/?#]+)/);
     if (match) return { workCode: match[1], episodeCode: match[2], episodeId: "" };
+
+    const workMatch = WIN.location.pathname.match(/\/detail\/([^\/?#]+)/);
+    if (workMatch) return { workCode: workMatch[1], episodeCode: "", episodeId: "" };
 
     return { workCode: "", episodeCode: "", episodeId: "" };
   }
@@ -144,12 +147,10 @@
       let s = cleanString(seriesTitle);
       let e = cleanString(episodeTitle);
 
-      // Xóa số tập bị dính ở đuôi tên truyện (ví dụ: "異世界魔法少女ラジカル☆ハルナ　１" -> xóa "１")
       s = s.replace(/[\s\u3000]*[0-9０-９]+$/i, '').trim();
       s = s.replace(/（[^）]*(?:コミック|文庫|レーベル|出版|COMIC|WEB)[^）]*）$/i, '').trim();
       s = s.replace(/\([^)]*(?:コミック|文庫|レーベル|出版|COMIC|WEB)[^)]*\)$/i, '').trim();
 
-      // Cắt bỏ phần tên truyện nếu bị lặp lại trong tên chap
       if (s && e.startsWith(s)) {
         e = cleanString(e.substring(s.length));
       }
@@ -207,37 +208,65 @@
 
     const { workCode, episodeCode, episodeId: rawEpId } = getUrlCodes();
     let targetEpisodeId = rawEpId;
+    let targetEpisodeCode = episodeCode;
 
     let seriesTitle = "";
     let episodeTitle = "";
 
-    // 1. Nếu chỉ có workCode và episodeCode -> Lấy episodeId nội bộ
-    if (!targetEpisodeId && workCode && episodeCode) {
-      const epApiUrl = `https://comic-walker.com/api/contents/details/episode?workCode=${workCode}&episodeCode=${episodeCode}&episodeType=latest`;
+    // 1. Nếu chưa có episodeCode, thử tìm từ link chương đầu trên DOM
+    if (!targetEpisodeId && !targetEpisodeCode) {
+      const epLink = DOC.querySelector('a[href*="/episodes/"]');
+      if (epLink) {
+        const m = epLink.getAttribute('href')?.match(/\/episodes\/([^\/?#]+)/);
+        if (m) targetEpisodeCode = m[1];
+      }
+    }
+
+    // 2. Kéo API episode (hỗ trợ cả /detail/KC_... với episodeType=first hoặc episodeType=latest)
+    if (!targetEpisodeId && workCode) {
+      const epType = new URLSearchParams(WIN.location.search).get('episodeType') || (targetEpisodeCode ? 'latest' : 'first');
+      let epApiUrl = `https://comic-walker.com/api/contents/details/episode?workCode=${workCode}&episodeType=${epType}`;
+      if (targetEpisodeCode) epApiUrl += `&episodeCode=${targetEpisodeCode}`;
+
       try {
         const buf = await Utils.fetchBuffer(epApiUrl);
         const json = JSON.parse(new TextDecoder().decode(buf));
-        targetEpisodeId = json?.episode?.id || json?.id || "";
-        episodeTitle = json?.episode?.title || "";
+        targetEpisodeId = json?.episode?.id || json?.id || json?.episode?.episodeId || "";
+        episodeTitle = json?.episode?.title || json?.title || "";
         seriesTitle = json?.latestComic?.title || json?.work?.title || "";
       } catch (e) {}
     }
 
-    if (!targetEpisodeId) {
-      // Dự phòng lấy từ window.dataLayer
+    // 3. Dự phòng API work
+    if (!targetEpisodeId && workCode) {
+      const workApiUrl = `https://comic-walker.com/api/contents/details/work?workCode=${workCode}`;
       try {
-        const dataLayer = WIN.dataLayer || [];
-        const item = dataLayer.find(d => d.content_id || d.episode_id || d.episode_title);
-        if (item) {
-          if (!seriesTitle) seriesTitle = item.content_title || item.title || "";
-          if (!episodeTitle) episodeTitle = item.episode_title || "";
-        }
+        const buf = await Utils.fetchBuffer(workApiUrl);
+        const json = JSON.parse(new TextDecoder().decode(buf));
+        const epObj = json?.firstEpisode || json?.latestEpisode || json?.episodes?.[0] || json?.work?.episodes?.[0];
+        targetEpisodeId = epObj?.id || epObj?.episodeId || "";
+        if (!episodeTitle) episodeTitle = epObj?.title || "";
+        if (!seriesTitle) seriesTitle = json?.work?.title || json?.title || "";
       } catch (e) {}
+    }
+
+    // 4. Dự phòng __NEXT_DATA__
+    if (!targetEpisodeId) {
+      const nextEl = DOC.getElementById('__NEXT_DATA__');
+      if (nextEl) {
+        try {
+          const nextJson = JSON.parse(nextEl.textContent);
+          const pProps = nextJson?.props?.pageProps;
+          targetEpisodeId = pProps?.episode?.id || pProps?.episodeId || pProps?.firstEpisode?.id || "";
+          if (!episodeTitle) episodeTitle = pProps?.episode?.title || pProps?.firstEpisode?.title || "";
+          if (!seriesTitle) seriesTitle = pProps?.work?.title || "";
+        } catch (e) {}
+      }
     }
 
     if (!targetEpisodeId) throw new Error("Không thể xác định Episode ID của chương truyện.");
 
-    // 2. Kéo danh sách trang truyện từ API Viewer (Độ phân giải cao width:1284)
+    // 5. Kéo danh sách trang truyện từ API Viewer
     const viewerApiUrl = `https://comic-walker.com/api/contents/viewer?episodeId=${targetEpisodeId}&imageSizeType=width%3A1284`;
     const viewerBuf = await Utils.fetchBuffer(viewerApiUrl);
     const viewerData = JSON.parse(new TextDecoder().decode(viewerBuf));
@@ -246,7 +275,7 @@
       throw new Error("Dữ liệu trang từ API ComicWalker không hợp lệ.");
     }
 
-    // 3. Kéo thêm metadata thông tin tập để lấy tên truyện chuẩn
+    // 6. Kéo thêm metadata thông tin tập
     try {
       const jumpApiUrl = `https://comic-walker.com/api/contents/viewer-jump-forward?episodeId=${targetEpisodeId}`;
       const jumpBuf = await Utils.fetchBuffer(jumpApiUrl);
@@ -263,7 +292,7 @@
     let mainPageNo = 1;
     let prCount = 0;
 
-    // A. Nạp các trang truyện chính (mã hóa XOR)
+    // A. Trang truyện chính (XOR)
     for (const item of viewerData.manuscripts) {
       const imgUrl = item.drmImageUrl || item.url || item.src;
       if (!imgUrl) continue;
@@ -277,7 +306,7 @@
       });
     }
 
-    // B. Nạp toàn bộ ảnh PR thương mại cuối chương từ promotionsEnd
+    // B. Ảnh PR cuối chương
     const promoAds = viewerData.promotionsEnd || viewerData.data?.promotionsEnd;
     if (Array.isArray(promoAds)) {
       for (const promo of promoAds) {
@@ -386,7 +415,6 @@
       const Utils = window.MangaUtils || globalThis.MangaUtils;
       const zip = new ZipClass();
 
-      // Đính kèm file txt định danh ID tập tại thư mục gốc ZIP
       zip.addFile(`${getEpisodeIdMarker(data)}.txt`, new Uint8Array(0));
 
       if (ui) ui.updateProgress({ completed: 0, total: totalPages, status: "Đang tải..." });
@@ -426,7 +454,6 @@
 
     if (!isEpisodeUrl()) {
       if (ui?.panel) ui.panel.style.display = "none";
-      if (ui) ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
       return;
     }
 

@@ -300,6 +300,7 @@
     }
 
     if (pages.length > 0) {
+      await sleep(100);
       state.chapterData = pages;
       if (ui) {
         ui.updateProgress({

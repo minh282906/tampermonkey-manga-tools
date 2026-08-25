@@ -236,6 +236,7 @@
     }
 
     if (pages.length > 0) {
+      await sleep(100);
       state.chapterData = pages;
       ui?.updateProgress({ completed: 0, total: pages.length, status: "Sẵn sàng." });
     } else {

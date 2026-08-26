@@ -213,10 +213,10 @@
     name: "Yanmaga Web",
     theme: { color: "#eab308", bg: "#18181b", text: "#fde047", top: "76px" },
 
-    isMatch: (url) => url.includes("yanmaga.jp") && /^\/viewer\/comics\//.test(new URL(url).pathname),
+    isMatch: (url) => url.includes("yanmaga.jp") && /\/viewer\/comics\//.test(new URL(url).pathname),
 
     getCid: () => {
-      const contentEl = DOC.getElementById('content');
+      const contentEl = DOC.getElementById('content') || DOC.querySelector('[data-ptbinb-cid]');
       const cid = contentEl?.getAttribute('data-ptbinb-cid') || contentEl?.dataset?.ptbinbCid || new URLSearchParams(WIN.location.search).get("cid");
       return (cid && cid.trim()) ? cid.trim() : "Yanmaga_Episode";
     },
@@ -225,8 +225,21 @@
       const randomString = Tools.generateRandomString32(cid);
       const infoUrl = `https://yanmaga.jp/viewer/bibGetCntntInfo?cid=${cid}&dmytime=${Date.now()}&k=${randomString}&type=comics`;
 
-      const infoBuffer = await Utils.fetchBuffer(infoUrl);
-      const infoRes = JSON.parse(new TextDecoder().decode(infoBuffer)).items?.[0];
+      // Vòng lặp thử lại tối đa 5 lần nếu server phản hồi chậm
+      let infoRes = null;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        try {
+          const infoBuffer = await Utils.fetchBuffer(infoUrl);
+          const json = JSON.parse(new TextDecoder().decode(infoBuffer));
+          const data = json.items?.[0];
+          if (data?.ContentsServer) {
+            infoRes = data;
+            break;
+          }
+        } catch (e) {}
+        await sleep(200);
+      }
+
       if (!infoRes?.ContentsServer) throw new Error("Không lấy được ContentsServer từ Yanmaga.");
 
       const config = {
@@ -761,7 +774,16 @@
     if (ui?.panel) ui.panel.style.display = "block";
     if (ui) ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
 
-    const cid = adapter.getCid();
+    // CHỜ DOM HYDRATE (Nếu chưa có CID, chờ tối đa 2 giây để web kịp gắn #content vào DOM)
+    let cid = adapter.getCid();
+    if (!cid || cid.includes("Episode")) {
+      for (let i = 0; i < 20; i++) {
+        await sleep(100);
+        cid = adapter.getCid();
+        if (cid && !cid.includes("Episode")) break;
+      }
+    }
+
     if (!cid || cid.includes("Episode")) {
       if (ui) ui.updateProgress({ status: "Sẵn sàng." });
       return;

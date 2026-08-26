@@ -2,7 +2,7 @@
 // @name         SpeedBinb Universal Downloader
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
 // @version      2.2.0
-// @icon         https://files.catbox.moe/tpd5zq.png
+// @icon         https://www.voyager.co.jp/products/pt/images/service_logo_01.jpg
 // @description  Tải manga trên các nền tảng SpeedBinb (Booklive, Comic Cmoa, Yanmaga, Gaugau Futabanet, ...).
 // @author       anonymous & AI
 // @match        https://www.cmoa.jp/bib/speedreader/*

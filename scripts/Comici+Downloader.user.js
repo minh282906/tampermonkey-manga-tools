@@ -3,7 +3,7 @@
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
 // @version      2.0.0
 // @icon         https://files.catbox.moe/tpd5zq.png
-// @description  Tải manga trên 25+ nền tảng Comici+ (Champion Cross, Young Animal, HERO'S Web, Hana to Yume, Big Comics, Comic Ride, Manga Bang, Rimacomi+...) giải mã ma trận 4x4 trực tiếp trong RAM.
+// @description  Tải manga trên 25+ nền tảng Comici+ (Champion Cross, Young Animal, HERO'S Web, Hana to Yume, Big Comics, Comic Ride, Manga Bang, Rimacomi+...).
 // @author       anonymous & AI
 // @match        https://championcross.jp/*
 // @match        https://comic-growl.com/*

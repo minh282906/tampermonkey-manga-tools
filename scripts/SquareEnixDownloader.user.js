@@ -155,15 +155,22 @@
    * 3. BẢNG CẤU HÌNH THEME & GIAO DIỆN UNIVERSAL UI
    * ========================================================================= */
   const SITE_THEMES = {
-    "ganganonline.com":    { name: "Gangan ONLINE",  top: "50px",   color: "#6EC2EE", bg: "#ffffff", text: "#6EC2EE", sub: "SQUARE ENIX" },
-    "manga-up.com":        { name: "Manga UP!",      top: "143px",  color: "#FF5500", bg: "#ffffff", text: "#FF5500", sub: "SQUARE ENIX" },
-    "/gangan/":            { name: "Shounen Gangan", top: "70px",   color: "#38b6e6", bg: "#ffffff", text: "#0284c7", sub: "SQUARE ENIX" },
-    "/gfantasy/":          { name: "GFantasy",       top: "70px",   color: "#a855f7", bg: "#18181b", text: "#c084fc", sub: "SQUARE ENIX" },
-    "/joker/":             { name: "Gangan Joker",   top: "70px",   color: "#18181b", bg: "#ffffff", text: "#18181b", sub: "SQUARE ENIX" },
-    "/yg/":                { name: "Young Gangan",   top: "110px",  color: "#e11d48", bg: "#ffffff", text: "#e11d48", sub: "SQUARE ENIX" },
-    "/biggangan/":         { name: "Big Gangan",     top: "80px",   color: "#78be20", bg: "#ffffff", text: "#4c7c13", sub: "SQUARE ENIX" },
-    "/comiweb/":           { name: "Comiweb",        top: "70px",   color: "#e60012", bg: "#18181b", text: "#fca5a5", sub: "SQUARE ENIX" },
-    "global.manga-up.com": { name: "MANGAUP!",       top: "64px",   color: "#0D44B6", bg: "#ffffff", text: "#0D44B6", sub: "SQUARE ENIX" }
+    // Gangan ONLINE
+    "ganganonline.com":       { name: "Gangan ONLINE",  top: "50px",   color: "#6EC2EE", bg: "#ffffff", text: "#6EC2EE", sub: "SQUARE ENIX" },
+    
+    // Manga UP!
+    "manga-up.com":           { name: "Manga UP!",      top: "143px",  color: "#FF5500", bg: "#ffffff", text: "#FF5500", sub: "SQUARE ENIX" },
+  
+    // Vẫn thuộc web của Square Enix
+    "/gangan/":               { name: "Shounen Gangan", top: "70px",   color: "#38b6e6", bg: "#ffffff", text: "#0284c7", sub: "SQUARE ENIX" },
+    "/gfantasy/":             { name: "GFantasy",       top: "70px",   color: "#a855f7", bg: "#18181b", text: "#c084fc", sub: "SQUARE ENIX" },
+    "/joker/":                { name: "Gangan Joker",   top: "70px",   color: "#18181b", bg: "#ffffff", text: "#18181b", sub: "SQUARE ENIX" },
+    "/yg/":                   { name: "Young Gangan",   top: "110px",  color: "#e11d48", bg: "#ffffff", text: "#e11d48", sub: "SQUARE ENIX" },
+    "/biggangan/":            { name: "Big Gangan",     top: "80px",   color: "#78be20", bg: "#ffffff", text: "#4c7c13", sub: "SQUARE ENIX" },
+    "/comiweb/":              { name: "Comiweb",        top: "70px",   color: "#e60012", bg: "#18181b", text: "#fca5a5", sub: "SQUARE ENIX" },
+
+    // MANGAUP! (Bản toàn cầu)
+    "global.manga-up.com":    { name: "MANGAUP!",       top: "64px",  color: "#0D44B6", bg: "#ffffff", text: "#0D44B6", sub: "SQUARE ENIX" },
   };
 
   function resolveSiteTheme() {
@@ -491,7 +498,7 @@
   }
 
   /* =========================================================================
-   * 7. BÓC TÁCH MANIFEST: MANGA UP! (BẢN NHẬT)
+   * 7. BÓC TÁCH MANIFEST: MANGA UP!
    * ========================================================================= */
   async function extractMangaUp() {
     const Utils = window.MangaUtils || globalThis.MangaUtils;

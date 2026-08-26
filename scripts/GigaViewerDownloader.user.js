@@ -171,7 +171,7 @@
    * HELPER FUNCTIONS & XỬ LÝ TIÊU ĐỀ CHUẨN
    * ========================================================================= */
   function isEpisodeUrl() {
-    return /\/episode\/\d+/.test(WIN.location.pathname);
+    return /\/(?:episode|volume)\/\d+/.test(WIN.location.pathname);
   }
 
   function cleanString(str) {
@@ -187,7 +187,7 @@
 
   function getEpisodeId() {
     try {
-      const match = WIN.location.pathname.match(/\/episode\/(\d+)/);
+      const match = WIN.location.pathname.match(/\/(?:episode|volume)\/(\d+)/);
       if (match && match[1]) return match[1];
     } catch (e) {}
     return "GigaViewer_Episode";
@@ -209,7 +209,7 @@
 
   function getParsedEpisodeJson() {
     try {
-      const el = DOC.getElementById('episode-json');
+      const el = DOC.getElementById('episode-json') || DOC.getElementById('volume-json') || DOC.querySelector('script[id$="-json"]');
       if (!el) return null;
 
       let raw = el.getAttribute('data-value') || el.textContent || '';
@@ -220,9 +220,9 @@
       }
       const json = JSON.parse(raw);
 
-      // KIỂM TRA ID: Nếu dữ liệu trong DOM vẫn là của chương cũ -> bỏ qua để đợi web cập nhật
+      // Kiểm tra ID để tránh nhận nhầm data của tập trước khi chuyển trang
       const currentEpId = getEpisodeId();
-      const dataEpId = String(json?.readableProduct?.id || json?.episode?.id || '');
+      const dataEpId = String(json?.readableProduct?.id || json?.episode?.id || json?.volume?.id || json?.id || '');
       if (currentEpId && dataEpId && currentEpId !== "GigaViewer_Episode" && dataEpId !== currentEpId) {
         return null;
       }
@@ -239,45 +239,38 @@
       let seriesTitle = cleanString(manifestSeriesTitle);
       let episodeTitle = cleanString(manifestTitle);
 
-      // Cắt bỏ phần quảng cáo sau dấu gạch chéo ／ ở cả tên truyện và tên chương
-      if (seriesTitle.includes('／') || seriesTitle.includes('/')) {
-        seriesTitle = seriesTitle.split(/[／/]/)[0].trim();
-      }
-      if (episodeTitle.includes('／') || episodeTitle.includes('/')) {
-        episodeTitle = episodeTitle.split(/[／/]/)[0].trim();
-      }
+      // Lọc sạch các tag khuyến mãi của bản Tankobon
+      const cleanVol = str => str.replace(/【(?:試し読み|期間限定|無料|デジタル版|電子版)[^】]*】/gi, '').trim();
+      seriesTitle = cleanVol(seriesTitle);
+      episodeTitle = cleanVol(episodeTitle);
 
-      // 1. Phân tích bóc tách từ DOM nếu manifest bị trống
+      if (seriesTitle.includes('／') || seriesTitle.includes('/')) seriesTitle = seriesTitle.split(/[／/]/)[0].trim();
+      if (episodeTitle.includes('／') || episodeTitle.includes('/')) episodeTitle = episodeTitle.split(/[／/]/)[0].trim();
+
       if (!seriesTitle) {
-        const sEl = DOC.querySelector('.series-header-title, .series-title, [class*="series-title"], .series-title-text');
-        if (sEl) seriesTitle = cleanString(sEl.textContent.split(/[／/]/)[0]);
+        const sEl = DOC.querySelector('.series-header-title, .series-title, [class*="series-title"], .volume-header-title, .title');
+        if (sEl) seriesTitle = cleanString(cleanVol(sEl.textContent.split(/[／/]/)[0]));
       }
 
       if (!episodeTitle) {
-        const eEl = DOC.querySelector('.episode-header-title, .episode-title, [class*="episode-title"], .episode-header-title-text');
-        if (eEl) episodeTitle = cleanString(eEl.textContent.split(/[／/]/)[0]);
+        const eEl = DOC.querySelector('.episode-header-title, .episode-title, [class*="episode-title"], .volume-title');
+        if (eEl) episodeTitle = cleanString(cleanVol(eEl.textContent.split(/[／/]/)[0]));
       }
 
-      // 2. Dự phòng phân tích từ document.title
       if (!seriesTitle || !episodeTitle) {
-        let raw = (DOC.title || "").split(/[|｜]/)[0].trim();
-        raw = raw.replace(/【[^】]*】/g, '').trim();
-
-        // Nhận diện cả số tiếng Anh lẫn số tiếng Nhật (０-９) và số La Mã
+        let raw = cleanVol((DOC.title || "").split(/[|｜]/)[0].trim());
         const match = raw.match(/^(.*?)\s+((?:第\s*)?[0-9０-９IVXLCDMivxlcdm一二三四五六七八九十百千万]+\s*(?:話|巻|章|節|部|エピソード|前編|中編|後編)?.*)$/i);
         if (match) {
-          if (!seriesTitle) seriesTitle = cleanString(match[1].split(/[／/]/)[0]);
-          if (!episodeTitle) episodeTitle = cleanString(match[2].split(/[／/]/)[0]);
+          if (!seriesTitle) seriesTitle = cleanString(match[1]);
+          if (!episodeTitle) episodeTitle = cleanString(match[2]);
         } else {
-          if (!seriesTitle) seriesTitle = cleanString(raw.split(/[／/]/)[0]);
-          if (!episodeTitle) episodeTitle = getEpisodeId();
+          if (!seriesTitle) seriesTitle = cleanString(raw);
         }
       }
 
-      // 3. Tự động cắt bỏ tên truyện nếu nó bị lặp lại bên trong episodeTitle
-      let baseSeries = seriesTitle.replace(/\s*[0-9０-９]+\s*巻.*$/i, '').trim();
-      if (baseSeries && episodeTitle.includes(baseSeries)) {
-        episodeTitle = cleanString(episodeTitle.replace(baseSeries, ''));
+      // Khử lặp tên truyện
+      if (seriesTitle && episodeTitle && episodeTitle.startsWith(seriesTitle)) {
+        episodeTitle = cleanString(episodeTitle.substring(seriesTitle.length));
       }
 
       episodeTitle = episodeTitle.replace(/^[・･\s-]+|[・･\s-]+$/g, '').trim();
@@ -287,7 +280,7 @@
       } else if (seriesTitle && episodeTitle) {
         return episodeTitle;
       } else if (seriesTitle) {
-        return `${seriesTitle} - ${getEpisodeId()}`;
+        return seriesTitle; // Với Tankobon đã có sẵn số tập trong tên thì giữ nguyên, không nối ID
       }
     } catch (e) {}
 
@@ -334,9 +327,10 @@
     const json = getParsedEpisodeJson();
     if (!json) return null;
 
-    const readable = json.readableProduct || json.episode || {};
-    const series = json.series || readable.series || {};
-    const rawPages = readable.pageStructure?.pages || json.pageStructure?.pages || [];
+    // Hỗ trợ cả Episode thông thường và Tankobon Volume / Trial
+    const readable = json.readableProduct || json.episode || json.volume || json.trial || {};
+    const series = json.series || readable.series || json.volume?.series || {};
+    const rawPages = readable.pageStructure?.pages || json.pageStructure?.pages || json.pages || [];
 
     const resultPages = [];
     let prCount = 0;

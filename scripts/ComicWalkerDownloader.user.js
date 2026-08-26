@@ -126,7 +126,7 @@
       let seriesTitle = meta?.seriesTitle || "";
       let episodeTitle = meta?.episodeTitle || "";
 
-      // 1. Bóc tách trực tiếp từ title/og:title chuẩn của KadoComi (【Tên Chap】 Tên Truyện)
+      // 1. Bóc tách từ title/og:title nếu có dạng 【Tên Chap】 Tên Truyện
       const rawTitle = DOC.querySelector('meta[property="og:title"]')?.getAttribute('content') || DOC.title || "";
       const kadoMatch = rawTitle.match(/【(.*?)】\s*([^|｜]+)/);
       if (kadoMatch) {
@@ -134,13 +134,19 @@
         if (!seriesTitle) seriesTitle = kadoMatch[2];
       }
 
-      // 2. Dự phòng lấy từ DOM
+      // 2. Dự phòng lấy Tên truyện từ title gốc (cắt bỏ phần đuôi カドコミ)
       if (!seriesTitle) {
-        const sEl = DOC.querySelector('h1[class*="WorkTitle"], [class*="SeriesTitle"], .comic-title');
+        let sRaw = rawTitle.split(/[|｜]/)[0].trim();
+        seriesTitle = sRaw.replace(/カドコミ.*$/gi, '').replace(/コミックウォーカー.*$/gi, '').trim();
+      }
+
+      // 3. Dự phòng lấy từ DOM
+      if (!seriesTitle) {
+        const sEl = DOC.querySelector('h1[class*="WorkTitle"], [class*="SeriesTitle"], [class*="work-title"], .comic-title, h1');
         if (sEl) seriesTitle = sEl.textContent.trim();
       }
       if (!episodeTitle) {
-        const eEl = DOC.querySelector('h2[class*="EpisodeTitle"], [class*="episode-title"], .episode-name');
+        const eEl = DOC.querySelector('h2[class*="EpisodeTitle"], [class*="episode-title"], [class*="EpisodeItem"] [class*="title"], a[href*="/episodes/"]');
         if (eEl) episodeTitle = eEl.textContent.trim();
       }
 
@@ -156,12 +162,13 @@
       }
       e = e.replace(/^[・･\s\-_:：\u3000]+/, '').trim();
 
+      // Nếu có cả tên truyện và tên chap -> ghép chuẩn Golden Rule
       if (s && e && e !== getEpisodeIdMarker(meta) && !s.includes(e)) {
         return `${s} - ${e}`;
       } else if (s && e && e !== getEpisodeIdMarker(meta)) {
         return e;
       } else if (s) {
-        return `${s} - ${getEpisodeIdMarker(meta)}`;
+        return s; // Giữ nguyên tên truyện sạch, không nối UUID
       }
     } catch (e) {}
 
@@ -209,64 +216,47 @@
     const { workCode, episodeCode, episodeId: rawEpId } = getUrlCodes();
     let targetEpisodeId = rawEpId;
     let targetEpisodeCode = episodeCode;
+    const epTypeParam = new URLSearchParams(WIN.location.search).get('episodeType');
 
     let seriesTitle = "";
     let episodeTitle = "";
 
-    // 1. Nếu chưa có episodeCode, thử tìm từ link chương đầu trên DOM
-    if (!targetEpisodeId && !targetEpisodeCode) {
-      const epLink = DOC.querySelector('a[href*="/episodes/"]');
-      if (epLink) {
-        const m = epLink.getAttribute('href')?.match(/\/episodes\/([^\/?#]+)/);
-        if (m) targetEpisodeCode = m[1];
-      }
-    }
-
-    // 2. Kéo API episode (hỗ trợ cả /detail/KC_... với episodeType=first hoặc episodeType=latest)
+    // 1. Kéo API episode (Nếu có episodeType=first thì ưu tiên lấy chuẩn chương đầu tiên)
     if (!targetEpisodeId && workCode) {
-      const epType = new URLSearchParams(WIN.location.search).get('episodeType') || (targetEpisodeCode ? 'latest' : 'first');
+      const epType = epTypeParam || (targetEpisodeCode ? 'latest' : 'first');
       let epApiUrl = `https://comic-walker.com/api/contents/details/episode?workCode=${workCode}&episodeType=${epType}`;
-      if (targetEpisodeCode) epApiUrl += `&episodeCode=${targetEpisodeCode}`;
+      if (targetEpisodeCode && !epTypeParam) epApiUrl += `&episodeCode=${targetEpisodeCode}`;
 
       try {
         const buf = await Utils.fetchBuffer(epApiUrl);
         const json = JSON.parse(new TextDecoder().decode(buf));
-        targetEpisodeId = json?.episode?.id || json?.id || json?.episode?.episodeId || "";
-        episodeTitle = json?.episode?.title || json?.title || "";
-        seriesTitle = json?.latestComic?.title || json?.work?.title || "";
+        const ep = json?.episode || json?.data?.episode || json;
+        targetEpisodeId = ep?.id || ep?.episodeId || json?.id || "";
+        episodeTitle = ep?.title || json?.title || "";
+        seriesTitle = json?.work?.title || ep?.work?.title || json?.latestComic?.title || json?.title || "";
       } catch (e) {}
     }
 
-    // 3. Dự phòng API work
-    if (!targetEpisodeId && workCode) {
-      const workApiUrl = `https://comic-walker.com/api/contents/details/work?workCode=${workCode}`;
-      try {
-        const buf = await Utils.fetchBuffer(workApiUrl);
-        const json = JSON.parse(new TextDecoder().decode(buf));
-        const epObj = json?.firstEpisode || json?.latestEpisode || json?.episodes?.[0] || json?.work?.episodes?.[0];
-        targetEpisodeId = epObj?.id || epObj?.episodeId || "";
-        if (!episodeTitle) episodeTitle = epObj?.title || "";
-        if (!seriesTitle) seriesTitle = json?.work?.title || json?.title || "";
-      } catch (e) {}
-    }
-
-    // 4. Dự phòng __NEXT_DATA__
-    if (!targetEpisodeId) {
-      const nextEl = DOC.getElementById('__NEXT_DATA__');
-      if (nextEl) {
+    // 2. Dự phòng API work nếu thiếu thông tin
+    if (!targetEpisodeId || !seriesTitle || !episodeTitle) {
+      if (workCode) {
+        const workApiUrl = `https://comic-walker.com/api/contents/details/work?workCode=${workCode}`;
         try {
-          const nextJson = JSON.parse(nextEl.textContent);
-          const pProps = nextJson?.props?.pageProps;
-          targetEpisodeId = pProps?.episode?.id || pProps?.episodeId || pProps?.firstEpisode?.id || "";
-          if (!episodeTitle) episodeTitle = pProps?.episode?.title || pProps?.firstEpisode?.title || "";
-          if (!seriesTitle) seriesTitle = pProps?.work?.title || "";
+          const buf = await Utils.fetchBuffer(workApiUrl);
+          const json = JSON.parse(new TextDecoder().decode(buf));
+          const w = json?.work || json?.data?.work || json;
+          const firstEp = json?.firstEpisode || w?.firstEpisode || json?.episodes?.[0] || w?.episodes?.[0];
+          
+          if (!targetEpisodeId) targetEpisodeId = firstEp?.id || firstEp?.episodeId || "";
+          if (!episodeTitle) episodeTitle = firstEp?.title || "";
+          if (!seriesTitle) seriesTitle = w?.title || json?.title || "";
         } catch (e) {}
       }
     }
 
     if (!targetEpisodeId) throw new Error("Không thể xác định Episode ID của chương truyện.");
 
-    // 5. Kéo danh sách trang truyện từ API Viewer
+    // 3. Kéo danh sách trang truyện từ API Viewer
     const viewerApiUrl = `https://comic-walker.com/api/contents/viewer?episodeId=${targetEpisodeId}&imageSizeType=width%3A1284`;
     const viewerBuf = await Utils.fetchBuffer(viewerApiUrl);
     const viewerData = JSON.parse(new TextDecoder().decode(viewerBuf));
@@ -275,16 +265,13 @@
       throw new Error("Dữ liệu trang từ API ComicWalker không hợp lệ.");
     }
 
-    // 6. Kéo thêm metadata thông tin tập
+    // 4. Bổ sung tên truyện nếu còn thiếu
     try {
       const jumpApiUrl = `https://comic-walker.com/api/contents/viewer-jump-forward?episodeId=${targetEpisodeId}`;
       const jumpBuf = await Utils.fetchBuffer(jumpApiUrl);
       const jumpData = JSON.parse(new TextDecoder().decode(jumpBuf));
-      if (jumpData) {
-        if (!seriesTitle) seriesTitle = jumpData.latestComic?.title || jumpData.title || "";
-        if (!episodeTitle && Array.isArray(jumpData.episodes) && jumpData.episodes.length > 0) {
-          episodeTitle = jumpData.episodes[0].title || "";
-        }
+      if (jumpData && !seriesTitle) {
+        seriesTitle = jumpData.latestComic?.title || jumpData.title || "";
       }
     } catch (e) {}
 

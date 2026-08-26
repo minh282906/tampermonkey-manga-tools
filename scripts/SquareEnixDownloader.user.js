@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         Square Enix Universal Downloader
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
-// @version      1.0.0
+// @version      2.1.0
 // @icon         https://magazine.jp.square-enix.com/favicon.ico
-// @description  Tải manga siêu tốc trên toàn bộ hệ sinh thái Square Enix (Gangan ONLINE, Manga UP, Shounen Gangan, GFantasy, Young Gangan, Big Gangan, Gangan Joker, ComiWeb).
+// @description  Tải manga siêu tốc trên toàn bộ hệ sinh thái Square Enix (Gangan ONLINE, Manga UP, Shounen Gangan, GFantasy, Young Gangan, Big Gangan, Gangan Joker, ComiWeb, MANGA UP! Global).
 // @author       anonymous & AI
 // @match        https://magazine.jp.square-enix.com/*
 // @match        https://www.ganganonline.com/*
@@ -38,7 +38,7 @@
   };
 
   const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;
-  const DOC = WIN.document;
+  const DOC = document;
   const sleep = ms => new Promise(resolve => WIN.setTimeout(resolve, ms));
 
   if (WIN.top !== WIN.self) return;
@@ -48,31 +48,140 @@
     convertJpeg: localStorage.getItem("sqex-dl:convert-jpeg") === '1',
     chapterData: null,
     ui: null,
-    lastUrl: ""
+    lastUrl: "",
+    globalMupViewerRaw: ""
   };
+
+  /* =========================================================================
+   * CẦU NỐI MAIN-WORLD HOOK: BẮT GÓI VIEWER_V2 CỦA MANGA UP! GLOBAL (0ms)
+   * ========================================================================= */
+  function handleViewerV2(url, text) {
+    if (typeof text === 'string' && (text.includes('.webp.enc') || text.includes('page_high') || text.includes('KEE/') || text.includes('KFF/'))) {
+      state.globalMupViewerRaw = text;
+      const chapId = getEpisodeId();
+      if (chapId) sessionStorage.setItem(`mup_global_raw_${chapId}`, text);
+      if (isEpisodeUrl() && !state.running) {
+        boot();
+      }
+    }
+  }
+
+  // 1. Hook Fetch & XHR trên unsafeWindow
+  const _fetch = WIN.fetch;
+  if (typeof _fetch === 'function') {
+    WIN.fetch = function(...args) {
+      const p = _fetch.apply(this, args);
+      p.then(res => {
+        try {
+          const url = typeof args[0] === 'string' ? args[0] : (args[0]?.url || '');
+          if (String(url).includes('viewer_v2')) {
+            res.clone().text().then(txt => handleViewerV2(url, txt));
+          }
+        } catch (e) {}
+      }).catch(() => {});
+      return p;
+    };
+  }
+
+  const _xhrOpen = WIN.XMLHttpRequest?.prototype?.open;
+  const _xhrSend = WIN.XMLHttpRequest?.prototype?.send;
+  if (_xhrOpen && _xhrSend) {
+    WIN.XMLHttpRequest.prototype.open = function(method, url) {
+      this._reqUrl = url;
+      return _xhrOpen.apply(this, arguments);
+    };
+    WIN.XMLHttpRequest.prototype.send = function() {
+      this.addEventListener('load', () => {
+        if (this._reqUrl && String(this._reqUrl).includes('viewer_v2')) {
+          handleViewerV2(this._reqUrl, this.responseText);
+        }
+      });
+      return _xhrSend.apply(this, arguments);
+    };
+  }
+
+  // 2. Bơm Main World Bridge kèm MutationObserver
+  function injectMainWorld() {
+    if (DOC.getElementById('__sqex_mup_global_bridge')) return;
+    const s = DOC.createElement('script');
+    s.id = '__sqex_mup_global_bridge';
+    s.textContent = `
+      (function() {
+        function emit(u, t) {
+          if (t && (t.includes('page_high') || t.includes('.webp.enc') || t.includes('KEE/') || t.includes('KFF/'))) {
+            window.postMessage({ type: '__MUP_GLOBAL_V2_DATA__', url: String(u), text: t }, '*');
+          }
+        }
+        const of = window.fetch;
+        if (of) {
+          window.fetch = async function(...args) {
+            const u = typeof args[0] === 'string' ? args[0] : (args[0]?.url || '');
+            const res = await of.apply(this, args);
+            if (String(u).includes('viewer_v2')) {
+              try { res.clone().text().then(t => emit(u, t)); } catch(e){}
+            }
+            return res;
+          };
+        }
+        const ox = window.XMLHttpRequest;
+        if (ox) {
+          const oo = ox.prototype.open, os = ox.prototype.send;
+          ox.prototype.open = function(m, u) { this._u = u; return oo.apply(this, arguments); };
+          ox.prototype.send = function() {
+            this.addEventListener('load', () => {
+              if (String(this._u).includes('viewer_v2')) emit(this._u, this.responseText);
+            });
+            return os.apply(this, arguments);
+          };
+        }
+      })();
+    `;
+    (DOC.head || DOC.documentElement).appendChild(s);
+  }
+
+  injectMainWorld();
+  if (!DOC.documentElement) {
+    const obs = new MutationObserver(() => {
+      if (DOC.documentElement) {
+        injectMainWorld();
+        obs.disconnect();
+      }
+    });
+    obs.observe(DOC, { childList: true });
+  }
+
+  WIN.addEventListener('message', (e) => {
+    if (e.data?.type === '__MUP_GLOBAL_V2_DATA__' && e.data.text) {
+      handleViewerV2(e.data.url, e.data.text);
+    }
+  });
 
   /* =========================================================================
    * BẢNG CẤU HÌNH THEME ĐỘNG
    * ========================================================================= */
   const SITE_THEMES = {
-      
-      // Gangan ONLINE
-      "ganganonline.com":       { name: "Gangan ONLINE",  top: "50px",  color: "#56b4e9", bg: "#ffffff", text: "#0284c7", sub: "SQUARE ENIX" },
-      
-      // Manga UP!
-      "manga-up.com":           { name: "Manga UP!",      top: "143px",  color: "#FF5500", bg: "#ffffff", text: "#FF5500", sub: "SQUARE ENIX" },
+    // Gangan ONLINE
+    "ganganonline.com":       { name: "Gangan ONLINE",  top: "50px",   color: "#6EC2EE", bg: "#ffffff", text: "#6EC2EE", sub: "SQUARE ENIX" },
     
-      // Vẫn thuộc web của Square Enix
-      "/gangan/":               { name: "Shounen Gangan", top: "70px",  color: "#38b6e6", bg: "#ffffff", text: "#0284c7", sub: "SQUARE ENIX" },
-      "/gfantasy/":             { name: "GFantasy",      top: "70px",  color: "#a855f7", bg: "#18181b", text: "#c084fc", sub: "SQUARE ENIX" },
-      "/joker/":                { name: "Gangan Joker",   top: "70px",  color: "#18181b", bg: "#ffffff", text: "#18181b", sub: "SQUARE ENIX" },
-      "/yg/":                   { name: "Young Gangan",   top: "110px", color: "#e11d48", bg: "#ffffff", text: "#e11d48", sub: "SQUARE ENIX" },
-      "/biggangan/":            { name: "Big Gangan",     top: "80px",  color: "#78be20", bg: "#ffffff", text: "#4c7c13", sub: "SQUARE ENIX" },
-      "/comiweb/":              { name: "Comiweb",        top: "70px",  color: "#e60012", bg: "#18181b", text: "#fca5a5", sub: "SQUARE ENIX" },
+    // Manga UP!
+    "manga-up.com":           { name: "Manga UP!",      top: "143px",  color: "#FF5500", bg: "#ffffff", text: "#FF5500", sub: "SQUARE ENIX" },
+  
+    // Vẫn thuộc web của Square Enix
+    "/gangan/":               { name: "Shounen Gangan", top: "70px",   color: "#38b6e6", bg: "#ffffff", text: "#0284c7", sub: "SQUARE ENIX" },
+    "/gfantasy/":             { name: "GFantasy",       top: "70px",   color: "#a855f7", bg: "#18181b", text: "#c084fc", sub: "SQUARE ENIX" },
+    "/joker/":                { name: "Gangan Joker",   top: "70px",   color: "#18181b", bg: "#ffffff", text: "#18181b", sub: "SQUARE ENIX" },
+    "/yg/":                   { name: "Young Gangan",   top: "110px",  color: "#e11d48", bg: "#ffffff", text: "#e11d48", sub: "SQUARE ENIX" },
+    "/biggangan/":            { name: "Big Gangan",     top: "80px",   color: "#78be20", bg: "#ffffff", text: "#4c7c13", sub: "SQUARE ENIX" },
+    "/comiweb/":              { name: "Comiweb",        top: "70px",   color: "#e60012", bg: "#18181b", text: "#fca5a5", sub: "SQUARE ENIX" },
 
-    };
+    // MANGAUP! (Bản toàn cầu)
+    "global.manga-up.com":    { name: "MANGAUP!",       top: "64px",  color: "#0D44B6", bg: "#ffffff", text: "#0D44B6", sub: "SQUARE ENIX" },
+  };
 
   function resolveSiteTheme() {
+    const host = WIN.location.hostname.toLowerCase();
+    if (host === 'global.manga-up.com') return SITE_THEMES["global.manga-up.com"];
+
     const href = WIN.location.href.toLowerCase();
     for (const key in SITE_THEMES) {
       if (href.includes(key)) return SITE_THEMES[key];
@@ -149,42 +258,59 @@
     return defaultExt;
   }
 
+  function unhex(hexString) {
+    const arr = new Uint8Array(hexString.length / 2);
+    for (let i = 0; i < hexString.length; i += 2) arr[i / 2] = parseInt(hexString.substring(i, i + 2), 16);
+    return arr;
+  }
+
   // KIỂM TRA ĐỊNH TUYẾN CHUẨN XÁC
   function isEpisodeUrl() {
-        const host = WIN.location.hostname;
-        const path = WIN.location.pathname;
+    const host = WIN.location.hostname;
+    const path = WIN.location.pathname;
 
-        // 1. Manga UP!
-        if (host.includes('manga-up.com')) {
-        return /\/titles?\/\d+/i.test(path) || /\/manga\/\d+/i.test(path) || /\/chapters?\//i.test(path);
-        }
+    // 1. MANGA UP! Global: Bắt buộc định dạng /manga/(id_truyen)/(id_chuong)
+    if (host === 'global.manga-up.com') {
+      return /\/manga\/\d+\/\d+/i.test(path) || /\/chapters?\/[^\/]+/i.test(path);
+    }
 
-        // 2. Gangan Online
-        if (host.includes('ganganonline.com')) {
-        return /\/title\/[^\/]+\/chapter\/[^\/]+/i.test(path);
-        }
+    // 2. Manga UP! (Bản Nhật)
+    if (host.includes('manga-up.com')) {
+      return /\/titles?\/\d+/i.test(path) || /\/manga\/\d+/i.test(path) || /\/chapters?\//i.test(path);
+    }
 
-        // 3. Tạp chí Square Enix
-        if (host.includes('square-enix.com')) {
-        const cleanPath = path.replace(/\/index\.html?$/i, '').replace(/\/$/, '');
+    // 3. Gangan Online
+    if (host.includes('ganganonline.com')) {
+      return /\/title\/[^\/]+\/chapter\/[^\/]+/i.test(path);
+    }
 
-        // Young Gangan (yg): CHỈ HIỆN KHI Ở TRANG INTRODUCTION
-        if (cleanPath.startsWith('/yg/')) {
+    // 4. Tạp chí Square Enix
+    if (host.includes('square-enix.com')) {
+      const cleanPath = path.replace(/\/index\.html?$/i, '').replace(/\/$/, '');
+
+      // Young Gangan (yg): CHỈ HIỆN KHI Ở TRANG INTRODUCTION
+      if (cleanPath.startsWith('/yg/')) {
         return /\/yg\/introduction\/[a-zA-Z0-9_-]+$/i.test(cleanPath);
-        }
+      }
 
-        // Các tạp chí khác: Chấp nhận introduction, tachiyomi, tcym, browse, series (bắt buộc có tên truyện)
-        if (/\/(?:tcym|tachiyomi|viewer|browse)\/[a-zA-Z0-9_-]+/i.test(cleanPath)) return true;
-        if (/\/(?:series|introduction)\/[a-zA-Z0-9_-]+$/i.test(cleanPath)) return true;
-        }
+      // Các tạp chí khác: Chấp nhận introduction, tachiyomi, tcym, browse, series (bắt buộc có tên truyện)
+      if (/\/(?:tcym|tachiyomi|viewer|browse)\/[a-zA-Z0-9_-]+/i.test(cleanPath)) return true;
+      if (/\/(?:series|introduction)\/[a-zA-Z0-9_-]+$/i.test(cleanPath)) return true;
+    }
     return false;
   }
 
   function getEpisodeId() {
     const cleanPath = WIN.location.pathname.replace(/\/index\.html?$/i, '').replace(/\/$/, '');
 
+    const globalMupMatch = cleanPath.match(/\/manga\/\d+\/([a-zA-Z0-9_-]+)/i);
+    if (globalMupMatch) return globalMupMatch[1];
+
     const mupChapMatch = cleanPath.match(/\/chapters?\/([a-zA-Z0-9_-]+)/i);
     if (mupChapMatch) return mupChapMatch[1];
+
+    const mupTitleMatch = cleanPath.match(/\/titles?\/([a-zA-Z0-9_-]+)/i);
+    if (mupTitleMatch) return `title_${mupTitleMatch[1]}`;
 
     const ggoMatch = cleanPath.match(/\/chapter\/([a-zA-Z0-9_-]+)/i);
     if (ggoMatch) return ggoMatch[1];
@@ -197,63 +323,21 @@
 
   // [Tên Truyện] - [Tên Tập/Chap].zip (hoặc [Tên Truyện].zip nếu không có chap)
   function getCleanTitle(manifestSeriesTitle, manifestEpisodeTitle) {
-    try {
-      let seriesTitle = cleanString(manifestSeriesTitle);
-      let episodeTitle = cleanString(manifestEpisodeTitle);
+    let seriesTitle = cleanString(manifestSeriesTitle);
+    let episodeTitle = cleanString(manifestEpisodeTitle);
 
-      if (!seriesTitle) {
-        let raw = (DOC.title || "").split(/[|｜]/)[0].trim();
-        raw = raw
-          .replace(/【[^】]*】/g, '')
-          .replace(/試し読み/g, '')
-          .replace(/ガンガンJOKER.*$/gi, '')
-          .replace(/ガンガンジョーカー.*$/gi, '')
-          .replace(/月刊少年ガンガン.*$/gi, '')
-          .replace(/Gファンタジー.*$/gi, '')
-          .replace(/ビッグガンガン.*$/gi, '')
-          .replace(/ヤングガンガン.*$/gi, '')
-          .replace(/SQUARE\s*ENIX.*$/gi, '')
-          .replace(/マンガＵＰ！.*$/gi, '')
-          .replace(/[-－–—]\s*$/g, '')
-          .trim();
-
-        const match = raw.match(/^(.*?)(?:\s+[-－–—]\s+|\s+)((?:第\s*)?[0-9０-９IVXLCDMivxlcdm一二三四五六七八九十百千万\s\-\–\—\ー\~〜\.]+(?:話|巻|章|節|部|エピソード|分冊版|単話|前編|中編|後編)?.*)$/i);
-        if (match) {
-          seriesTitle = cleanString(match[1]);
-          if (!episodeTitle) episodeTitle = cleanString(match[2]);
-        } else {
-          seriesTitle = cleanString(raw);
-        }
+    // Cắt bỏ phần tên truyện nếu bị dính lặp ở đầu tên chap
+    if (seriesTitle && episodeTitle) {
+      if (episodeTitle.startsWith(seriesTitle)) {
+        episodeTitle = cleanString(episodeTitle.substring(seriesTitle.length));
       }
+      episodeTitle = episodeTitle.replace(/^[-－–—\s・:]+/, '').trim();
+    }
 
-      // Khử sạch tag tạp chí còn sót trong tên truyện
-      seriesTitle = seriesTitle
-        .replace(/ガンガンJOKER.*$/gi, '')
-        .replace(/ガンガンジョーカー.*$/gi, '')
-        .replace(/月刊少年ガンガン.*$/gi, '')
-        .replace(/Gファンタジー.*$/gi, '')
-        .replace(/ビッグガンガン.*$/gi, '')
-        .replace(/ヤングガンガン.*$/gi, '')
-        .replace(/SQUARE\s*ENIX.*$/gi, '')
-        .replace(/[-－–—]\s*$/g, '')
-        .trim();
-
-      if (seriesTitle && episodeTitle) {
-        let baseSeries = seriesTitle.replace(/\s*[0-9０-９]+\s*巻.*$/i, '').trim();
-        if (baseSeries && episodeTitle.startsWith(baseSeries)) {
-          episodeTitle = cleanString(episodeTitle.substring(baseSeries.length));
-        }
-        episodeTitle = episodeTitle.replace(/^[・･\s-]+/, '').trim();
-
-        if (episodeTitle && !seriesTitle.includes(episodeTitle)) {
-          return `${seriesTitle} - ${episodeTitle}`;
-        }
-      }
-
-      return seriesTitle || `SquareEnix_${getEpisodeId()}`;
-    } catch (e) {}
-
-    return `SquareEnix_${getEpisodeId()}`;
+    if (seriesTitle && episodeTitle) {
+      return `${seriesTitle} - ${episodeTitle}`;
+    }
+    return seriesTitle || episodeTitle || `SquareEnix_${getEpisodeId()}`;
   }
 
   function probeUrlExists(url, timeout = 350) {
@@ -318,13 +402,12 @@
 
     const pages = [];
 
-    // 1. Quét toàn bộ ảnh Artwork / Character / Cover từ DOM (Lọc sạch 100% share.jpg, share.png, icon rác)
+    // 1. Quét toàn bộ ảnh Artwork / Character / Cover từ DOM
     const artworkImgs = DOC.querySelectorAll('img[src*="cover/"], img[src*="main.jpg"], img[src*="image_sam"], img[src*="character_"], img[src*="img_character"], #adBox img, #adBox_free img, .ad_inner img, #series_main img, #series_character img, .character_img img, .mainBody img');
     for (const img of artworkImgs) {
       let src = img.getAttribute('src') || '';
       if (src) {
         const lower = src.toLowerCase();
-        // Bộ lọc chặn triệt để icon rác và nút share
         if (
           lower.includes('_.gif') || lower.includes('bg.png') || lower.includes('bg.jpg') || lower.includes('bg_ttl') ||
           lower.includes('share') || lower.includes('yaji') || lower.includes('line.png') ||
@@ -344,7 +427,7 @@
       }
     }
 
-    // 2. FOTORAMA ENGINE (Xử lý cả đường dẫn tương đối và tuyệt đối)
+    // 2. FOTORAMA ENGINE
     let fotoramaPageNum = WIN.fr_pagenum;
     let fotoramaImgVal = WIN.fr_imgval;
     let fotoramaDir = WIN.fr_dir;
@@ -393,7 +476,7 @@
       };
     }
 
-    // 3. Dự phòng kiểm tra các ảnh Character / Artwork / Cover qua HEAD request (không cần thiết, và nó cũng không đủ)
+    // 3. Dự phòng kiểm tra các ảnh Character / Artwork / Cover
     const seriesId = getEpisodeId();
     const extraImages = [
       { file: `images/cover/${seriesId}.jpg`, name: `${seriesId}.jpg` },
@@ -482,13 +565,9 @@
     }
 
     let chapterData = nextJson?.props?.pageProps?.data || nextJson?.props?.pageProps?.chapter;
-    
-    // Lấy ID chương từ URL hiện tại và ID trong state cũ
     const currentChapId = getEpisodeId();
     const dataChapId = String(chapterData?.chapterId || chapterData?.id || '');
 
-    // NẾU LÀ CHUYỂN TRANG SPA (State cũ không khớp URL hiện tại) HOẶC CHƯA CÓ DATA:
-    // -> Kéo trực tiếp gói Next.js data route của đúng chương hiện tại (~30ms)
     if ((!chapterData || !chapterData.pages || (dataChapId && dataChapId !== currentChapId)) && nextJson?.buildId) {
       const match = WIN.location.pathname.match(/\/title\/([^\/]+)\/chapter\/([^\/]+)/i);
       if (match) {
@@ -526,7 +605,20 @@
   }
 
   /* =========================================================================
-   * BÓC TÁCH MANIFEST: MANGA UP!
+   * BÓC TÁCH MANIFEST: MANGA UP! (BẢN NHẬT)
+   * ========================================================================= */
+  function unescapeRscString(str) {
+    if (!str) return '';
+    return str
+      .replace(/\\u0026/g, '&')
+      .replace(/&amp;/g, '&')
+      .replace(/\\"/g, '"')
+      .replace(/\\\//g, '/')
+      .replace(/\\/g, '');
+  }
+
+  /* =========================================================================
+   * BÓC TÁCH MANIFEST: MANGA UP! (BẢN NHẬT)
    * ========================================================================= */
   function unescapeRscString(str) {
     if (!str) return '';
@@ -543,8 +635,7 @@
     const currentPath = WIN.location.pathname;
     let rscText = "";
 
-    // 1. Kéo gói dữ liệu RSC của chương hiện tại
-    if (currentPath.includes('/chapters/')) {
+    if (currentPath.includes('/titles/') || currentPath.includes('/chapters/') || currentPath.includes('/manga/')) {
       try {
         const rscUrl = `${WIN.location.origin}${currentPath}?_rsc=1`;
         const buf = await Utils.fetchBuffer(rscUrl, { 'RSC': '1' });
@@ -552,7 +643,6 @@
       } catch (e) {}
     }
 
-    // Dự phòng khi mở trang trực tiếp
     if (!rscText) {
       if (Array.isArray(WIN.self?.__next_f)) {
         for (const item of WIN.self.__next_f) {
@@ -561,55 +651,44 @@
           }
         }
       }
-      const scripts = DOC.querySelectorAll('script');
-      for (const s of scripts) {
-        rscText += s.textContent || "";
-      }
     }
 
-    // 2. Bóc tách tên truyện và tên chương
-    const h1El = DOC.querySelector('h1');
-    let seriesTitle = cleanString(h1El?.textContent);
+    // 1. Tên truyện siêu sạch từ document.title
+    let raw = (DOC.querySelector('meta[property="og:title"]')?.getAttribute('content') || DOC.title || "").split(/[|｜]/)[0].trim();
+    raw = raw.replace(/（[^）]*）.*$/g, '')
+             .replace(/\([^)]*\).*$/g, '')
+             .replace(/を無料で読むなら.*$/g, '')
+             .replace(/マンガＵＰ.*$/gi, '')
+             .replace(/SQUARE\s*ENIX.*$/gi, '')
+             .trim();
+    let seriesTitle = cleanString(raw);
+
+    // 2. Bóc tách Tên chương trực tiếp từ <h1> và thẻ phụ ngay dưới <h1>
     let episodeTitle = "";
+    const h1El = DOC.querySelector('h1');
 
-    // Đọc từ phần tử hiển thị chương hiện tại trên DOM
-    const activeEpDiv = h1El?.nextElementSibling || h1El?.parentElement?.querySelector('div[class*="text-on_background"], div[class*="text-title"]');
-    if (activeEpDiv) {
-      const txt = activeEpDiv.textContent?.trim() || "";
-      if (/(?:第\s*)?[0-9０-９]+\s*話/i.test(txt)) {
-        episodeTitle = cleanString(txt);
+    if (h1El) {
+      let h1Text = cleanString(h1El.textContent);
+      let part1 = "";
+      if (seriesTitle && h1Text.startsWith(seriesTitle)) {
+        part1 = cleanString(h1Text.substring(seriesTitle.length));
+      } else if (h1Text !== seriesTitle) {
+        part1 = h1Text;
       }
-    }
 
-    // Dò theo ID chương hiện tại trong dữ liệu RSC
-    const currentChapId = getEpisodeId();
-    if (!episodeTitle && rscText && currentChapId) {
-      const chapIdx = rscText.indexOf(currentChapId);
-      if (chapIdx !== -1) {
-        const subRsc = rscText.substring(Math.max(0, chapIdx - 300), chapIdx + 600);
-        const rscTitleMatch = subRsc.match(/\"(?:name|chapterName|chapter_name|title)\"\s*:\s*\"([^\"]*第\s*[0-9０-９]+[^\"]*)\"/);
-        if (rscTitleMatch) {
-          episodeTitle = cleanString(unescapeRscString(rscTitleMatch[1]));
+      let part2 = "";
+      const subEl = h1El.nextElementSibling || h1El.parentElement?.querySelector('p, div[class*="text-"]');
+      if (subEl) {
+        let subText = cleanString(subEl.textContent);
+        if (subText && subText !== seriesTitle && !subText.includes('更新') && !subText.includes('著者') && !subText.includes('コメント')) {
+          part2 = subText;
         }
       }
-    }
 
-    // Dự phòng quét các phần tử tiêu đề khác
-    if (!episodeTitle) {
-      const domEpEl = DOC.querySelector('div[class*="text-title"], div.text-on_background_high, h2, [class*="chapter"]');
-      const epText = domEpEl?.textContent || "";
-      const mEp = epText.match(/(?:第\s*)?[0-9０-９]+\s*話[^\n\r]*/);
-      if (mEp) episodeTitle = cleanString(mEp[0]);
-    }
-
-    if (!seriesTitle) {
-      const rawTitle = (DOC.title || "").split(/[|｜\-–—]/)[0].trim();
-      const m = rawTitle.match(/^(.*?)(?:\s+[-－–—]\s+|\s+)((?:第\s*)?[0-9０-９]+\s*話.*)$/i);
-      if (m) {
-        seriesTitle = cleanString(m[1]);
-        if (!episodeTitle) episodeTitle = cleanString(m[2]);
+      if (part1 && part2 && !part1.includes(part2)) {
+        episodeTitle = `${part1} ${part2}`;
       } else {
-        seriesTitle = cleanString(rawTitle);
+        episodeTitle = part1 || part2;
       }
     }
 
@@ -644,7 +723,7 @@
     if (pages.length > 0) {
       return {
         seriesTitle: seriesTitle || "MangaUP_Series",
-        episodeTitle: episodeTitle || "",
+        episodeTitle: episodeTitle || "第1話",
         pages: pages
       };
     }
@@ -652,8 +731,141 @@
     return null;
   }
 
+  /* =========================================================================
+   * BÓC TÁCH MANIFEST: MANGA UP! GLOBAL (global.manga-up.com)
+   * ========================================================================= */
+  async function extractMangaUpGlobal() {
+    const Utils = window.MangaUtils || globalThis.MangaUtils;
+    const path = WIN.location.pathname;
+    const pathParts = path.match(/\/manga\/(\d+)(?:\/(\d+))?/i);
+    const mangaId = pathParts ? pathParts[1] : "";
+    const chapId = pathParts && pathParts[2] ? pathParts[2] : getEpisodeId();
+
+    // 1. Dò tìm gói tin viewer_v2
+    let rawConfig = state.globalMupViewerRaw || (chapId ? sessionStorage.getItem(`mup_global_raw_${chapId}`) : "");
+
+    if (!rawConfig && typeof window.performance?.getEntriesByType === 'function') {
+      const resources = window.performance.getEntriesByType('resource');
+      const v2Entry = resources.find(r => r.name && r.name.includes('viewer_v2'));
+      if (v2Entry) {
+        try {
+          const res = await WIN.fetch(v2Entry.name);
+          if (res.ok) {
+            rawConfig = await res.text();
+            handleViewerV2(v2Entry.name, rawConfig);
+          }
+        } catch (e) {}
+      }
+    }
+
+    if (!rawConfig) {
+      for (let i = 0; i < 20; i++) {
+        await sleep(100);
+        rawConfig = state.globalMupViewerRaw || (chapId ? sessionStorage.getItem(`mup_global_raw_${chapId}`) : "");
+        if (rawConfig) break;
+      }
+    }
+
+    // 2. Lấy Tên truyện chuẩn từ <h1> trang chi tiết truyện
+    let seriesTitle = mangaId ? sessionStorage.getItem(`mup_global_manga_${mangaId}`) || "" : "";
+    let episodeTitle = "";
+
+    if ((!seriesTitle || !episodeTitle) && mangaId) {
+      try {
+        const res = await WIN.fetch(`https://global.manga-up.com/manga/${mangaId}`);
+        if (res.ok) {
+          const html = await res.text();
+          const doc = new DOMParser().parseFromString(html, 'text/html');
+          
+          if (!seriesTitle) {
+            const h1 = doc.querySelector('h1');
+            if (h1) {
+              seriesTitle = cleanString(h1.textContent);
+              sessionStorage.setItem(`mup_global_manga_${mangaId}`, seriesTitle);
+            }
+          }
+
+          const nextData = doc.getElementById('__NEXT_DATA__');
+          if (nextData) {
+            const json = JSON.parse(nextData.textContent);
+            const chapters = json.props?.pageProps?.data?.chapters || [];
+            const curChap = chapters.find(c => String(c.id) === String(chapId));
+            if (curChap) {
+              const mainN = cleanString(curChap.mainName || "");
+              const subN = cleanString(curChap.subName || "");
+              if (mainN && subN && !mainN.includes(subN)) {
+                episodeTitle = `${mainN} ${subN}`;
+              } else {
+                episodeTitle = mainN || subN;
+              }
+            }
+          }
+        }
+      } catch (e) {}
+    }
+
+    // 3. Dự phòng tên chương từ dòng 1 của viewer_v2
+    if (!episodeTitle && rawConfig) {
+      const lines = rawConfig.split(/[\r\n]+/);
+      for (const l of lines) {
+        const cleanL = cleanString(l);
+        if (cleanL && !cleanL.includes('.webp') && !cleanL.includes('*@')) {
+          episodeTitle = cleanL;
+          break;
+        }
+      }
+    }
+
+    // 4. Bóc tách danh sách ảnh và Key / IV
+    if (rawConfig) {
+      const pages = [];
+      const lines = rawConfig.split(/[\r\n]+/);
+
+      for (const line of lines) {
+        if (!line.includes('.webp.enc') && !line.includes('.enc')) continue;
+
+        const atParts = line.split('*@');
+        if (atParts.length < 2) continue;
+
+        const pathMatch = atParts[0].match(/([A-Za-z0-9_/-]+\.webp\.enc\?[^\s*]+)/);
+        if (!pathMatch) continue;
+
+        let rawPath = pathMatch[1].replace(/^[A-Z]\//i, '');
+        const relPath = rawPath.startsWith('/') ? rawPath : `/${rawPath}`;
+        const fullUrl = `https://global-img.manga-up.com${relPath}`;
+
+        const cryptoText = atParts[1].trim();
+        const hexParts = cryptoText.match(/[0-9a-f]{32,66}/gi) || [];
+        if (hexParts.length < 2) continue;
+
+        const rawKeyHex = hexParts[0];
+        const ivHex = hexParts[1].substring(0, 32);
+        const keyHex = rawKeyHex.substring(0, 64);
+
+        pages.push({
+          pageNo: pages.length + 1,
+          url: fullUrl,
+          isEncrypted: true,
+          crypto: { key: keyHex, iv: ivHex },
+          customName: null
+        });
+      }
+
+      if (pages.length > 0) {
+        return {
+          seriesTitle: seriesTitle || "Smoking Behind the Supermarket with You",
+          episodeTitle: episodeTitle || (chapId ? `Chapter_${chapId}` : ""),
+          pages: pages
+        };
+      }
+    }
+
+    return null;
+  }
+
   async function fetchSquareEnixPages() {
     const host = WIN.location.hostname;
+    if (host === 'global.manga-up.com') return await extractMangaUpGlobal();
     if (host.includes('manga-up.com')) return await extractMangaUp();
     if (host.includes('ganganonline.com')) return await extractGanganOnline();
     if (host.includes('square-enix.com')) return await extractSquareEnixMagazine();
@@ -695,18 +907,32 @@
       if (ui) ui.updateProgress({ completed: 0, total: totalPages, status: "Đang tải..." });
 
       const tasks = pages.map((pageObj) => async () => {
-        const rawBuffer = await Utils.fetchBuffer(pageObj.url, {
-            "Referer": "https://www.manga-up.com/",
-            "Origin": "https://www.manga-up.com"
-        });
-        const originalExt = getExtensionFromUrl(pageObj.url, 'jpg');
+        let rawBuffer = null;
 
-        // 1. Ảnh Artwork/Bìa/Cover: Giữ nguyên tên file gốc
+        // 1. Tải ảnh trực tiếp bằng window.fetch của trình duyệt (chống CORS)
+        try {
+          const res = await WIN.fetch(pageObj.url);
+          if (res.ok) rawBuffer = await res.arrayBuffer();
+        } catch (e) {}
+
+        if (!rawBuffer) {
+          rawBuffer = await Utils.fetchBuffer(pageObj.url);
+        }
+
+        // 2. Giải mã phần cứng AES-CBC (MANGA UP! Global)
+        if (pageObj.isEncrypted && pageObj.crypto?.key && pageObj.crypto?.iv) {
+          const cryptoKey = await WIN.crypto.subtle.importKey('raw', unhex(pageObj.crypto.key), { name: 'AES-CBC' }, false, ['decrypt']);
+          rawBuffer = await WIN.crypto.subtle.decrypt({ name: 'AES-CBC', iv: unhex(pageObj.crypto.iv) }, cryptoKey, rawBuffer);
+        }
+
+        const originalExt = getExtensionFromUrl(pageObj.url, 'webp');
+
+        // 3. Ảnh Artwork/Bìa/Cover: Giữ nguyên tên file gốc
         if (pageObj.customName) {
           return { fileName: pageObj.customName, data: new Uint8Array(rawBuffer) };
         }
 
-        // 2. Zero-Copy nếu không ép JPG hoặc ảnh gốc đã là JPG
+        // 4. Zero-Copy nếu không ép JPG hoặc ảnh gốc đã là JPG
         if (!useJpeg || originalExt === 'jpg') {
           return {
             fileName: `${pageObj.pageNo}.${originalExt}`,
@@ -714,7 +940,7 @@
           };
         }
 
-        // 3. Chuyển đổi sang JPG nếu người dùng chọn
+        // 5. Chuyển đổi sang JPG nếu người dùng chọn
         const img = await Utils.loadImage(rawBuffer, `image/${originalExt}`);
         const canvas = DOC.createElement('canvas');
         canvas.width = img.naturalWidth || img.width;
@@ -788,23 +1014,21 @@
     let data = null;
     let retries = 0;
 
-    while (retries < 10) {
+    while (retries < 6) {
       try {
         data = await fetchSquareEnixPages();
         if (data && data.pages?.length > 0) break;
       } catch (e) {}
-      await sleep(50);
+      await sleep(100);
       retries++;
     }
 
     if (data && data.pages?.length > 0) {
-      // Micro-delay 100ms để tạo hiệu ứng chuyển trạng thái mượt mà 0/0 -> 0/n
       await sleep(100);
-
       state.chapterData = data;
 
       const firstUrl = data.pages[0]?.url || "";
-      const originalExt = getExtensionFromUrl(firstUrl, 'jpg');
+      const originalExt = getExtensionFromUrl(firstUrl, 'webp');
       if (ui?.updateFormatUI) ui.updateFormatUI(originalExt);
 
       if (ui) {

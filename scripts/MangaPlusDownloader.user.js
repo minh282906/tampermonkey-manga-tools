@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MANGA Plus Universal Downloader
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
-// @version      3.2.0
+// @version      3.3.0
 // @icon         https://mangaplus.shueisha.co.jp/favicon.ico
 // @description  Tải manga chất lượng gốc Super High siêu tốc trên MANGA Plus by SHUEISHA, giải mã Cyclic XOR 64-byte & Zero-Copy 100% trong RAM.
 // @author       anonymous & AI
@@ -50,15 +50,20 @@
   };
 
   /* =========================================================================
-   * 2. MAIN-WORLD HOOK: TỰ ĐỘNG BẺ LÁI ÉP XHR SANG SUPER_HIGH CHẤT LƯỢNG CAO NHẤT
+   * 2. MAIN-WORLD HOOK: TRANG BỊ SCANNER CHỐNG NHỠ GÓI TIN KHI F5
    * ========================================================================= */
   function handleViewerResponse(url, bufferOrText) {
     if (!bufferOrText) return;
     state.capturedPayloadRaw = bufferOrText;
     const cid = getChapterId();
-    if (cid) state.capturedChapterId = cid;
-
-    console.log('%c[MPLUS] 🎯 Nhận gói tin Shueisha Super High:', 'color:#22c55e;font-weight:bold;', url);
+    if (cid) {
+      state.capturedChapterId = cid;
+      try {
+        if (Array.isArray(bufferOrText)) {
+          sessionStorage.setItem(`mplus_raw_${cid}`, JSON.stringify(bufferOrText));
+        }
+      } catch (e) {}
+    }
 
     if (isEpisodeUrl() && !state.running) {
       syncChapterData();
@@ -110,7 +115,6 @@
           var origOpen = origXhr.prototype.open;
           var origSend = origXhr.prototype.send;
           origXhr.prototype.open = function(m, u) {
-            // TỰ ĐỘNG BẺ LÁI ÉP XHR SANG SUPER HIGH NGAY TỪ CỬA MẠNG
             if (isMangaViewerReq(u)) {
               u = upgradeToSuperHigh(u);
             }
@@ -134,6 +138,36 @@
             return origSend.apply(this, arguments);
           };
         }
+
+        // SCANNER F5: Tự động quét Resource Timing nếu F5 bị nhỡ Hook
+        function scanResourceTiming() {
+          if (typeof performance !== 'undefined' && performance.getEntriesByType) {
+            var entries = performance.getEntriesByType('resource');
+            for (var i = 0; i < entries.length; i++) {
+              var entryName = entries[i].name;
+              if (isMangaViewerReq(entryName)) {
+                var shUrl = upgradeToSuperHigh(entryName);
+                if (origFetch) {
+                  origFetch(shUrl).then(r => r.arrayBuffer()).then(b => emit(shUrl, Array.from(new Uint8Array(b)))).catch(function(){});
+                }
+                break;
+              }
+            }
+          }
+        }
+
+        setTimeout(scanResourceTiming, 100);
+        setTimeout(scanResourceTiming, 500);
+
+        // Lắng nghe yêu cầu re-fetch từ Content Script
+        window.addEventListener('message', function(e) {
+          if (e.data?.type === '__MPLUS_TRIGGER_FETCH__' && e.data.chapterId) {
+            var fetchUrl = 'https://jumpg-webapi.tokyo-cdn.com/api/manga_viewer_v3?chapter_id=' + e.data.chapterId + '&split=yes&img_quality=super_high&viewer_mode=horizontal&clang=eng';
+            if (origFetch) {
+              origFetch(fetchUrl).then(r => r.arrayBuffer()).then(b => emit(fetchUrl, Array.from(new Uint8Array(b)))).catch(function(){});
+            }
+          }
+        });
       })();
     `;
     (DOC.head || DOC.documentElement).appendChild(s);
@@ -210,12 +244,12 @@
   function cleanString(str) {
     if (!str) return "";
     return str
-      .replace(/[\uFFFD\u0000-\u001F\u007F-\u009F\u00AD]/g, '') // Lọc sạch 100% ký tự lỗi  và byte điều khiển
+      .replace(/[\uFFFD\u0000-\u001F\u007F-\u009F\u00AD]/g, '') // Lọc sạch ký tự lỗi  và byte rác
       .replace(/[\r\n\t]+/g, ' ')
       .replace(/\s{2,}/g, ' ')
       .replace(/【[^】]*】/g, '')
       .replace(/[\\/*?:"<>|]/g, ' ')
-      .replace(/^['"‘’“”`\s]+|['"‘’“”`\s]+$/g, '')              // Gọt sạch toàn bộ dấu nháy đơn/kép/ngược ở 2 đầu
+      .replace(/^['"‘’“”`\s]+|['"‘’“”`\s]+$/g, '')              // Gọt sạch dấu nháy thừa ở 2 đầu
       .trim();
   }
 
@@ -247,7 +281,7 @@
     chapNum = cleanString(chapNum);
     chapSub = cleanString(chapSub);
 
-    // 2. Ghép tên chương hoàn chỉnh: #001 1: Elephants Only Sweat From Their Toes
+    // 2. Ghép tên chương đầy đủ: #001 1: Elephants Only Sweat From Their Toes
     let episodeFull = chapNum;
     if (chapSub && chapSub !== chapNum) {
       episodeFull = episodeFull ? `${episodeFull} ${chapSub}` : chapSub;
@@ -337,7 +371,7 @@
       if (seenUrls.has(imgUrl)) continue;
       seenUrls.add(imgUrl);
 
-      // Đánh số tăng dần bắt đầu từ 1 (1.jpg, 2.jpg, 3.jpg...)
+      // Đánh số tăng dần bắt đầu từ 1 (1.jpg, 2.jpg...)
       pages.push({
         pageNo: pages.length + 1,
         url: imgUrl,
@@ -360,8 +394,6 @@
       if (subMatch) chapterSubTitle = cleanString(subMatch[1]);
     } catch (e) {}
 
-    console.log(`%c[MPLUS] 📚 Đã bóc tách thành công ${pages.length} trang Super High! (Key: ${globalKey ? 'OK' : 'NONE'}, Token: ${vwToken ? 'OK' : 'NONE'})`, 'color:#38bdf8;font-weight:bold;');
-
     return {
       pages,
       globalKey,
@@ -377,7 +409,23 @@
     if (!currentChapterId) return;
 
     let rawBuffer = state.capturedPayloadRaw;
-    if (!rawBuffer) return;
+
+    // 1. Phục hồi tức thì từ SessionStorage (0ms khi F5)
+    if (!rawBuffer) {
+      try {
+        const cachedStr = sessionStorage.getItem(`mplus_raw_${currentChapterId}`);
+        if (cachedStr) {
+          const arr = JSON.parse(cachedStr);
+          if (Array.isArray(arr)) rawBuffer = new Uint8Array(arr).buffer;
+        }
+      } catch (e) {}
+    }
+
+    // 2. Yêu cầu Main-World fetch nếu vẫn thiếu
+    if (!rawBuffer) {
+      WIN.postMessage({ type: '__MPLUS_TRIGGER_FETCH__', chapterId: currentChapterId }, '*');
+      return;
+    }
 
     const parsed = parseProtobufData(rawBuffer);
     if (!parsed || parsed.pages.length === 0) return;
@@ -577,7 +625,7 @@
       const zipName = `${getCleanTitle(data)}.zip`;
       zip.download(zipName);
 
-      if (ui) ui.updateProgress({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
+      if (ui) ui.updateProgress({ completed: totalPages, total: totalPages, status: "Hoạt tất." });
     } catch (err) {
       if (ui) ui.updateProgress({ status: "Lỗi: " + (err?.message || err) });
       console.error("[mplus-dl] Error:", err);

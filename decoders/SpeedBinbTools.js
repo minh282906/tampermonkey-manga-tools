@@ -14,8 +14,8 @@
       }
       let n = generateRandomString16(),
         i = Array(Math.ceil(16 / id.length) + 1).join(id),
-        r = i.substr(0, 16),
-        e = i.substr(-16, 16),
+        r = i.slice(0, 16),
+        e = i.slice(-16),
         s = 0, h = 0, u = 0;
       return n.split("").map(function (t, i) {
         return s ^= n.charCodeAt(i),

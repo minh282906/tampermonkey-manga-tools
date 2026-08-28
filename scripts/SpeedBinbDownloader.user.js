@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SpeedBinb Universal Downloader
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
-// @version      2.2.0
+// @version      3.0.0
 // @icon         https://www.voyager.co.jp/products/pt/images/service_logo_01.jpg
 // @description  Tải manga trên các nền tảng SpeedBinb (Booklive, Comic Cmoa, Yanmaga, Gaugau Futabanet, ...).
 // @author       anonymous & AI
@@ -23,6 +23,10 @@
 // @connect      *.futabanet.jp
 // @connect      booklive.jp
 // @connect      *.booklive.jp
+//
+// --- TỰ ĐỘNG TẢI VÀ UPDATE PHIÊN BẢN
+// @updateURL    https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/SpeedBinbDownloader.user.js
+// @downloadURL  https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/SpeedBinbDownloader.user.js
 //
 // --- TỰ ĐỘNG NẠP KHI CÀI ĐẶT ĐỘC LẬP QUA JSDELIVR ---
 // @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/cores/PureZipWriter.js

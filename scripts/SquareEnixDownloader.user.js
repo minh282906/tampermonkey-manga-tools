@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Square Enix Universal Downloader
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
-// @version      2.3.0
+// @version      3.0.0
 // @icon         https://magazine.jp.square-enix.com/favicon.ico
 // @description  Tải manga trên toàn bộ hệ sinh thái Square Enix (Gangan ONLINE, Manga UP, Shounen Gangan, GFantasy, Young Gangan, Big Gangan, Gangan Joker, ComiWeb, MANGA UP! Global).
 // @author       anonymous & AI
@@ -18,6 +18,10 @@
 // @connect      *.square-enix.com
 // @connect      *.ganganonline.com
 // @connect      *.manga-up.com
+//
+// --- TỰ ĐỘNG TẢI VÀ UPDATE PHIÊN BẢN
+// @updateURL    https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/SquareEnixDownloader.user.js
+// @downloadURL  https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/SquareEnixDownloader.user.js
 //
 // --- TỰ ĐỘNG NẠP KHI CÀI ĐẶT ĐỘC LẬP QUA JSDELIVR ---
 // @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/cores/PureZipWriter.js

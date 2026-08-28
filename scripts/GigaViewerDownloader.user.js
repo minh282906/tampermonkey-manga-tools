@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GigaViewer Universal Downloader
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
-// @version      2.0.2
+// @version      3.0.0
 // @icon         https://files.catbox.moe/tpd5zq.png
 // @description  Tải truyện từ hơn 20 trang web GigaViewer (ShonenJump+, Tonari no Young Jump, Sunday Webry, Comic Days, Kurage Bunch, MAGCOMI, Comic Gardo, Comic Zenon, Web Action, Comic Trail, Feel Web, Comic Earth Star, Comic Border, COMIC OGYAAA!!, Comic Seasons, COMIC Y-OURS, Ichicomi, Manga Time Square, OUR FEEL, &Sofa, Morning two, 月マガ基地, Biblio Sirius, Comic Bunch Kai).
 // @match        https://comic-action.com/*
@@ -57,6 +57,10 @@
 // @connect      *.getsumagakichi.com
 // @connect      *.bibliosirius.com
 // @connect      *.comicbunch-kai.com
+//
+// --- TỰ ĐỘNG TẢI VÀ UPDATE PHIÊN BẢN
+// @updateURL    https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/GigaViewerDownloader.user.js
+// @downloadURL  https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/GigaViewerDownloader.user.js
 //
 // --- TỰ ĐỘNG NẠP KHI CÀI ĐẶT ĐỘC LẬP QUA JSDELIVR ---
 // @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/cores/PureZipWriter.js

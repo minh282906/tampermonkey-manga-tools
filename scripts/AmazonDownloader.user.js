@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Amazon Kindle Manga Downloader
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
-// @version      2.0.0
+// @version      3.0.0
 // @icon         https://www.amazon.co.jp/favicon.ico
 // @description  Tải manga trên Amazon Kindle Web Reader.
 // @author       anonymous & AI
@@ -13,6 +13,9 @@
 // @grant        unsafeWindow
 // @grant        GM_xmlhttpRequest
 // @connect      *
+// --- TỰ ĐỘNG TẢI VÀ UPDATE PHIÊN BẢN
+// @updateURL    https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/AmazonDownloader.user.js
+// @downloadURL  https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/AmazonDownloader.user.js
 //
 // --- TỰ ĐỘNG NẠP KHI CÀI ĐẶT ĐỘC LẬP QUA JSDELIVR ---
 // @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/cores/PureZipWriter.js

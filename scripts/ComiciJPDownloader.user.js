@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         ComiciJP Downloader
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
-// @version      1.0.0
+// @version      2.0.0
 // @icon         https://www.google.com/s2/favicons?domain=comici.jp&sz=128
-// @description  Tải manga bài viết trên comici.j.
+// @description  Tải manga trên comici.jp
 // @author       anonymous & AI
 // @match        https://comici.jp/*
 // @run-at       document-start
@@ -14,6 +14,10 @@
 // @connect      *.comici.jp
 // @connect      cdn.comici.jp
 // @connect      cdn-public.comici.jp
+//
+// --- TỰ ĐỘNG TẢI VÀ UPDATE PHIÊN BẢN
+// @updateURL    https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/ComiciJPDownloader.user.js
+// @downloadURL  https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/ComiciJPDownloader.user.js
 //
 // --- TỰ ĐỘNG NẠP KHI CÀI ĐẶT ĐỘC LẬP QUA JSDELIVR ---
 // @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/cores/PureZipWriter.js

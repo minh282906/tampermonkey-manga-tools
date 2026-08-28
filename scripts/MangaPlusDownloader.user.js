@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MANGA Plus Universal Downloader
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
-// @version      1.0.0
+// @version      2.0.0
 // @icon         https://mangaplus.shueisha.co.jp/favicon.ico
 // @description  Tải manga chất lượng High (cao nhất) trên MANGA Plus by SHUEISHA.
 // @author       anonymous & AI
@@ -13,6 +13,10 @@
 // @connect      mangaplus.shueisha.co.jp
 // @connect      jumpg-webapi.tokyo-cdn.com
 // @connect      *.tokyo-cdn.com
+//
+// --- TỰ ĐỘNG TẢI VÀ UPDATE PHIÊN BẢN
+// @updateURL    https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/MangaPlusDownloader.user.js
+// @downloadURL  https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/MangaPlusDownloader.user.js
 //
 // --- TỰ ĐỘNG NẠP KHI CÀI ĐẶT ĐỘC LẬP QUA JSDELIVR ---
 // @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/cores/PureZipWriter.js

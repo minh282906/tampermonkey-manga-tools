@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         Manga-One Downloader
+// @name         MangaONE Downloader
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
-// @version      2.0.0
+// @version      3.0.0
 // @icon         https://www.google.com/s2/favicons?domain=manga-one.com&sz=128
-// @description  Tải manga trên Manga-One.
+// @description  Tải manga trên MangaOne.
 // @author       anonymous & AI
 // @match        https://manga-one.com/*
 // @run-at       document-start
@@ -13,6 +13,10 @@
 // @connect      manga-one.com
 // @connect      *.manga-one.com
 // @connect      app.manga-one.com
+//
+// --- TỰ ĐỘNG TẢI VÀ UPDATE PHIÊN BẢN
+// @updateURL    https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/MangaOneDownloader.user.js
+// @downloadURL  https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/MangaOneDownloader.user.js
 //
 // --- TỰ ĐỘNG NẠP KHI CÀI ĐẶT ĐỘC LẬP QUA JSDELIVR ---
 // @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/cores/PureZipWriter.js

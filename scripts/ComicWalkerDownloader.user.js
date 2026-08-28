@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         ComicWalker Downloader
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
-// @version      1.0.2
-// @icon         https://comic-walker.com/favicon.ico
-// @description  Tải manga chất lượng gốc trên ComicWalker.
+// @version      2.0.0
+// @icon         https://www.google.com/s2/favicons?domain=comic-walker.com&sz=128
+// @description  Tải manga trên ComicWalker.
 // @author       anonymous & AI
 // @match        https://comic-walker.com/*
 // @run-at       document-start
@@ -13,6 +13,10 @@
 // @connect      comic-walker.com
 // @connect      *.comic-walker.com
 // @connect      cdn.comic-walker.com
+//
+// --- TỰ ĐỘNG TẢI VÀ UPDATE PHIÊN BẢN
+// @updateURL    https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/ComicWalkerDownloader.user.js
+// @downloadURL  https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/ComicWalkerDownloader.user.js
 //
 // --- TỰ ĐỘNG NẠP KHI CÀI ĐẶT ĐỘC LẬP QUA JSDELIVR ---
 // @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/cores/PureZipWriter.js

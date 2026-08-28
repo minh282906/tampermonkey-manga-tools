@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Niconico Manga Downloader
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
-// @version      2.0.0
+// @version      3.0.0
 // @icon         https://sp.manga.nicovideo.jp/favicon.ico
 // @description  Tải manga trên Niconico Manga (Hỗ trợ PC WebP & Mobile JPG).
 // @author       anonymous & AI
@@ -15,6 +15,10 @@
 // @connect      *.nicovideo.jp
 // @connect      *.nicoseiga.jp
 // @connect      *.nicomanga.jp
+//
+// --- TỰ ĐỘNG TẢI VÀ UPDATE PHIÊN BẢN
+// @updateURL    https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/NiconicoDownloader.user.js
+// @downloadURL  https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/NiconicoDownloader.user.js
 //
 // --- TỰ ĐỘNG NẠP KHI CÀI ĐẶT ĐỘC LẬP QUA JSDELIVR ---
 // @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/cores/PureZipWriter.js

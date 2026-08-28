@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         EbookJapan Downloader
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
-// @version      2.0.0
+// @version      3.0.0
 // @icon         https://ebookjapan.yahoo.co.jp/favicon.ico
 // @description  Tải manga trên EbookJapan.
 // @author       anonymous & AI
@@ -13,6 +13,10 @@
 // @connect      *
 // @connect      ebookjapan.yahoo.co.jp
 // @connect      prod-contents-br-page.akamaized.net
+//
+// --- TỰ ĐỘNG TẢI VÀ UPDATE PHIÊN BẢN
+// @updateURL    https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/EbookJPDownloader.user.js
+// @downloadURL  https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/EbookJPDownloader.user.js
 //
 // --- TỰ ĐỘNG NẠP KHI CÀI ĐẶT ĐỘC LẬP QUA JSDELIVR ---
 // @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/cores/PureZipWriter.js

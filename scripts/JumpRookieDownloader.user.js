@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         Jump Rookie Downloader
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
-// @version      1.0.0
-// @icon         https://rookie.shonenjump.com/resources/images/common/favicon.ico
-// @description  Tải manga chất lượng gốc trên Shonen Jump Rookie (rookie.shonenjump.com).
+// @version      2.0.0
+// @icon         https://www.google.com/s2/favicons?domain=rookie.shonenjump.com&sz=128
+// @description  Tải manga trên Shonen Jump Rookie (rookie.shonenjump.com).
 // @author       anonymous & AI
 // @match        https://rookie.shonenjump.com/series/*
 // @run-at       document-start
@@ -12,6 +12,10 @@
 // @connect      *
 // @connect      rookie.shonenjump.com
 // @connect      cdn-img.rookie.shonenjump.com
+//
+// --- TỰ ĐỘNG TẢI VÀ UPDATE PHIÊN BẢN
+// @updateURL    https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/JumpRookieDownloader.user.js
+// @downloadURL  https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/JumpRookieDownloader.user.js
 //
 // --- TỰ ĐỘNG NẠP KHI CÀI ĐẶT ĐỘC LẬP QUA JSDELIVR ---
 // @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/cores/PureZipWriter.js

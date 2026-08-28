@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         K MANGA Downloader
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
-// @version      2.3.2
+// @version      3.0.0
 // @icon         https://kmanga.kodansha.com/favicon.ico
-// @description  Tải manga chất lượng gốc trên K MANGA (Kodansha US) - Reverse-engineered SP(e) Hash & PRNG Xorshift 4x4.
+// @description  Tải manga trên K MANGA (Kodansha US).
 // @author       anonymous & AI
 // @match        https://kmanga.kodansha.com/*
 // @run-at       document-start
@@ -14,6 +14,10 @@
 // @connect      api.kmanga.kodansha.com
 // @connect      se-api.kmanga.kodansha.com
 // @connect      cdn.kmanga.kodansha.com
+//
+// --- TỰ ĐỘNG TẢI VÀ UPDATE PHIÊN BẢN
+// @updateURL    https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/KMANGADownloader.user.js
+// @downloadURL  https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/KMANGADownloader.user.js
 //
 // --- TỰ ĐỘNG NẠP KHI CÀI ĐẶT ĐỘC LẬP QUA JSDELIVR ---
 // @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/cores/PureZipWriter.js

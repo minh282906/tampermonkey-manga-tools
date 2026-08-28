@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         Comici+ Universal Downloader
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
-// @version      2.0.0
+// @version      3.0.0
 // @icon         https://files.catbox.moe/tpd5zq.png
-// @description  Tải manga trên 25+ nền tảng Comici+ (Champion Cross, Young Animal, HERO'S Web, Hana to Yume, Big Comics, Comic Ride, Manga Bang, Rimacomi+...).
+// @description  Tải manga trên ~30 nền tảng SaaS Comici+ (Champion Cross, Comic Growl, Young Champion, Young Animal, Hana to Yume, Big Comics, HERO'S Web, Take Comic!, Hayacomic, MAG Garden, G-comi, Comic PASH! neo, KimiComi, COMIC ROOM BASE, Comic Rela, Bibibi Comic, Mangalt, comici MANGA, Rimacomi+, Comic Ride, Manga BANG Comics, Manga SPA!, Asacomi, Nami Comic, Pia Comic, COMIC Ruelle & COMIC Jardin, booklistaSTUDIOweb, Manga Zegra).
 // @author       anonymous & AI
 // @match        https://championcross.jp/*
 // @match        https://comic-growl.com/*
@@ -66,6 +66,10 @@
 // @connect      *.j-nbooks.jp
 // @connect      *.booklista.co.jp
 // @connect      *.manga-zegra.com
+//
+// --- TỰ ĐỘNG TẢI VÀ UPDATE PHIÊN BẢN
+// @updateURL    https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/Comici+Downloader.user.js
+// @downloadURL  https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/Comici+Downloader.user.js
 //
 // --- TỰ ĐỘNG NẠP KHI CÀI ĐẶT ĐỘC LẬP QUA JSDELIVR ---
 // @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/cores/PureZipWriter.js

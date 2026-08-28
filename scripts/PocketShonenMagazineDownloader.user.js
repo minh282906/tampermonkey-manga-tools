@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PocketShonenMagazine Downloader
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
-// @version      2.1.0
+// @version      3.0.0
 // @icon         https://pocket.shonenmagazine.com/img/favicon.ico
 // @description  Tải manga trên MagaPoke.
 // @author       Fuku & anonymous & AI
@@ -14,6 +14,10 @@
 // @connect      api.pocket.shonenmagazine.com
 // @connect      se-api.pocket.shonenmagazine.com
 // @connect      mgpk-cdn.magazinepocket.com
+//
+// --- TỰ ĐỘNG TẢI VÀ UPDATE PHIÊN BẢN
+// @updateURL    https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/PocketShonenMagazineDownloader.user.js
+// @downloadURL  https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/PocketShonenMagazineDownloader.user.js
 //
 // --- TỰ ĐỘNG NẠP KHI CÀI ĐẶT ĐỘC LẬP QUA JSDELIVR ---
 // @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/cores/PureZipWriter.js

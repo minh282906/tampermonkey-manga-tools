@@ -605,12 +605,17 @@
     canvas.height = destH || img.height;
 
     const ctx = canvas.getContext('2d', { alpha: false });
+    ctx.imageSmoothingEnabled = false;
+    ctx.mozImageSmoothingEnabled = false;
+    ctx.webkitImageSmoothingEnabled = false;
+    ctx.msImageSmoothingEnabled = false;
+
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     for (const { srcX, srcY, destX, destY, width, height } of coords) {
       ctx.drawImage(img, srcX, srcY, width, height, destX, destY, width, height);
-    }
+  }
 
     // Xuất thẳng Blob chuẩn (Kích thước destW x destH đã là kích thước gốc chuẩn 100%)
     const mimeType = isJpg ? 'image/jpeg' : 'image/png';

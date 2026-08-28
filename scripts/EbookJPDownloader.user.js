@@ -72,12 +72,15 @@
                     var useOffscreen = typeof OffscreenCanvas === 'function' && typeof OffscreenCanvas.prototype.convertToBlob === 'function';
                     var canvas = useOffscreen ? new OffscreenCanvas(w, h) : document.createElement('canvas');
                     if (!useOffscreen) { canvas.width = w; canvas.height = h; }
-                    var ctx = canvas.getContext('2d');
+                    
+                    var ctx = canvas.getContext('2d', { alpha: false });
+                    ctx.imageSmoothingEnabled = false;
+                    ctx.mozImageSmoothingEnabled = false;
+                    ctx.webkitImageSmoothingEnabled = false;
+                    ctx.msImageSmoothingEnabled = false;
 
-                    if (mimeType === 'image/jpeg') {
-                      ctx.fillStyle = '#ffffff';
-                      ctx.fillRect(0, 0, w, h);
-                    }
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, w, h);
 
                     if (openParamArgs && loader?.funcs?.openParam) {
                       try { loader.funcs.openParam(openParamArgs); } catch (e) {}

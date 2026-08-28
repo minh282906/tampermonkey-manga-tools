@@ -339,6 +339,11 @@
     outCanvas.height = outHeight;
 
     const ctx = outCanvas.getContext('2d', { alpha: false });
+    ctx.imageSmoothingEnabled = false;
+    ctx.mozImageSmoothingEnabled = false;
+    ctx.webkitImageSmoothingEnabled = false;
+    ctx.msImageSmoothingEnabled = false;
+
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, outWidth, outHeight);
 

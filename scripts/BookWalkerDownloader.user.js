@@ -313,10 +313,13 @@
                         cleanCanvas.width = imgW;
                         cleanCanvas.height = imgH;
                         var ctx = cleanCanvas.getContext('2d', { alpha: false });
+                        ctx.imageSmoothingEnabled = false;
+                        ctx.mozImageSmoothingEnabled = false;
+                        ctx.webkitImageSmoothingEnabled = false;
+                        ctx.msImageSmoothingEnabled = false;
                         ctx.fillStyle = '#ffffff';
                         ctx.fillRect(0, 0, imgW, imgH);
-                        ctx.imageSmoothingEnabled = false;
-
+                        
                         // Vẽ trực tiếp các lát cắt từ image gốc vào Canvas sạch
                         orig.call(this, cleanCanvas, page, image, { x: 0, y: 0, width: imgW, height: imgH }, flag);
 
@@ -364,9 +367,12 @@
                   outCanvas.width = targetW;
                   outCanvas.height = targetH;
                   var ctx = outCanvas.getContext('2d', { alpha: false });
+                  ctx.imageSmoothingEnabled = false;
+                  ctx.mozImageSmoothingEnabled = false;
+                  ctx.webkitImageSmoothingEnabled = false;
+                  ctx.msImageSmoothingEnabled = false;
                   ctx.fillStyle = '#ffffff';
                   ctx.fillRect(0, 0, targetW, targetH);
-                  ctx.imageSmoothingEnabled = false;
 
                   if (canvas.width === targetW && canvas.height === targetH) {
                     ctx.drawImage(canvas, 0, 0);

@@ -421,6 +421,10 @@
     outCanvas.width = outW;
     outCanvas.height = h;
     const outCtx = outCanvas.getContext('2d', { alpha: false });
+    outCtx.imageSmoothingEnabled = false;
+    outCtx.mozImageSmoothingEnabled = false;
+    outCtx.webkitImageSmoothingEnabled = false;
+    outCtx.msImageSmoothingEnabled = false;
     outCtx.fillStyle = '#ffffff';
     outCtx.fillRect(0, 0, outW, h);
     outCtx.drawImage(leftCanvas, cropStartX, 0, outW, h, 0, 0, outW, h);
@@ -468,6 +472,10 @@
     outCanvas.width = outW;
     outCanvas.height = h;
     const outCtx = outCanvas.getContext('2d', { alpha: false });
+    outCtx.imageSmoothingEnabled = false;
+    outCtx.mozImageSmoothingEnabled = false;
+    outCtx.webkitImageSmoothingEnabled = false;
+    outCtx.msImageSmoothingEnabled = false;
     outCtx.fillStyle = '#ffffff';
     outCtx.fillRect(0, 0, outW, h);
     outCtx.drawImage(rightCanvas, 0, 0, outW, h, 0, 0, outW, h);
@@ -506,6 +514,10 @@
     outCanvas.width = outW;
     outCanvas.height = h;
     const outCtx = outCanvas.getContext('2d', { alpha: false });
+    outCtx.imageSmoothingEnabled = false;
+    outCtx.mozImageSmoothingEnabled = false;
+    outCtx.webkitImageSmoothingEnabled = false;
+    outCtx.msImageSmoothingEnabled = false;
     outCtx.fillStyle = '#ffffff';
     outCtx.fillRect(0, 0, outW, h);
     outCtx.drawImage(srcCanvas, startX, 0, outW, h, 0, 0, outW, h);
@@ -540,12 +552,20 @@
       leftRawCanvas.width = splitX;
       leftRawCanvas.height = h;
       const lCtx = leftRawCanvas.getContext('2d', { alpha: false });
+      lCtx.imageSmoothingEnabled = false;
+      lCtx.mozImageSmoothingEnabled = false;
+      lCtx.webkitImageSmoothingEnabled = false;
+      lCtx.msImageSmoothingEnabled = false;
       lCtx.drawImage(srcCanvas, 0, 0, splitX, h, 0, 0, splitX, h);
 
       const rightRawCanvas = DOC.createElement('canvas');
       rightRawCanvas.width = w - splitX;
       rightRawCanvas.height = h;
       const rCtx = rightRawCanvas.getContext('2d', { alpha: false });
+      rCtx.imageSmoothingEnabled = false;
+      rCtx.mozImageSmoothingEnabled = false;
+      rCtx.webkitImageSmoothingEnabled = false;
+      rCtx.msImageSmoothingEnabled = false;
       rCtx.drawImage(srcCanvas, splitX, 0, w - splitX, h, 0, 0, w - splitX, h);
 
       const rightFinalCanvas = cropRightHalf(rightRawCanvas, h);
@@ -630,6 +650,10 @@
         rawCanvas.height = elemH;
 
         const ctx = rawCanvas.getContext('2d', { alpha: false });
+        ctx.imageSmoothingEnabled = false;
+        ctx.mozImageSmoothingEnabled = false;
+        ctx.webkitImageSmoothingEnabled = false;
+        ctx.msImageSmoothingEnabled = false;
         ctx.fillStyle = '#000000';
         ctx.fillRect(0, 0, elemW, elemH);
         ctx.drawImage(item.el, 0, 0, elemW, elemH);

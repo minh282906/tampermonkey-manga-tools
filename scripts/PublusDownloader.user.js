@@ -1,13 +1,15 @@
 // ==UserScript==
 // @name         PUBLUS Universal Downloader
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
-// @version      1.0.0
+// @version      3.1.0
 // @icon         http://www.google.com/s2/favicons?domain=publus.jp&sz=128
-// @description  Tải manga trên các nền tảng ACCESS PUBLUS Reader / NFBR (BookWalker, Pixiv Comic Store, ...).
+// @description  Tải manga trên toàn bộ hệ sinh thái ACCESS PUBLUS Reader / NFBR (BookWalker, Pixiv Comic Store, DMM Books).
 // @author       anonymous & AI
 // @match        https://viewer.bookwalker.jp/*/viewer.html*
 // @match        https://viewer-trial.bookwalker.jp/*/viewer.html*
 // @match        https://comic-store-viewer.pixiv.net/static/viewer*
+// @match        https://book.dmm.com/*
+// @match        https://book.dmm.co.jp/*
 // @run-at       document-start
 // @grant        unsafeWindow
 // @grant        GM_xmlhttpRequest
@@ -17,6 +19,10 @@
 // @connect      pixiv.net
 // @connect      *.pixiv.net
 // @connect      *.pximg.net
+// @connect      dmm.com
+// @connect      *.dmm.com
+// @connect      dmm.co.jp
+// @connect      *.dmm.co.jp
 //
 // --- TỰ ĐỘNG TẢI VÀ UPDATE PHIÊN BẢN
 // @updateURL    https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/PublusDownloader.user.js
@@ -27,6 +33,7 @@
 // @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/cores/UniversalUI.js
 // @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/cores/RouteWatcher.js
 // @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/cores/MangaUtils.js
+// @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/decoders/PublusTools.js
 // ==/UserScript==
 
 (function publusUniversalDownloader() {
@@ -36,6 +43,7 @@
    * CẤU HÌNH HỆ THỐNG
    * ========================================================================= */
   const CONFIG = {
+    MAX_CONCURRENT: 6,   // 6 luồng tải song song cho nhánh API DMM
     JPEG_QUALITY: 0.95   // Chất lượng xuất JPG nếu chọn
   };
 
@@ -49,32 +57,87 @@
     running: false,
     convertJpeg: localStorage.getItem("publus-dl:convert-jpeg") === '1',
     episodeData: null,
+    dmmData: null,
     ui: null
   };
 
   /* =========================================================================
-   * BỘ ADAPTER THEME TỰ ĐỘNG THEO BRAND (BOOKWALKER VS PIXIV STORE)
+   * BỘ ADAPTER THEME TỰ ĐỘNG (BOOKWALKER / PIXIV / FANZA / DMM)
    * ========================================================================= */
   const SITE_THEMES = {
-    
     "bookwalker.jp": {
       name: "BookWalker", color: "#0284c7", bg: "#ffffff", text: "#0284c7", btnBg: "#ffffff",
       btnColor: "#0284c7", btnBorder: "1px solid #0284c7", tabBg: "#ffffff", 
-      tabColor: "#0284c7", tabBorder: "1px solid #0284c7", top: "44px" },
-
+      tabColor: "#0284c7", tabBorder: "1px solid #0284c7", top: "44px"
+    },
     "pixiv.net": { 
       name: "Pixiv Comic", color: "#0096fa", bg: "#ffffff", text: "#0096fa", btnBg: "#0096fa",
       btnColor: "#ffffff", btnBorder: "0", tabBg: "#0096fa", tabColor: "#ffffff",
       tabBorder: "none", top: "44px"
+    },
+    // FANZA Books (book.dmm.co.jp):
+    "dmm.co": {
+      name: "FANZA Books", color: "#cc1835", bg: "#ffffff", text: "#000000", btnBg: "#cc1835",
+      btnColor: "#ffffff", btnBorder: "0", tabBg: "#cc1835", tabColor: "#ffffff",
+      tabBorder: "none", top: "64px"
+    },
+    // DMM Books (book.dmm.com):
+    "dmm.com": {
+      name: "DMM Books", color: "#00a4bd", bg: "#ffffff", text: "#000000", btnBg: "#00a4bd",
+      btnColor: "#ffffff", btnBorder: "0", tabBg: "#00a4bd", tabColor: "#ffffff",
+      tabBorder: "none", top: "64px"
     }
+  };
+
+  function isDmm() {
+    return WIN.location.hostname.includes("dmm.co") || WIN.location.hostname.includes("dmm.com");
+  }
+
   
-};
+  // Xử lý webtoon
+  // Quét toàn bộ từ khóa đọc dọc (Katakana, Hiragana, Kanji, Romaji)
+  function isDmmWebtoon() {
+    try {
+      const fullText = (
+        (DOC.title || '') + ' ' +
+        (DOC.querySelector('meta[property="og:title"]')?.content || '') + ' ' +
+        (state.dmmData?.title || '') + ' ' +
+        (DOC.querySelector('h1, .title, [class*="title"]')?.textContent || '') + ' ' +
+        WIN.location.href
+      ).toLowerCase();
+
+      return fullText.includes('タテヨミ') || 
+             fullText.includes('たてよみ') || 
+             fullText.includes('縦読み') || 
+             fullText.includes('tateyomi') || 
+             fullText.includes('webtoon');
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Nếu là Tateyomi -> Luôn trả về 44px; Nếu là Manga thường -> Trả về top trong SITE_THEMES
+  function getDmmTopOffset(defaultTop = "44px") {
+    if (isDmmWebtoon()) return "44px";
+    return defaultTop;
+  }
 
   function resolveSiteTheme() {
-    const host = WIN.location.hostname;
-    for (const domain in SITE_THEMES) {
-      if (host.includes(domain)) return SITE_THEMES[domain];
+    const host = WIN.location.hostname.toLowerCase();
+
+    if (host.includes("dmm.com")) {
+      const t = Object.assign({}, SITE_THEMES["dmm.com"]);
+      t.top = getDmmTopOffset(t.top);
+      return t;
     }
+    if (host.includes("dmm.co")) {
+      const t = Object.assign({}, SITE_THEMES["dmm.co"]);
+      t.top = getDmmTopOffset(t.top);
+      return t;
+    }
+    if (host.includes("pixiv.net")) return SITE_THEMES["pixiv.net"];
+    if (host.includes("bookwalker.jp")) return SITE_THEMES["bookwalker.jp"];
+
     return { name: "PUBLUS Reader", color: "#0284c7", bg: "#ffffff", text: "#0284c7", top: "44px" };
   }
 
@@ -125,7 +188,7 @@
   }
 
   /* =========================================================================
-   * 2. HẰNG SỐ NỘI BỘ VÀ BỘ HỖ TRỢ NFBR (PUBLUS)
+   * 2. BỘ HỖ TRỢ XỬ LÝ CHUỖI VÀ URL CHUẨN
    * ========================================================================= */
   const FALLBACK_WIDTH  = 1440;
   const FALLBACK_HEIGHT = 2048;
@@ -134,6 +197,9 @@
   function isEpisodeUrl() {
     const path = WIN.location.pathname;
     const search = WIN.location.search;
+    if (isDmm()) {
+      return search.includes('cid=') || /\/(?:product|streaming)\//.test(path);
+    }
     return /\/viewer\.html/.test(path) || /\/static\/viewer/.test(path) || search.includes('cid=');
   }
 
@@ -158,6 +224,11 @@
 
   function getCleanTitle() {
     try {
+      if (isDmm() && state.dmmData?.title) {
+        let raw = state.dmmData.title.replace(/〜/g, ' ').replace(/【[^】]*】/g, '').trim();
+        return cleanString(raw) || `DMM_${getEpisodeId()}`;
+      }
+
       const rt = getNFBRRuntime(WIN);
       let title = rt?.menu?.getContentTitle?.() || "";
       if (!title) {
@@ -166,17 +237,13 @@
       }
       if (!title) title = DOC.title || "";
 
-      // 1. CẮT BỎ HẬU TỐ THƯƠNG HIỆU
       let raw = title.replace(/[\/|]\s*BOOK\*WALKER.*/i, '')
                      .replace(/[-|｜]\s*pixiv.*$/i, '')
                      .trim();
 
-      // 2. LỌC SẠCH MỌI CỤM QUẢNG CÁO KHUYẾN MÃI (KỂ CẢ 【期間限定 無料お試し版】)
       raw = raw.replace(/【[^】]*】/g, '').trim();
       raw = raw.replace(/\[[^\]]*\]/g, '').trim();
       raw = raw.replace(/^公式\s*[-－_]?\s*/i, '').trim();
-
-      // 3. CHUẨN HÓA KHOẢNG TRẮNG TOÀN GIÁC \u3000 THÀNH KHOẢNG TRẮNG CHUẨN
       raw = raw.replace(/\u3000+/g, ' ').replace(/\s{2,}/g, ' ').trim();
 
       const match = raw.match(/^(.*?)(?:\s+[-－–—/]\s+|\s+)((?:第\s*)?[0-9０-９IVXLCDMivxlcdm一二三四五六七八九十百千万\s\-\–\—\ー\~〜\.]+(?:話|巻|章|節|部|エピソード|分冊版|単話|前編|中編|後編)?.*)$/i);
@@ -184,13 +251,147 @@
         return `${cleanString(match[1])} - ${cleanString(match[2])}`;
       }
 
-      // Với 単行本 nguyên cuốn -> Giữ nguyên tên sạch 100%
       return cleanString(raw) || `Publus_${getEpisodeId()}`;
     } catch (e) {}
 
     return `Publus_${getEpisodeId()}`;
   }
 
+  /* =========================================================================
+   * 3. NHÁNH DMM BOOKS (THUẦN TOÁN HỌC 6 LUỒNG QUA PUBLUSTOOLS)
+   * ========================================================================= */
+  async function fetchDmmManifest() {
+    const Utils = window.MangaUtils || globalThis.MangaUtils;
+    const Tools = window.PublusTools || globalThis.PublusTools;
+    if (!Utils || !Tools) throw new Error("Chưa nạp đủ MangaUtils và PublusTools.");
+
+    const params = new URLSearchParams(WIN.location.search);
+    let cid = params.get('cid');
+    let lin = params.get('lin') || '1'; // Nếu URL không có lin thì tự fallback về 1
+
+    if (!cid) {
+      const match = WIN.location.pathname.match(/\/product\/\d+\/([a-zA-Z0-9_-]+)/);
+      if (match) cid = match[1];
+    }
+    if (!cid) throw new Error("Không tìm thấy CID trên trang DMM.");
+
+    const authUrl = `https://${WIN.location.host}/viewerapi/auth/?cid=${encodeURIComponent(cid)}&lin=${encodeURIComponent(lin)}`;
+    const authBuffer = await Utils.fetchBuffer(authUrl, {
+      "Accept": "application/json, text/plain, */*",
+      "X-Requested-With": "XMLHttpRequest"
+    });
+
+    const rawAuth = JSON.parse(new TextDecoder().decode(authBuffer));
+    const authData = rawAuth?.data || rawAuth?.result || rawAuth;
+
+    if (!authData || (!authData.url && !authData.base_url)) {
+      const msg = rawAuth?.message || rawAuth?.error || "Auth response rỗng";
+      throw new Error(`DMM Auth lỗi: ${msg}`);
+    }
+
+    const cdnBaseUrl = (authData.url || authData.base_url).replace(/\/?$/, '/');
+    const authInfo = authData.auth_info || authData.authInfo || {};
+    const authQuery = typeof authInfo === 'string' ? authInfo : new URLSearchParams(authInfo).toString();
+
+    // Thử tải configuration_pack.json
+    let configData = null;
+    let isNeedNormalDefault = false;
+
+    try {
+      const buf = await Utils.fetchBuffer(`${cdnBaseUrl}configuration_pack.json?${authQuery}`);
+      configData = JSON.parse(new TextDecoder().decode(buf));
+    } catch (e) {
+      const buf = await Utils.fetchBuffer(`${cdnBaseUrl}normal_default/configuration_pack.json?${authQuery}`);
+      configData = JSON.parse(new TextDecoder().decode(buf));
+      isNeedNormalDefault = true;
+    }
+
+    if (!configData || !configData.configuration?.contents) {
+      throw new Error("Không lấy được cấu hình configuration_pack.json của DMM.");
+    }
+
+    const pages = [];
+    const contents = configData.configuration.contents;
+
+    for (const content of contents) {
+      const filename = content.file;
+      const isShareFile = filename.includes('../');
+      const fileData = configData[filename] || configData[filename.replace('../', '')];
+      const fileInfo = fileData?.FileLinkInfo;
+      const pageCount = fileInfo?.PageCount || 1;
+      const pageLinkList = fileInfo?.PageLinkInfoList || [];
+
+      for (let idx = 0; idx < pageCount; idx++) {
+        const fileSubPath = isNeedNormalDefault
+          ? `normal_default/${isShareFile ? filename.replace('../', '') : filename}/${idx}.jpeg`
+          : `${filename}/${idx}.jpeg`;
+
+        const pageUrl = `${cdnBaseUrl}${fileSubPath}?${authQuery}`;
+        const pattern = Tools.computePattern(`${filename}/${idx}`);
+        const size = pageLinkList[idx]?.Page?.Size || { Width: FALLBACK_WIDTH, Height: FALLBACK_HEIGHT };
+
+        pages.push({
+          pageNo: pages.length + 1,
+          url: pageUrl,
+          pattern: pattern,
+          width: Number(size.Width || size.width || FALLBACK_WIDTH),
+          height: Number(size.Height || size.height || FALLBACK_HEIGHT)
+        });
+      }
+    }
+
+    return {
+      title: authData.cti || rawAuth.cti || "DMM Books",
+      cid: cid,
+      pages: pages
+    };
+  }
+
+  async function descrambleDmmPage(pageObj, isJpg) {
+    const Utils = window.MangaUtils || globalThis.MangaUtils;
+    const Tools = window.PublusTools || globalThis.PublusTools;
+
+    const rawBuffer = await Utils.fetchBuffer(pageObj.url);
+    const img = await Utils.loadImage(rawBuffer, 'image/jpeg');
+
+    const canvas = DOC.createElement('canvas');
+    canvas.width = pageObj.width;
+    canvas.height = pageObj.height;
+
+    const ctx = canvas.getContext('2d', { alpha: false });
+    ctx.imageSmoothingEnabled = false;
+    ctx.mozImageSmoothingEnabled = false;
+    ctx.webkitImageSmoothingEnabled = false;
+    ctx.msImageSmoothingEnabled = false;
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const coords = Tools.PublusCoordsGenerator(img.width, img.height, 64, 64, pageObj.pattern);
+    for (const piece of coords) {
+      ctx.drawImage(
+        img,
+        piece.destX, piece.destY, piece.width, piece.height,
+        piece.srcX, piece.srcY, piece.width, piece.height
+      );
+    }
+
+    const mimeType = isJpg ? 'image/jpeg' : 'image/png';
+    const outExt = isJpg ? 'jpg' : 'png';
+    const blob = await new Promise(r => canvas.toBlob(r, mimeType, CONFIG.JPEG_QUALITY));
+
+    canvas.width = 0;
+    canvas.height = 0;
+
+    return {
+      fileName: `${pageObj.pageNo}.${outExt}`,
+      data: new Uint8Array(await blob.arrayBuffer())
+    };
+  }
+
+  /* =========================================================================
+   * 4. NHÁNH BOOKWALKER & PIXIV COMIC STORE (PRE-NAVIGATION HOOK & IFRAME)
+   * ========================================================================= */
   function getNFBRRuntime(targetWin = WIN) {
     try {
       let wins = [targetWin];
@@ -216,7 +417,6 @@
             const menu = obj.menu?.a6l || obj.a6l || obj.menu || (typeof obj.moveToPage === 'function' ? obj : null);
             const renderer = obj.renderer || menu?.renderer || obj.viewer_;
             
-            // Ưu tiên chọn Model có chứa dữ liệu cuốn sách (content/files/configuration)
             const modelCandidates = [
               renderer?.model,
               obj.viewer_?.model,
@@ -267,7 +467,7 @@
     const total = Number(
       getModelProperty(model, "total") ||
       attr.total ||
-      a2u.X9U || // Tổng số trang của Pixiv Store
+      a2u.X9U ||
       attr.content?.configuration?.contents?.length ||
       attr.content?.files?.length ||
       (Array.isArray(a2u.L3Y) ? a2u.L3Y.length * 2 : 0) ||
@@ -321,8 +521,6 @@
     const files = content.files || attr.files || [];
 
     const pageMap = new Map();
-
-    // Quét mảng dàn trang (Hỗ trợ BookWalker r8q lẫn Pixiv Store L3Y / viewerWideScreenSpreads)
     const spreadsList = a2u.r8q || a2u.L3Y || a2u.l3Y || attr.viewerWideScreenSpreads || attr.viewerWideScreenImageModels || [];
 
     if (Array.isArray(spreadsList)) {
@@ -378,17 +576,12 @@
     return null;
   }
 
-  /* =========================================================================
-   * 3. MAIN-WORLD HOOK: BẮT SỚM VÀO LÕI GHÉP MẢNH CỦA PUBLUS
-   * ========================================================================= */
   function ensureIframeBridge(win) {
     if (win.__bw_bridge) return;
     try {
       win.eval(`
         (function() {
           var capturedPages = new Map();
-
-          // Tự động gán CORS anonymous cho toàn bộ Image bên trong Iframe
           try {
             var nativeImg = window.Image;
             window.Image = class extends nativeImg {
@@ -430,7 +623,6 @@
                         ctx.fillStyle = '#ffffff';
                         ctx.fillRect(0, 0, imgW, imgH);
                         
-                        // Vẽ trực tiếp các lát cắt từ image gốc vào Canvas sạch
                         orig.call(this, cleanCanvas, page, image, { x: 0, y: 0, width: imgW, height: imgH }, flag);
 
                         var pIdx = Number(page?.index ?? window.NFBR?.a6G?.Initializer?.T1V?.menu?.model?.get?.('viewerPage') ?? 0);
@@ -459,8 +651,6 @@
               return new Promise(function(resolve, reject) {
                 try {
                   var canvas = capturedPages.get(Number(pIdx));
-
-                  // Nếu hook chưa bắt kịp, fallback sang screen.canvas
                   if (!canvas) {
                     var init = window.NFBR?.a6G?.Initializer?.T1V || window.NFBR?.a6G?.Initial?.T1V;
                     var menu = init?.menu?.a6l || init?.a6l || init?.menu;
@@ -520,9 +710,6 @@
     }
   }
 
-  /* =========================================================================
-   * 4. SILENT IFRAME WORKER VÀ QUY TRÌNH CHỤP ẢNH
-   * ========================================================================= */
   function updateIframeSize(iframeEl, pageDim) {
     const targetW = parsePositiveInt(pageDim?.width, FALLBACK_WIDTH);
     const targetH = parsePositiveInt(pageDim?.height, FALLBACK_HEIGHT);
@@ -636,7 +823,6 @@
 
     if (!rt) throw new Error("Không tìm thấy hàm điều khiển trang PUBLUS.");
 
-    // Điều khiển lật trang đa năng: Thử Menu -> Thử Model Backbone
     const menu = rt.menu;
     const model = rt.model;
     try {
@@ -679,75 +865,115 @@
    * 5. TIẾN TRÌNH TẢI CHÍNH
    * ========================================================================= */
   async function startDownload() {
-    if (state.running || !state.episodeData) return;
+    if (state.running) return;
     const ui = getUI();
 
     state.running = true;
     if (ui) ui.setBusy(true);
 
-    let workerIframe = null;
-    let initialPageIndex = 0;
-
     try {
-      if (ui) ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
+      if (ui) ui.updateProgress({ completed: 0, total: 0, status: "Đang tải..." });
 
+      const useJpeg = Boolean(state.convertJpeg);
+      const ZipClass = window.PureZipWriter || globalThis.PureZipWriter;
+      const Utils = window.MangaUtils || globalThis.MangaUtils;
+      const zip = new ZipClass();
+
+      // ==========================================
+      // NHÁNH A: DMM BOOKS (6 LUỒNG QUA PUBLUSTOOLS)
+      // ==========================================
+      if (isDmm()) {
+        let dmmData = state.dmmData;
+        if (!dmmData) {
+          dmmData = await fetchDmmManifest();
+          state.dmmData = dmmData;
+        }
+
+        const pages = dmmData.pages;
+        const totalPages = pages.length;
+        if (!totalPages) throw new Error("Không tìm thấy trang truyện DMM.");
+
+        zip.addFile(`${dmmData.cid}.txt`, new Uint8Array(0));
+        if (ui) ui.updateProgress({ completed: 0, total: totalPages, status: "Đang tải..." });
+
+        const tasks = pages.map(pageObj => () => descrambleDmmPage(pageObj, useJpeg));
+        const results = await Utils.runParallelQueue(tasks, CONFIG.MAX_CONCURRENT, (completed, total) => {
+          if (ui) ui.updateProgress({ completed, total, status: "Đang tải..." });
+        });
+
+        if (ui) ui.updateProgress({ completed: totalPages, total: totalPages, status: "Đang đóng gói file ZIP..." });
+        await sleep(50);
+
+        for (const res of results) {
+          if (res?.data) zip.addFile(res.fileName, res.data);
+        }
+
+        const zipName = `${getCleanTitle()}.zip`;
+        zip.download(zipName);
+
+        if (ui) ui.updateProgress({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
+        return;
+      }
+
+      // ==========================================
+      // NHÁNH B: BOOKWALKER & PIXIV STORE (IFRAME)
+      // ==========================================
+      if (!state.episodeData) return;
       const { rt: mainRt, pagesList } = state.episodeData;
       const totalPages = pagesList.length;
 
       if (!totalPages) throw new Error("Không tìm thấy trang truyện.");
 
-      initialPageIndex = getCurrentPageIndex(mainRt);
-      const useJpeg = Boolean(state.convertJpeg);
-      const ZipClass = window.PureZipWriter || globalThis.PureZipWriter;
-      const zip = new ZipClass();
-
-      // Đính kèm file txt định danh ID tập tại thư mục gốc ZIP
+      const initialPageIndex = getCurrentPageIndex(mainRt);
       const episodeId = getEpisodeId();
       zip.addFile(`${episodeId}.txt`, new Uint8Array(0));
 
-      workerIframe = createWorkerIframe(pagesList[0]);
+      const workerIframe = createWorkerIframe(pagesList[0]);
       if (ui) ui.updateProgress({ completed: 0, total: totalPages, status: "Đang tải..." });
 
-      for (let i = 0; i < totalPages; i++) {
-        const pageObj = pagesList[i];
-        await resizeIframeAndTrigger(workerIframe, pageObj);
-        const renderResult = await navigateToPage(workerIframe, pageObj.index);
-        const capture = await renderCanvasToBlob(workerIframe, pageObj, renderResult, useJpeg);
+      try {
+        for (let i = 0; i < totalPages; i++) {
+          const pageObj = pagesList[i];
+          await resizeIframeAndTrigger(workerIframe, pageObj);
+          const renderResult = await navigateToPage(workerIframe, pageObj.index);
+          const capture = await renderCanvasToBlob(workerIframe, pageObj, renderResult, useJpeg);
 
-        zip.addFile(`${i + 1}.${capture.ext}`, capture.data);
+          zip.addFile(`${i + 1}.${capture.ext}`, capture.data);
 
-        if (ui) {
-          ui.updateProgress({
-            completed: i + 1,
-            total: totalPages,
-            status: "Đang tải..."
-          });
+          if (ui) {
+            ui.updateProgress({
+              completed: i + 1,
+              total: totalPages,
+              status: "Đang tải..."
+            });
+          }
+
+          await sleep(50);
         }
 
+        if (ui) ui.updateProgress({ completed: totalPages, total: totalPages, status: "Đang đóng gói file ZIP..." });
         await sleep(50);
+
+        const zipName = `${getCleanTitle()}.zip`;
+        zip.download(zipName);
+
+        if (ui) ui.updateProgress({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
+      } finally {
+        if (workerIframe) {
+          try {
+            const win = workerIframe.contentWindow;
+            const rt = getNFBRRuntime(win);
+            if (rt && typeof rt.menu?.moveToPage === "function") {
+              rt.menu.moveToPage(initialPageIndex);
+            }
+          } catch (e) {}
+          try { workerIframe.remove(); } catch (e) {}
+        }
       }
-
-      if (ui) ui.updateProgress({ completed: totalPages, total: totalPages, status: "Đang đóng gói file ZIP..." });
-      await sleep(50);
-
-      const zipName = `${getCleanTitle()}.zip`;
-      zip.download(zipName);
-
-      if (ui) ui.updateProgress({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
     } catch (err) {
       if (ui) ui.updateProgress({ status: "Lỗi: " + (err?.message || err) });
       console.error("[publus-dl] Download failed", err);
     } finally {
-      if (workerIframe) {
-        try {
-          const win = workerIframe.contentWindow;
-          const rt = getNFBRRuntime(win);
-          if (rt && typeof rt.menu?.moveToPage === "function") {
-            rt.menu.moveToPage(initialPageIndex);
-          }
-        } catch (e) {}
-        try { workerIframe.remove(); } catch (e) {}
-      }
       state.running = false;
       if (ui) ui.setBusy(false);
     }
@@ -757,18 +983,65 @@
    * 6. KHỞI CHẠY VÀ THEO DÕI SPA
    * ========================================================================= */
   async function boot() {
-    while (!DOC.body) await sleep(30);
+    while (!DOC.body) await sleep(20);
     const ui = getUI();
 
     if (!isEpisodeUrl()) {
       if (ui?.panel) ui.panel.style.display = "none";
-      if (ui) ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
       return;
     }
 
-    if (ui?.panel) ui.panel.style.display = "block";
-    if (ui) ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
+    // [HIỆN UI NGAY LẬP TỨC 0ms]: Người dùng thấy ngay script đang hoạt động
+    if (ui?.panel) {
+      ui.panel.style.display = "block";
+      ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
+    }
 
+    // ==========================================
+    // A. NHÁNH DMM & FANZA BOOKS (CÓ RETRY LOOP)
+    // ==========================================
+    if (isDmm()) {
+      let dmmData = null;
+      let retries = 0;
+
+      // Vòng lặp chờ Cookie và Auth API sẵn sàng (tối đa 25 lần x 150ms)
+      while (retries < 25) {
+        try {
+          dmmData = await fetchDmmManifest();
+          if (dmmData && dmmData.pages?.length > 0) break;
+        } catch (e) {}
+        await sleep(150);
+        retries++;
+      }
+
+      if (dmmData && dmmData.pages?.length > 0) {
+        state.dmmData = dmmData;
+
+        // Cập nhật lại top chính xác nếu phát hiện タテヨミ từ tiêu đề vừa lấy
+        if (ui?.panel) {
+          ui.panel.style.top = getDmmTopOffset(resolveSiteTheme().top);
+        }
+
+        // Micro-delay chuẩn 80ms mượt mà
+        await sleep(80);
+
+        if (ui) {
+          ui.updateProgress({
+            completed: 0,
+            total: dmmData.pages.length,
+            status: "Sẵn sàng."
+          });
+        }
+      } else {
+        console.error("[publus-dl] Không thể lấy dữ liệu DMM sau 25 lần thử.");
+        if (ui) ui.updateProgress({ status: "Sẵn sàng." });
+      }
+      return;
+    }
+
+    // ==========================================
+    // B. NHÁNH BOOKWALKER & PIXIV COMIC STORE
+    // ==========================================
     let rt = null;
     let pagesList = [];
     let attempts = 0;
@@ -781,13 +1054,14 @@
           if (pagesList.length > 0) break;
         } catch (e) {}
       }
-      await sleep(200);
+      await sleep(150);
       attempts++;
     }
 
     if (pagesList.length > 0) {
       state.episodeData = { rt, pagesList };
       
+      // Micro-delay chuẩn 80ms
       await sleep(80);
 
       if (ui) {
@@ -806,6 +1080,7 @@
   if (typeof watchRoute === "function") {
     watchRoute(() => {
       state.episodeData = null;
+      state.dmmData = null;
       state.running = false;
       const ui = getUI();
       if (ui) {

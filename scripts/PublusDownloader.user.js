@@ -76,7 +76,7 @@
       tabBorder: "none", top: "44px"
     },
     // FANZA Books (book.dmm.co.jp):
-    "dmm.co": {
+    "dmm.co.jp": {
       name: "FANZA Books", color: "#cc1835", bg: "#ffffff", text: "#000000", btnBg: "#cc1835",
       btnColor: "#ffffff", btnBorder: "0", tabBg: "#cc1835", tabColor: "#ffffff",
       tabBorder: "none", top: "64px"
@@ -90,7 +90,7 @@
   };
 
   function isDmm() {
-    return WIN.location.hostname.includes("dmm.co") || WIN.location.hostname.includes("dmm.com");
+    return WIN.location.hostname.includes("dmm.co.jp") || WIN.location.hostname.includes("dmm.com");
   }
 
   
@@ -130,8 +130,8 @@
       t.top = getDmmTopOffset(t.top);
       return t;
     }
-    if (host.includes("dmm.co")) {
-      const t = Object.assign({}, SITE_THEMES["dmm.co"]);
+    if (host.includes("dmm.co.jp")) {
+      const t = Object.assign({}, SITE_THEMES["dmm.co.jp"]);
       t.top = getDmmTopOffset(t.top);
       return t;
     }

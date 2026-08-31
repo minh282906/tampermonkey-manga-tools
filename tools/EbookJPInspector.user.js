@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         EbookJapan Inspector
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
-// @version      4.3.0
+// @version      4.4.0
 // @description  Inspector soi ma trận Yahoo Wasm và trích xuất Canvas Iframe cho EbookJapan.
 // @author       anonymous & AI
 // @match        https://ebookjapan.yahoo.co.jp/*
@@ -33,7 +33,7 @@
   }
 
   /* =========================================================================
-   * 1. CẦU NỐI MAIN-WORLD BRIDGE
+   * 1. CẦU NỐI MAIN-WORLD BRIDGE (VƯỢT RÀO XÓA PROTOTYPE & LỖI CONVERTTOBLOB)
    * ========================================================================= */
   function ensureEbookJapanBridge(ownerWin) {
     const targetWin = ownerWin || WIN;
@@ -41,6 +41,7 @@
     try {
       targetWin.eval(`
         (function() {
+          // Lấy toDataURL sạch từ iframe ẩn tạm thời (chống Yahoo xóa prototype)
           var pristineToDataURL = null;
           try {
             var iframe = document.createElement('iframe');
@@ -53,18 +54,43 @@
           function canvasToArrayBuffer(canvas, mimeType, quality) {
             return new Promise(function(resolve, reject) {
               try {
-                var toData = pristineToDataURL || HTMLCanvasElement.prototype.toDataURL;
-                var dataUri = toData.call(canvas, mimeType || 'image/png', quality);
-                var base64 = dataUri.split(',')[1];
-                var bin = atob(base64);
-                var ab = new ArrayBuffer(bin.length);
-                var ua = new Uint8Array(ab);
-                for (var i = 0; i < bin.length; i++) {
-                  ua[i] = bin.charCodeAt(i);
+                var hasConvertToBlob = typeof OffscreenCanvas === 'function' &&
+                                       canvas instanceof OffscreenCanvas &&
+                                       typeof canvas.convertToBlob === 'function';
+                if (hasConvertToBlob) {
+                  var opts = { type: mimeType || 'image/png' };
+                  if (typeof quality === 'number') opts.quality = quality;
+                  canvas.convertToBlob(opts).then(function(blob) {
+                    var reader = new FileReader();
+                    reader.onload = function() { resolve(reader.result); };
+                    reader.onerror = reject;
+                    reader.readAsArrayBuffer(blob);
+                  }).catch(function() {
+                    fallbackDataUrl();
+                  });
+                  return;
                 }
-                resolve(ab);
-              } catch(e) {
-                reject(e);
+                fallbackDataUrl();
+              } catch(err) {
+                fallbackDataUrl();
+              }
+
+              // Fallback an toàn tuyệt đối 100%: Dùng toDataURL -> ArrayBuffer
+              function fallbackDataUrl() {
+                try {
+                  var toData = pristineToDataURL || HTMLCanvasElement.prototype.toDataURL;
+                  var dataUri = toData.call(canvas, mimeType || 'image/png', quality);
+                  var base64 = dataUri.split(',')[1];
+                  var bin = atob(base64);
+                  var ab = new ArrayBuffer(bin.length);
+                  var ua = new Uint8Array(ab);
+                  for (var i = 0; i < bin.length; i++) {
+                    ua[i] = bin.charCodeAt(i);
+                  }
+                  resolve(ab);
+                } catch(e) {
+                  reject(e);
+                }
               }
             });
           }
@@ -73,25 +99,32 @@
             render: function(dataUrl, w, h, pageObj, pIdx, mimeType, quality) {
               return new Promise(function(resolve, reject) {
                 var img = new Image();
+                img.decoding = 'async';
                 img.onload = function() {
                   try {
                     var realW = w || img.naturalWidth || 1031;
                     var realH = h || img.naturalHeight || 1456;
 
-                    // 1. sharpCanvas sạch (nền trắng để xuất tải về chuẩn 100%)
-                    var canvas = document.createElement('canvas');
-                    canvas.width = realW; canvas.height = realH;
-                    var ctx = canvas.getContext('2d', { alpha: false });
+                    // 1. sharpCanvas sạch 100% để xuất file tải về
+                    var sharpCanvas = document.createElement('canvas');
+                    sharpCanvas.width = realW; sharpCanvas.height = realH;
+                    var ctx = sharpCanvas.getContext('2d', { alpha: false });
                     ctx.imageSmoothingEnabled = false;
+                    ctx.mozImageSmoothingEnabled = false;
+                    ctx.webkitImageSmoothingEnabled = false;
+                    ctx.msImageSmoothingEnabled = false;
                     ctx.fillStyle = '#ffffff';
                     ctx.fillRect(0, 0, realW, realH);
 
-                    // 2. visualCanvas soi lỗi (nền hồng cánh sen + viền xanh cyan 4px)
+                    // 2. visualCanvas có viền Cyan #00ffff bao quanh để soi live
                     var visualCanvas = document.createElement('canvas');
                     visualCanvas.width = realW; visualCanvas.height = realH;
                     var vCtx = visualCanvas.getContext('2d', { alpha: false });
                     vCtx.imageSmoothingEnabled = false;
-                    vCtx.fillStyle = '#ff007f'; // Lót nền hồng cản quang
+                    vCtx.mozImageSmoothingEnabled = false;
+                    vCtx.webkitImageSmoothingEnabled = false;
+                    vCtx.msImageSmoothingEnabled = false;
+                    vCtx.fillStyle = '#ffffff';
                     vCtx.fillRect(0, 0, realW, realH);
 
                     if (pageObj && pageObj.loader && typeof pageObj.loader.shuffle === 'function') {
@@ -108,14 +141,14 @@
                       vCtx.drawImage(img, 0, 0, realW, realH);
                     }
 
-                    // Đóng viền Cyan bao quanh khung ma trận 1350x1920
+                    // Đóng viền Cyan bao quanh khung ma trận cho visualCanvas
                     vCtx.strokeStyle = '#00ffff';
                     vCtx.lineWidth = 4;
                     vCtx.strokeRect(0, 0, realW, realH);
 
-                    canvasToArrayBuffer(canvas, mimeType, quality).then(function(ab) {
+                    canvasToArrayBuffer(sharpCanvas, mimeType, quality).then(function(ab) {
                       resolve({
-                        canvas: canvas,
+                        sharpCanvas: sharpCanvas,
                         visualCanvas: visualCanvas,
                         arrayBuffer: ab,
                         width: realW,
@@ -237,26 +270,23 @@
           const w = Number(pageObj.width) || 1031;
           const h = Number(pageObj.height) || 1456;
 
-          // 1. Giải mã và nhận cả 2 bản Canvas từ Bridge
-          const { canvas: sharpCanvas, visualCanvas: visualCanvas, width: finalW, height: finalH, img: rawImg } =
+          // 1. Nhận visualCanvas (có viền Cyan 4px) và sharpCanvas (sạch) từ Bridge
+          const { sharpCanvas, visualCanvas, width: finalW, height: finalH, img: rawImg } =
             await ownerWin.__ej_inspector_bridge.render(dataUrl, w, h, pageObj, pNo - 1, 'image/png');
 
-          // 2. Tạo rawCanvas từ ảnh thô CDN (có viền hồng bao quanh khung 1664x2176)
+          // 2. Tạo rawCanvas sạch từ ảnh thô CDN
           const rawCanvas = DOC.createElement('canvas');
           rawCanvas.width = rawImg.naturalWidth || rawImg.width;
           rawCanvas.height = rawImg.naturalHeight || rawImg.height;
           const rCtx = rawCanvas.getContext('2d', { alpha: false });
           rCtx.imageSmoothingEnabled = false;
           rCtx.drawImage(rawImg, 0, 0);
-          rCtx.strokeStyle = '#ff007f';
-          rCtx.lineWidth = 4;
-          rCtx.strokeRect(0, 0, rawCanvas.width, rawCanvas.height);
 
-          // Tính toán phần chênh lệch khối đệm đen của Wasm
+          // 3. Tính toán phần chênh lệch khối đệm đen của Wasm
           const diffW = rawCanvas.width - finalW;
           const diffH = rawCanvas.height - finalH;
           const dummyText = (diffW > 0 || diffH > 0)
-            ? `Khối đệm Wasm: Dư ${diffW}px ngang, ${diffH}px dọc`
+            ? `Khối đệm Wasm: +${diffW}px ngang, +${diffH}px dọc (Đã lọc sạch)`
             : `Khớp 100% không có viền thừa`;
 
           onSuccess({
@@ -308,7 +338,7 @@
             a1.download = `EbookJP_Trang_${pNo}_raw.${ext}`;
             a1.click();
 
-            // Tải bản 2: Giải mã hoàn chỉnh từ Wasm (1350x1920)
+            // Tải bản 2: Giải mã hoàn chỉnh từ Wasm (1350x1920, sạch không có viền)
             const a2 = DOC.createElement('a');
             a2.href = URL.createObjectURL(new Blob([decodedBuffer], { type: mimeType }));
             a2.download = `EbookJP_Trang_${pNo}_decoded.${fmt}`;

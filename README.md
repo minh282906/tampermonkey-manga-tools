@@ -17,13 +17,16 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 | Script                           | Các trang hỗ trợ                                                                                             |  Trạng thái  |                                                     Cài Đặt (1-Click)                                                     |
 | :------------------------------- | :-------------------------------------------------------------------------------------------------------------- | :-------------: | :---------------------------------------------------------------------------------------------------------------------------: |
 | **EbookJapan Downloader**  | EbookJapan (`ebookjapan.yahoo.co.jp`)                                                                         | 🟢 Hoạt động |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/EbookJPDownloader.user.js)   |
-| **BookWalker Downloader**  | BookWalker (`bookwalker.jp`)                                                                                  | 🟢 Hoạt động | [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/BookWalkerDownloader.user.js) |
+| **DLsite Downloader**  | Bao gồm tất cả DLsite Play, trong đó có cả Comipo Play (`dlsite.com`)                                                                         | 🟢 Hoạt động |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/DLsiteDownloader.user.js)   |
+| **PUBLUS Downloader**  | Bao gốm các bên sử dụng engine PUBLUS Reader / NFBR (BookWalker, PixivComic (tankobon), DMM Books, FANZA Books)                                                                                  | 🟢 Hoạt động | [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/PublusDownloader.user.js) |
 | **Piccoma Downloader**     | Piccoma (`piccoma.com`)                                                                                       | 🟢 Hoạt động |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/PiccomaDownloader.user.js)   |
+| **Renta Downloader**     | (`renta.papy.co.jp/`)                                                                                       | 🟢 Hoạt động |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/RentaDownloader.user.js)   |
 | **Comici+ Downloader**     | Champion Cross, Comic Growl, Young Champion, Young Animal, Rimacomi+, HERO'S Web..._(~30 sites)_              | 🟢 Hoạt động |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/Comici+Downloader.user.js)   |
 | **GigaViewer Downloader**  | ShonenJump+, Sunday Webry, Comic Days, Kurage Bunch, MAGCOMI, Comic Gardo, Comic Zenon..._(20+ sites)_        | 🟢 Hoạt động | [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/GigaViewerDownloader.user.js) |
 | **SpeedBinb Downloader**   | Bao gồm các nền tảng sử dụng SpeedBinb (Booklive, Comic C'moA, Yanmaga, Gaugau Futabanet, ...)                   | 🟢 Hoạt động |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/SpeedBinbDownloader.user.js)  |
 | **Square Enix Downloader** | Bao gồm các bên thuộc Square Enix (Gangan Online, Manga Up, Shounen Gangan, GFantasy, Gangan Joker, Young Gangan, Big Gangan, ...) | 🟢 Hoạt động |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/SquareEnixDownloader.user.js)  |
 | **ComicWalker Downloader** | (`comic-walker.com`)                                                                                          | 🟢 Hoạt động | [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/ComicWalkerDownloader.user.js) |
+| **PixivComic Downloader**    | (`comic.pixiv.net`)                                                                                   | 🟢 Hoạt động |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/PixivComicDownloader.user.js)  |
 | **MangaOne Downloader**    | Manga ONE (`manga-one.com`)                                                                                   | 🟢 Hoạt động |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/MangaOneDownloader.user.js)  |
 | **Niconico Downloader**    | (`manga.nicovideo.jp`) <br> (`sp.manga.nicovideo.jp`)                                                           | 🟢 Hoạt động |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/NiconicoDownloader.user.js)  |
 | **JumpRookie Downloader**  | (`rookie.shonenjump.com`)                                                                                     | 🟢 Hoạt động |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/JumpRookieDownloader.user.js)  |
@@ -83,6 +86,16 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 </details>
 
 <details>
+<summary><b>Click để xem chi tiết các bên sử dụng engine PUBLUS Reader /NFBR</b></summary>
+
+- BookWalker Manga (`bookwalker.jp`)
+- Pixiv Comic Store (`comic-store-viewer.pixiv.net`)
+- DMM Books (`book.dmm.com`)
+- FANZA Books (`book.dmm.co.jp`)
+
+</details>
+
+<details>
 <summary><b>Click để xem chi tiết 20+ trang Nền tảng GigaViewer</b></summary>
 
 - Shonen Jump+ (`shonenjumpplus.com`)
@@ -113,28 +126,32 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 </details>
 
 <details>
-<summary><b>Click để xem chi tiết các trang thuộc Square Enix</b></summary>
+<summary><b>Click để xem chi tiết các bên sử dụng engine SpeedBinb</b></summary>
 
-- Gangan Online (`ganganonline.com`)
-- Manga UP! (`manga-up.com`)
-- Shounen Gangan (`magazine.jp.square-enix.com/gangan`)
-- GFantasy (`magazine.jp.square-enix.com/gfantasy`)
-- Gangan Joker (`magazine.jp.square-enix.com/joker`)
-- Big Gangan (`magazine.jp.square-enix.com/biggangan`)
-- Young Gangan (`magazine.jp.square-enix.com/yg`)
-- Ngoài ra còn sự kiện của Square Enix (Comics Party) (`magazine.jp.square-enix.com/comiweb`)
+- Yanmaga Web (`yanmaga.jp`)
+- Comic C'moA (`cmoa.jp`)
+- Gaugau Futabanet Manga (`gaugau.futabanet.jp`)
+- BookLive (`booklive.jp`)
 
 </details>
 
-- EbookJP (`ebookjapan.yahoo.co.jp`)
-- Comic C'moA (`cmoa.jp`)
+<details>
+<summary><b>Click để xem chi tiết các bên sử dụng engine PUBLUS Reader /NFBR</b></summary>
+
 - BookWalker Manga (`bookwalker.jp`)
+- Pixiv Comic Store (`comic-store-viewer.pixiv.net`)
+- DMM Books (`book.dmm.com`)
+- FANZA Books (`book.dmm.co.jp`)
+
+</details>
+
+
+- DLsite Play (`dlsite.com`)
+- EbookJP (`ebookjapan.yahoo.co.jp`)
 - Piccoma Manga (`piccoma.com`)
-- MagaPoke (`pocket.shonenmagazine.com`)
-- Yanmaga Web (`yanmaga.jp`)
-- ComicWalker (`comic-walker.com`)
+- MagacPoke (`pocket.shonenmagazine.com`)
+- ComiWalker (`comic-walker.com`)
 - Niconico Manga (`manga.nicovideo.jp`)
-- Gaugau Futabanet Manga (`gaugau.futabanet.jp`)
 - Jump Rookie (`rookie.shonenjump.com`)
 - Comici (`comici.jp`)
 - Amazon Kindle Manga (`amazon.co.jp`)

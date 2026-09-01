@@ -4,7 +4,7 @@
 ![JavaScript](https://img.shields.io/badge/JavaScript-ES6+-F7DF1E?style=for-the-badge&logo=javascript&logoColor=black)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 
-Bộ công cụ **Tampermonkey Userscripts** hỗ trợ tải ngầm, giải mã ma trận 4x4 ảnh bị xáo trộn và đóng gói file ZIP truyện tranh độ phân giải cao từ **hơn 40+ trang web đọc manga nổi tiếng tại Nhật Bản**.
+Bộ công cụ **Tampermonkey Userscripts** hỗ trợ tải ngầm, giải mã ảnh bị xáo trộn và đóng gói file ZIP truyện tranh độ phân giải cao từ **hơn 60+ trang web đọc manga nổi tiếng tại Nhật Bản**.
 
 ---
 
@@ -20,7 +20,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 | **DLsite Downloader**  | Bao gồm tất cả DLsite Play, trong đó có cả Comipo Play (`dlsite.com`)                                                                         | 🟢 Hoạt động |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/DLsiteDownloader.user.js)   |
 | **PUBLUS Downloader**  | Bao gốm các bên sử dụng engine PUBLUS Reader / NFBR (BookWalker, PixivComic (tankobon), DMM Books, FANZA Books)                                                                                  | 🟢 Hoạt động | [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/PublusDownloader.user.js) |
 | **Piccoma Downloader**     | Piccoma (`piccoma.com`)                                                                                       | 🟢 Hoạt động |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/PiccomaDownloader.user.js)   |
-| **Renta Downloader**     | (`renta.papy.co.jp/`)                                                                                       | 🟢 Hoạt động |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/RentaDownloader.user.js)   |
+| **Renta Downloader**     | (`renta.papy.co.jp`)                                                                                       | 🟢 Hoạt động |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/RentaDownloader.user.js)   |
 | **Comici+ Downloader**     | Champion Cross, Comic Growl, Young Champion, Young Animal, Rimacomi+, HERO'S Web..._(~30 sites)_              | 🟢 Hoạt động |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/Comici+Downloader.user.js)   |
 | **GigaViewer Downloader**  | ShonenJump+, Sunday Webry, Comic Days, Kurage Bunch, MAGCOMI, Comic Gardo, Comic Zenon..._(20+ sites)_        | 🟢 Hoạt động | [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/GigaViewerDownloader.user.js) |
 | **SpeedBinb Downloader**   | Bao gồm các nền tảng sử dụng SpeedBinb (Booklive, Comic C'moA, Yanmaga, Gaugau Futabanet, ...)                   | 🟢 Hoạt động |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/SpeedBinbDownloader.user.js)  |

@@ -127,7 +127,11 @@
 
     function updateStatusDisplay() {
       const ext = (curData?.rawExt || 'JPG').toUpperCase();
-      statusText.innerHTML = `Mode đang xem: <b style="color:#38bdf8;">${isDecoded ? 'ĐÃ GHÉP XÁO TRỘN' : `RAW XÁO TRỘN GỐC (${ext})`}</b><br><span style="color:#94a3b8;">(Bấm vào ảnh để đảo Mode)</span>`;
+      if (curData?.isScrambled === false) {
+        statusText.innerHTML = `Mode đang xem: <b style="color:#38bdf8;">RAW GỐC (${ext})</b><br><span style="color:#94a3b8;">(Ảnh gốc nguyên bản)</span>`;
+      } else {
+        statusText.innerHTML = `Mode đang xem: <b style="color:#38bdf8;">${isDecoded ? 'ĐÃ GHÉP XÁO TRỘN' : `RAW XÁO TRỘN GỐC (${ext})`}</b><br><span style="color:#94a3b8;">(Bấm vào ảnh để đảo Mode)</span>`;
+      }
     }
 
     function renderOverlay() {

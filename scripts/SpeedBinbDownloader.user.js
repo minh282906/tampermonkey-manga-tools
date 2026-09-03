@@ -62,14 +62,14 @@
   };
 
   /* =========================================================================
-   * BỘ HỖ TRỢ XỬ LÝ CHUỖI & TÊN FILE CHUẨN (GOLDEN RULES)
+   * BỘ HỖ TRỢ XỬ LÝ CHUỖI & TÊN FILE
    * ========================================================================= */
   function cleanString(str) {
     if (!str) return "";
     return str
       .replace(/[\r\n\t]+/g, ' ')
       .replace(/\s{2,}/g, ' ')
-      .replace(/【[^】]*】/g, '')
+      .replace(/【(?!(?:フルカラー版|カラー版|完全版|特装版))[^】]*】/gi, '') // 👈 Giữ lại nhãn bản màu
       .replace(/[\\/*?:"<>|]/g, '')
       .trim();
   }
@@ -78,8 +78,7 @@
     if (!raw) return "";
     let s = raw.split(/[|｜]/)[0].trim();
     s = s.replace(/^(?:無料・試し読みページ|無料・試し読み|無料版|試し読み|公式\s*[-－_]?)\s*/i, '').trim();
-    s = s.replace(/【[^】]*】/g, '').trim();
-    // Xóa nhãn NXB ở cuối: （...コミック）, (コロナ・コミックス)...
+    s = s.replace(/【(?!(?:フルカラー版|カラー版|完全版|特装版))[^】]*】/gi, '').trim(); // 👈 Giữ lại nhãn bản màu
     s = s.replace(/（[^）]*(?:コミック|文庫|レーベル|出版|COMIC|WEB)[^）]*）$/i, '').trim();
     s = s.replace(/\([^)]*(?:コミック|文庫|レーベル|出版|COMIC|WEB)[^)]*\)$/i, '').trim();
     return cleanString(s);
@@ -297,7 +296,7 @@
       if (!series || !episode) {
         let raw = DOC.title || config.title || "";
         raw = raw.split(/[|｜]/)[0].trim();
-        raw = raw.replace(/【[^】]*】/g, '').trim();
+        raw = raw.replace(/【(?!(?:フルカラー版|カラー版|完全版|特装版))[^】]*】/gi, '').trim(); // 👈 Giữ lại nhãn bản màu
 
         const match = raw.match(/^(.*?)(?:\s+[-－–—]\s+|\s+)((?:第\s*)?[0-9０-９IVXLCDMivxlcdm一二三四五六七八九十百千万\s\-\–\—\ー\~〜\.]+(?:話|巻|章|節|部|エピソード|分冊版|単話|前編|中編|後編)?.*)$/i);
         if (match) {
@@ -392,7 +391,7 @@
         let raw = DOC.title || config.title || "";
         raw = raw.split(/[|｜]/)[0].trim();
         raw = raw.replace(/^公式\s*[-－_]?\s*/i, '').trim();
-        raw = raw.replace(/【[^】]*】/g, '').trim();
+        raw = raw.replace(/【(?!(?:フルカラー版|カラー版|完全版|特装版))[^】]*】/gi, '').trim(); // 👈 Giữ lại nhãn bản màu
 
         const match = raw.match(/^(.*?)\s+(第?\s*\d+\s*(?:話|章|節|部|エピソード|前編|中編|後編)?.*)$/i);
         if (match) {

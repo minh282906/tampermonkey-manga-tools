@@ -33,8 +33,8 @@
   const FALLBACK_WIDTH = 1440;
   const FALLBACK_HEIGHT = 2048;
 
-    /* =========================================================================
-   * 1. HOOK MAIN-WORLD CHO BOOKWALKER & PIXIV STORE (CHUẨN HOÁ SIGNATURE BẤT BIẾN)
+  /* =========================================================================
+   * 1. HOOK MAIN-WORLD CHO BOOKWALKER & PIXIV STORE (CÔ LẬP & ĐỐI CHIẾU FILE GỐC)
    * ========================================================================= */
   if (!isDmm) {
     try {
@@ -45,39 +45,62 @@
           var currentPIdx = 0;
           var currentPageMeta = null;
 
-          // Bắt link ảnh xáo trộn từ CDN trên BookWalker qua Worker
+          // =====================================================================
+          // BẮT LINK CDN ĐỐI CHIẾU CHÍNH XÁC THEO TÊN FILE (CHỐNG LỖI PRELOAD TRANG)
+          // =====================================================================
           if (isBW) {
+            function getPageIndexFromUrl(url) {
+              try {
+                var init = window.NFBR?.a6G?.Initializer?.T1V || window.NFBR?.a6G?.Initial?.T1V;
+                var model = init?.menu?.model || init?.model;
+                var content = model?.get?.('content') || model?.attributes?.content || {};
+                var contents = content.configuration?.contents || content.contents || [];
+
+                for (var i = 0; i < contents.length; i++) {
+                  var f = contents[i]?.file || contents[i]?.src || '';
+                  var baseName = f.split('/').pop().replace(/\\.[^.]+$/, '');
+                  if (baseName && url.includes(baseName)) {
+                    return i;
+                  }
+                }
+              } catch(e) {}
+              return -1;
+            }
+
             var origPost = Worker.prototype.postMessage;
             if (!origPost.__bw_raw_sniff) {
               Worker.prototype.postMessage = function(data) {
                 try {
                   if (data && data.url && data.url.includes('bookwalker.jp')) {
-                    var pIdx = currentPIdx;
-                    var img = new window.Image();
-                    img.crossOrigin = 'anonymous';
-                    img.onload = function() {
-                      try {
-                        var rawC = document.createElement('canvas');
-                        rawC.width = img.naturalWidth; rawC.height = img.naturalHeight;
-                        var rCtx = rawC.getContext('2d', { alpha: false });
-                        rCtx.imageSmoothingEnabled = false;
-                        rCtx.mozImageSmoothingEnabled = false;
-                        rCtx.webkitImageSmoothingEnabled = false;
-                        rCtx.msImageSmoothingEnabled = false;
-                        rCtx.drawImage(img, 0, 0);
+                    // Đối chiếu đúng trang sở hữu file này (không dùng currentPIdx)
+                    var targetIdx = getPageIndexFromUrl(data.url);
+                    if (targetIdx >= 0) {
+                      var img = new window.Image();
+                      img.crossOrigin = 'anonymous';
+                      img.onload = function() {
+                        try {
+                          var rawC = document.createElement('canvas');
+                          rawC.width = img.naturalWidth; rawC.height = img.naturalHeight;
+                          var rCtx = rawC.getContext('2d', { alpha: false });
+                          rCtx.imageSmoothingEnabled = false;
+                          rCtx.mozImageSmoothingEnabled = false;
+                          rCtx.webkitImageSmoothingEnabled = false;
+                          rCtx.msImageSmoothingEnabled = false;
+                          rCtx.drawImage(img, 0, 0);
 
-                        var existing = window.__bw_inspector_store.get(pIdx) || {};
-                        window.__bw_inspector_store.set(pIdx, {
-                          ...existing,
-                          pIdx: pIdx,
-                          rawCanvas: rawC,
-                          rawW: img.naturalWidth,
-                          rawH: img.naturalHeight,
-                          rawUrl: data.url
-                        });
-                      } catch(e) {}
-                    };
-                    img.src = data.url;
+                          var existing = window.__bw_inspector_store.get(targetIdx) || {};
+                          window.__bw_inspector_store.set(targetIdx, {
+                            ...existing,
+                            pIdx: targetIdx,
+                            rawCanvas: rawC,
+                            rawW: img.naturalWidth,
+                            rawH: img.naturalHeight,
+                            rawUrl: data.url
+                          });
+                        } catch(e) {}
+                      };
+                      img.src = data.url;
+                    }
                   }
                 } catch(e) {}
                 return origPost.apply(this, arguments);
@@ -102,7 +125,8 @@
                   var args = Array.prototype.slice.call(arguments);
 
                   try {
-                    // 1. NHẬN DIỆN HÀM MASTER 15 THAM SỐ (X3V trên BW, x1e trên Pixiv)
+                    // 1. NHẬN DIỆN HÀM 15 THAM SỐ (X3V trên BookWalker, x1e trên Pixiv)
+                    // Bắt Master Canvas giải mã sạch 100% từ Web Worker
                     if (fnLen === 15) {
                       var res = orig.apply(this, arguments);
                       var dummyCanvas = args[1];
@@ -115,7 +139,6 @@
                         var targetW = (page && typeof page.width === 'number' && page.width > 0) ? page.width : (args[3] || dummyCanvas.width);
                         var targetH = (page && typeof page.height === 'number' && page.height > 0) ? page.height : (args[4] || dummyCanvas.height);
                         
-                        // Đọc chính xác toạ độ cắt từ metadata (page.rect / ContentArea / crop)
                         var rectObj = page.rect || page.Rect || page.contentArea || page.ContentArea || page.crop || {};
                         var cropX = Number(rectObj.X ?? rectObj.x ?? (masterW > targetW ? masterW - targetW : 0));
                         var cropY = Number(rectObj.Y ?? rectObj.y ?? 0);
@@ -139,13 +162,13 @@
                           rawW: existing.rawW || dummyCanvas.width,
                           rawH: existing.rawH || dummyCanvas.height,
                           cropX: cropX, cropY: cropY,
-                          isScrambled: isBW ? (pIdx > 0) : true
+                          isScrambled: true // Có qua hàm 15 tham số -> Chắc chắn là ảnh có xáo trộn
                         });
                       }
                       return res;
                     }
 
-                    // 2. NHẬN DIỆN HÀM ĐIỀU PHỐI 5 THAM SỐ (e1p trên BW, i3n trên Pixiv)
+                    // 2. NHẬN DIỆN HÀM ĐIỀU PHỐI 5 THAM SỐ (e1p trên BookWalker, i3n trên Pixiv)
                     var page = args[1];
                     var imgSource = args[2];
 
@@ -153,7 +176,16 @@
                       currentPIdx = page.index;
                       currentPageMeta = page;
 
-                      if (imgSource && (imgSource instanceof ImageBitmap || imgSource instanceof HTMLImageElement || (imgSource.width >= 500 && imgSource.height >= 500))) {
+                      // Chỉ nhận thẻ ảnh thật (Pixiv ImageBitmap hoặc BookWalker Image thô)
+                      var isRealDrawable = imgSource && (
+                        imgSource instanceof HTMLImageElement ||
+                        imgSource instanceof HTMLCanvasElement ||
+                        (typeof ImageBitmap !== 'undefined' && imgSource instanceof ImageBitmap) ||
+                        imgSource.tagName === 'IMG' ||
+                        imgSource.tagName === 'CANVAS'
+                      );
+
+                      if (isRealDrawable) {
                         var srcW = imgSource.naturalWidth || imgSource.width || 0;
                         var srcH = imgSource.naturalHeight || imgSource.height || 0;
 
@@ -173,8 +205,7 @@
                             pIdx: page.index,
                             rawCanvas: rawC,
                             rawW: srcW,
-                            rawH: srcH,
-                            isScrambled: isBW ? (page.index > 0) : true
+                            rawH: srcH
                           });
                         }
                       }
@@ -454,10 +485,11 @@
     const pIdx = pNo - 1;
     const store = WIN.__bw_inspector_store;
 
-    // 1. Phản hồi 0ms nếu RAM đã nạp xong
-    if (store?.has(pIdx) && store.get(pIdx).sharpCanvas) {
+    // 1. Phản hồi 0ms nếu đã có sẵn trong RAM
+    if (store?.has(pIdx) && (store.get(pIdx).sharpCanvas || store.get(pIdx).rawCanvas)) {
       const item = store.get(pIdx);
       if (!item.rawCanvas) item.rawCanvas = item.sharpCanvas;
+      if (!item.sharpCanvas) item.sharpCanvas = item.rawCanvas;
       return item;
     }
 
@@ -465,20 +497,33 @@
     const menu = liveRt?.menu;
     const model = liveRt?.model;
 
-    // 2. Kích hoạt lật trang
+    // 2. Kích hoạt lật trang (Nếu đang đứng sẵn ở trang đó thì ép viewer nạp lại)
     try {
-      if (typeof menu?.moveToPage === 'function') menu.moveToPage(pIdx);
-      else if (typeof menu?.a6l?.moveToPage === 'function') menu.a6l.moveToPage(pIdx);
-      else if (typeof model?.set === 'function') model.set('viewerPage', pIdx);
+      const currentViewerPage = Number(model?.get?.('viewerPage') ?? -1);
+      if (typeof menu?.moveToPage === 'function') {
+        if (currentViewerPage === pIdx) {
+          // Đang ở sẵn trang này -> chuyển nhẹ sang trang khác rồi quay lại ngay để kích hoạt nạp
+          menu.moveToPage(pIdx === 0 ? 1 : 0);
+          await sleep(60);
+          menu.moveToPage(pIdx);
+        } else {
+          menu.moveToPage(pIdx);
+        }
+      } else if (typeof menu?.a6l?.moveToPage === 'function') {
+        menu.a6l.moveToPage(pIdx);
+      } else if (typeof model?.set === 'function') {
+        model.set('viewerPage', pIdx);
+      }
     } catch(e) {}
 
     // 3. Vòng lặp chờ nạp
     const start = Date.now();
     while (Date.now() - start < 8000) {
-      if (store?.has(pIdx) && store.get(pIdx).sharpCanvas) {
+      if (store?.has(pIdx) && (store.get(pIdx).sharpCanvas || store.get(pIdx).rawCanvas)) {
         await sleep(60);
         const item = store.get(pIdx);
         if (!item.rawCanvas) item.rawCanvas = item.sharpCanvas;
+        if (!item.sharpCanvas) item.sharpCanvas = item.rawCanvas;
         return item;
       }
       await sleep(100);
@@ -609,7 +654,7 @@
             const cropX = Number(res.cropX ?? (rawW > targetW ? rawW - targetW : 0));
             const cropY = Number(res.cropY ?? (rawH > targetH ? rawH - targetH : 0));
 
-            // visualCanvas (HIỂN THỊ LIVE: rawW x rawH + Viền Cyan 4px + Khung Hồng 2px)
+            // visualCanvas: Kích thước full rawW x rawH + Viền Cyan 4px + Khung Hồng 2px
             const visualCanvas = DOC.createElement('canvas');
             visualCanvas.width = rawW;
             visualCanvas.height = rawH;
@@ -630,7 +675,7 @@
             const diffW = rawW - targetW;
             const diffH = rawH - targetH;
 
-            // Khung Hồng 2px ôm sát đúng vùng tranh thật theo toạ độ cropX
+            // Khung Hồng 2px ôm sát đúng vùng tranh thật
             if (diffW > 0 || diffH > 0 || cropX > 0 || cropY > 0) {
               vCtx.strokeStyle = '#ff007f';
               vCtx.lineWidth = 2;
@@ -642,7 +687,9 @@
               : `Khớp 100% không có viền thừa`;
 
             const validRawCanvas = res.rawCanvas || res.sharpCanvas;
-            const isScrambled = Boolean(res.isScrambled ?? (pNo > 1 || !isBookWalker));
+
+            // Tự động nhận diện trang không xáo trộn (Bìa / Trial / Trang không qua X3V)
+            const isScrambled = Boolean(res.isScrambled ?? (!isBookWalker || pNo > 1));
 
             onSuccess({
               rawW: rawW, rawH: rawH, gridW: targetW, gridH: targetH,

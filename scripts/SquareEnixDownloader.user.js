@@ -664,14 +664,30 @@
         const fullUrl = `https://global-img.manga-up.com${relPath}`;
 
         const cryptoText = atParts[1].trim();
-        const hexParts = cryptoText.match(/[0-9a-f]{32,66}/gi) || [];
-        if (hexParts.length < 2) continue;
+        let keyHex = "";
+        let ivHex = "";
+
+        // 1. Phân tách nếu có khoảng trắng giữa Key và IV
+        const hexParts = cryptoText.match(/[0-9a-f]{32,64}/gi) || [];
+        if (hexParts.length >= 2) {
+          keyHex = hexParts[0].substring(0, 64);
+          ivHex = hexParts[1].substring(0, 32);
+        } else {
+          // 2. Phân tách dự phòng nếu là chuỗi 96 hex dính liền (64 hex Key + 32 hex IV)
+          const cleanHex = cryptoText.replace(/[^0-9a-f]/gi, '');
+          if (cleanHex.length >= 96) {
+            keyHex = cleanHex.substring(0, 64);
+            ivHex = cleanHex.substring(64, 96);
+          }
+        }
+
+        if (!keyHex || !ivHex) continue;
 
         pages.push({
           pageNo: pages.length + 1,
           url: fullUrl,
           isEncrypted: true,
-          crypto: { key: hexParts[0].substring(0, 64), iv: hexParts[1].substring(0, 32) },
+          crypto: { key: keyHex, iv: ivHex },
           customName: null
         });
       }

@@ -34,6 +34,55 @@
   const FALLBACK_HEIGHT = 2048;
 
   /* =========================================================================
+  * BỘ TÍNH TOÁN HÌNH HỌC VÙNG ĐỆM ĐỘNG (PADDING)
+  * ========================================================================= */
+  function calcPaddingGeometry(rawW, rawH, targetW, targetH, flag, pIdx, rectX = 0, rectY = 0) {
+    const diffW = Math.max(0, rawW - targetW);
+    const diffH = Math.max(0, rawH - targetH);
+
+    let cropX = 0;
+    let cropY = rectY;
+
+    if (diffW > 0) {
+      if (rectX > 0) {
+        // 1. Nếu manifest có sẵn Rect.X (DMM / một số bản BW): đọc thẳng
+        cropX = rectX;
+      } else if (flag === 2 || pIdx === 0) {
+        // 2. Trang Bìa / Trang Đơn (Căn giữa): Chia đôi dải diffW
+        cropX = Math.ceil(diffW / 2);
+      } else if (flag === 1) {
+        // 3. Trang Đôi Bên Trái: Toàn bộ dải diffW nằm bên Trái
+        cropX = diffW;
+      } else {
+        // 4. Trang Đôi Bên Phải (flag === 0): Toàn bộ dải diffW nằm bên Phải
+        cropX = 0;
+      }
+    }
+
+    const padLeft = cropX;
+    const padRight = Math.max(0, rawW - (cropX + targetW));
+    const padTop = cropY;
+    const padBottom = Math.max(0, diffH - padTop);
+    const hasPadding = padLeft > 0 || padRight > 0 || padTop > 0 || padBottom > 0;
+
+    let dummyText = "Khớp 100% không có viền thừa";
+    if (hasPadding) {
+      const parts = [];
+      if (padLeft > 0 && padRight > 0) parts.push(`${padLeft}px trái, ${padRight}px phải`);
+      else if (padLeft > 0) parts.push(`${padLeft}px trái`);
+      else if (padRight > 0) parts.push(`${padRight}px phải`);
+
+      if (padTop > 0 && padBottom > 0) parts.push(`${padTop}px trên, ${padBottom}px đáy`);
+      else if (padTop > 0) parts.push(`${padTop}px trên`);
+      else if (padBottom > 0) parts.push(`${padBottom}px đáy`);
+
+      dummyText = `Vùng đệm bỏ: Dư ${parts.join(' | ')} (Đã gọt sạch)`;
+    }
+
+    return { cropX, cropY, padLeft, padRight, padTop, padBottom, hasPadding, dummyText };
+  } 
+
+  /* =========================================================================
    * 1. HOOK MAIN-WORLD CHO BOOKWALKER & PIXIV STORE (CÔ LẬP & ĐỐI CHIẾU FILE GỐC)
    * ========================================================================= */
   if (!isDmm) {
@@ -125,8 +174,9 @@
                   var args = Array.prototype.slice.call(arguments);
 
                   try {
-                    // 1. NHẬN DIỆN HÀM 15 THAM SỐ (X3V trên BookWalker, x1e trên Pixiv)
-                    // Bắt Master Canvas giải mã sạch 100% từ Web Worker
+                    // =================================================================
+                    // 1. HÀM 15 THAM SỐ (X3V / x1e): Bắt Master Canvas sạch 100% từ Web Worker
+                    // =================================================================
                     if (fnLen === 15) {
                       var res = orig.apply(this, arguments);
                       var dummyCanvas = args[1];
@@ -138,76 +188,101 @@
                         var page = currentPageMeta || {};
                         var targetW = (page && typeof page.width === 'number' && page.width > 0) ? page.width : (args[3] || dummyCanvas.width);
                         var targetH = (page && typeof page.height === 'number' && page.height > 0) ? page.height : (args[4] || dummyCanvas.height);
-                        
-                        var rectObj = page.rect || page.Rect || page.contentArea || page.ContentArea || page.crop || {};
-                        var cropX = Number(rectObj.X ?? rectObj.x ?? (masterW > targetW ? masterW - targetW : 0));
-                        var cropY = Number(rectObj.Y ?? rectObj.y ?? 0);
 
+                        var existing = window.__bw_inspector_store.get(pIdx) || {};
+                        var flag = existing.flag ?? (pIdx === 0 ? 2 : 0);
+                        var diffW = dummyCanvas.width > targetW ? (dummyCanvas.width - targetW) : 0;
+                        var cropX = (flag === 2 || pIdx === 0) ? Math.ceil(diffW / 2) : (flag === 1 ? diffW : 0);
+
+                        // 1. CLONE masterCanvas ĐỘC LẬP TRONG RAM (Chống bị BookWalker clearRect xoá đen trên UI)
+                        var masterC = document.createElement('canvas');
+                        masterC.width = dummyCanvas.width;
+                        masterC.height = dummyCanvas.height;
+                        var mCtx = masterC.getContext('2d', { alpha: false });
+                        mCtx.imageSmoothingEnabled = false;
+                        mCtx.drawImage(dummyCanvas, 0, 0);
+
+                        // 2. TẠO sharpCanvas ĐÃ GỌT SẠCH PADDING ĐỂ TẢI VỀ
                         var sharpC = document.createElement('canvas');
                         sharpC.width = targetW; sharpC.height = targetH;
                         var sCtx = sharpC.getContext('2d', { alpha: false });
                         sCtx.imageSmoothingEnabled = false;
-                        sCtx.mozImageSmoothingEnabled = false;
-                        sCtx.webkitImageSmoothingEnabled = false;
-                        sCtx.msImageSmoothingEnabled = false;
-                        sCtx.drawImage(dummyCanvas, cropX, cropY, targetW, targetH, 0, 0, targetW, targetH);
+                        sCtx.drawImage(masterC, cropX, 0, targetW, targetH, 0, 0, targetW, targetH);
 
-                        var existing = window.__bw_inspector_store.get(pIdx) || {};
                         window.__bw_inspector_store.set(pIdx, {
                           ...existing,
                           pIdx: pIdx,
                           sharpCanvas: sharpC,
+                          masterCanvas: masterC, // Đã lưu bản clone an toàn!
                           rawCanvas: existing.rawCanvas || sharpC,
                           width: targetW, height: targetH,
                           rawW: existing.rawW || dummyCanvas.width,
                           rawH: existing.rawH || dummyCanvas.height,
-                          cropX: cropX, cropY: cropY,
-                          isScrambled: true // Có qua hàm 15 tham số -> Chắc chắn là ảnh có xáo trộn
+                          flag: flag,
+                          isScrambled: true
                         });
                       }
                       return res;
                     }
 
-                    // 2. NHẬN DIỆN HÀM ĐIỀU PHỐI 5 THAM SỐ (e1p trên BookWalker, i3n trên Pixiv)
-                    var page = args[1];
-                    var imgSource = args[2];
+                    // =================================================================
+                    // 2. HÀM 5 THAM SỐ (e1p / i3n): Theo dõi số trang, cờ flag và bắt ảnh thô
+                    // Tuyệt đối KHÔNG gọi orig.call để tránh bị dính Watermark/Barcode 2px
+                    // =================================================================
+                    if (fnLen === 5) {
+                      var page = args[1];
+                      var imgSource = args[2];
+                      var flag = args[4];
 
-                    if (page && typeof page.index === 'number') {
-                      currentPIdx = page.index;
-                      currentPageMeta = page;
+                      if (page && typeof page.index === 'number') {
+                        currentPIdx = page.index;
+                        currentPageMeta = page;
 
-                      // Chỉ nhận thẻ ảnh thật (Pixiv ImageBitmap hoặc BookWalker Image thô)
-                      var isRealDrawable = imgSource && (
-                        imgSource instanceof HTMLImageElement ||
-                        imgSource instanceof HTMLCanvasElement ||
-                        (typeof ImageBitmap !== 'undefined' && imgSource instanceof ImageBitmap) ||
-                        imgSource.tagName === 'IMG' ||
-                        imgSource.tagName === 'CANVAS'
-                      );
+                        var existing = window.__bw_inspector_store.get(page.index) || {};
+                        if (flag !== undefined) existing.flag = flag;
 
-                      if (isRealDrawable) {
-                        var srcW = imgSource.naturalWidth || imgSource.width || 0;
-                        var srcH = imgSource.naturalHeight || imgSource.height || 0;
+                        var isRealDrawable = imgSource && (
+                          imgSource instanceof HTMLImageElement ||
+                          imgSource instanceof HTMLCanvasElement ||
+                          (typeof ImageBitmap !== 'undefined' && imgSource instanceof ImageBitmap) ||
+                          imgSource.tagName === 'IMG' ||
+                          imgSource.tagName === 'CANVAS'
+                        );
 
-                        if (srcW >= 500 && srcH >= 500) {
-                          var rawC = document.createElement('canvas');
-                          rawC.width = srcW; rawC.height = srcH;
-                          var rCtx = rawC.getContext('2d', { alpha: false });
-                          rCtx.imageSmoothingEnabled = false;
-                          rCtx.mozImageSmoothingEnabled = false;
-                          rCtx.webkitImageSmoothingEnabled = false;
-                          rCtx.msImageSmoothingEnabled = false;
-                          rCtx.drawImage(imgSource, 0, 0);
+                        if (isRealDrawable) {
+                          var srcW = imgSource.naturalWidth || imgSource.width || 0;
+                          var srcH = imgSource.naturalHeight || imgSource.height || 0;
 
-                          var existing = window.__bw_inspector_store.get(page.index) || {};
-                          window.__bw_inspector_store.set(page.index, {
-                            ...existing,
-                            pIdx: page.index,
-                            rawCanvas: rawC,
-                            rawW: srcW,
-                            rawH: srcH
-                          });
+                          if (srcW >= 500 && srcH >= 500) {
+                            var rawC = document.createElement('canvas');
+                            rawC.width = srcW; rawC.height = srcH;
+                            var rCtx = rawC.getContext('2d', { alpha: false });
+                            rCtx.imageSmoothingEnabled = false;
+                            rCtx.mozImageSmoothingEnabled = false;
+                            rCtx.webkitImageSmoothingEnabled = false;
+                            rCtx.msImageSmoothingEnabled = false;
+                            rCtx.drawImage(imgSource, 0, 0);
+
+                            existing.rawCanvas = rawC;
+                            existing.rawW = srcW;
+                            existing.rawH = srcH;
+
+                            // Đối với trang bìa / trang không xáo trộn (không đi qua hàm 15 tham số)
+                            // Lưu trực tiếp rawC làm Master sạch nguyên bản, không qua xử lý co rút
+                            if (!existing.sharpCanvas) {
+                              existing.sharpCanvas = rawC;
+                              existing.masterCanvas = rawC;
+                              existing.width = srcW;
+                              existing.height = srcH;
+                              existing.isScrambled = false;
+                            }
+                          }
                         }
+
+                        window.__bw_inspector_store.set(page.index, {
+                          ...existing,
+                          pIdx: page.index
+                        });
                       }
                     }
                   } catch(e) {}
@@ -349,7 +424,9 @@
     sCtx.msImageSmoothingEnabled = false;
     sCtx.drawImage(tempCanvas, cropX, cropY, targetW, targetH, 0, 0, targetW, targetH);
 
-    // 3. visualCanvas (HIỂN THỊ LIVE: rawW x rawH + Viền Cyan 4px toàn ảnh + Khung Hồng 2px vùng tranh)
+    // 3. visualCanvas (Bảo tồn 100% tranh thật, chỉ tô hồng dải padding thừa)
+    const geo = calcPaddingGeometry(rawW, rawH, targetW, targetH, pageObj.pageNo === 1 ? 2 : 0, pageObj.pageNo - 1, cropX, cropY);
+
     const visualCanvas = DOC.createElement('canvas');
     visualCanvas.width = rawW;
     visualCanvas.height = rawH;
@@ -360,19 +437,12 @@
     vCtx.msImageSmoothingEnabled = false;
     vCtx.drawImage(tempCanvas, 0, 0);
 
-    // Viền Cyan 4px toàn bộ ảnh gốc container
-    vCtx.strokeStyle = '#00ffff';
-    vCtx.lineWidth = 4;
-    vCtx.strokeRect(0, 0, rawW, rawH);
-
-    // Khung Hồng 2px ôm sát vùng tranh thật theo đúng toạ độ cropX
-    const diffW = rawW - targetW;
-    const diffH = rawH - targetH;
-    if (diffW > 0 || diffH > 0 || cropX > 0 || cropY > 0) {
-      vCtx.strokeStyle = '#ff007f';
-      vCtx.lineWidth = 2;
-      vCtx.strokeRect(cropX, cropY, targetW, targetH);
-    }
+    // CHỈ TÔ HỒNG ĐÚNG CÁC DẢI PADDING THỪA (Không vẽ viền đè lên tranh)
+    vCtx.fillStyle = '#ff007f';
+    if (geo.padLeft > 0) vCtx.fillRect(0, 0, geo.padLeft, rawH);
+    if (geo.padRight > 0) vCtx.fillRect(rawW - geo.padRight, 0, geo.padRight, rawH);
+    if (geo.padTop > 0) vCtx.fillRect(0, 0, rawW, geo.padTop);
+    if (geo.padBottom > 0) vCtx.fillRect(0, rawH - geo.padBottom, rawW, geo.padBottom);
 
     // 4. rawCanvas: Bản ảnh xáo trộn thô từ CDN
     const rawCanvas = DOC.createElement('canvas');
@@ -385,13 +455,9 @@
     rCtx.msImageSmoothingEnabled = false;
     rCtx.drawImage(img, 0, 0);
 
-    const dummyText = (diffW > 0 || diffH > 0)
-      ? `Vùng đệm bỏ: Dư ${diffW}px ngang, ${diffH}px dọc (Đã gọt sạch)`
-      : `Khớp 100% không có viền thừa`;
-
     return {
       rawW, rawH, gridW: targetW, gridH: targetH,
-      dummyText,
+      dummyText: geo.dummyText,
       sharpCanvas, visualCanvas, rawCanvas, img,
       rawExt: ext.toUpperCase(), rawBuf: rawBuffer,
       isScrambled: true
@@ -530,7 +596,7 @@
     }
 
     throw new Error(`Chưa tải được trang ${pNo}. Hãy lật đến trang đó trên viewer rồi bấm lại.`);
-  }
+  }  
 
   /* =========================================================================
    * 4. KHỞI CHẠY GIAO DIỆN INSPECTORUI
@@ -651,10 +717,12 @@
             const rawH = res.rawH || res.height;
             const targetW = res.width;
             const targetH = res.height;
-            const cropX = Number(res.cropX ?? (rawW > targetW ? rawW - targetW : 0));
-            const cropY = Number(res.cropY ?? (rawH > targetH ? rawH - targetH : 0));
+            const pIdx = pNo - 1;
 
-            // visualCanvas: Kích thước full rawW x rawH + Viền Cyan 4px + Khung Hồng 2px
+            // Tính toán tọa độ động từ flag của engine
+            const geo = calcPaddingGeometry(rawW, rawH, targetW, targetH, res.flag, pIdx);
+
+            // visualCanvas: Kích thước full rawW x rawH (Bảo tồn 100% tranh thật)
             const visualCanvas = DOC.createElement('canvas');
             visualCanvas.width = rawW;
             visualCanvas.height = rawH;
@@ -664,27 +732,18 @@
             vCtx.webkitImageSmoothingEnabled = false;
             vCtx.msImageSmoothingEnabled = false;
 
-            // Vẽ ảnh giải mã lên nền container
-            vCtx.drawImage(res.sharpCanvas, cropX, cropY);
-
-            // Viền Cyan 4px toàn bộ ảnh container
-            vCtx.strokeStyle = '#00ffff';
-            vCtx.lineWidth = 4;
-            vCtx.strokeRect(0, 0, rawW, rawH);
-
-            const diffW = rawW - targetW;
-            const diffH = rawH - targetH;
-
-            // Khung Hồng 2px ôm sát đúng vùng tranh thật
-            if (diffW > 0 || diffH > 0 || cropX > 0 || cropY > 0) {
-              vCtx.strokeStyle = '#ff007f';
-              vCtx.lineWidth = 2;
-              vCtx.strokeRect(cropX, cropY, targetW, targetH);
+            if (res.masterCanvas) {
+              vCtx.drawImage(res.masterCanvas, 0, 0);
+            } else {
+              vCtx.drawImage(res.sharpCanvas, geo.cropX, geo.cropY);
             }
 
-            const dummyText = (diffW > 0 || diffH > 0)
-              ? `Vùng đệm bỏ: Dư ${diffW}px ngang, ${diffH}px dọc (Đã gọt sạch)`
-              : `Khớp 100% không có viền thừa`;
+            // CHỈ TÔ HỒNG ĐÚNG CÁC DẢI PADDING THỪA (Không vẽ viền đè lên tranh)
+            vCtx.fillStyle = '#ff007f';
+            if (geo.padLeft > 0) vCtx.fillRect(0, 0, geo.padLeft, rawH);
+            if (geo.padRight > 0) vCtx.fillRect(rawW - geo.padRight, 0, geo.padRight, rawH);
+            if (geo.padTop > 0) vCtx.fillRect(0, 0, rawW, geo.padTop);
+            if (geo.padBottom > 0) vCtx.fillRect(0, rawH - geo.padBottom, rawW, geo.padBottom);
 
             const validRawCanvas = res.rawCanvas || res.sharpCanvas;
 
@@ -693,7 +752,7 @@
 
             onSuccess({
               rawW: rawW, rawH: rawH, gridW: targetW, gridH: targetH,
-              dummyText: dummyText,
+              dummyText: geo.dummyText,
               sharpCanvas: res.sharpCanvas,
               visualCanvas: visualCanvas,
               rawCanvas: validRawCanvas,

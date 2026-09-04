@@ -34,34 +34,34 @@
   const FALLBACK_HEIGHT = 2048;
 
   /* =========================================================================
-  * BỘ TÍNH TOÁN HÌNH HỌC VÙNG ĐỆM ĐỘNG (PADDING)
+  * BỘ TÍNH TOÁN HÌNH HỌC VÙNG ĐỆM ĐỘNG (PADDING) - CHUẨN ĐẶC TẢ 100%
   * ========================================================================= */
-  function calcPaddingGeometry(rawW, rawH, targetW, targetH, flag, pIdx, rectX = 0, rectY = 0) {
+  function calcPaddingGeometry(rawW, rawH, targetW, targetH, flag = null, pIdx = 0, rectX = null, rectY = null) {
     const diffW = Math.max(0, rawW - targetW);
     const diffH = Math.max(0, rawH - targetH);
 
     let cropX = 0;
-    let cropY = rectY;
+    let cropY = (typeof rectY === 'number' && rectY !== null) ? rectY : 0;
 
     if (diffW > 0) {
-      if (rectX > 0) {
-        // 1. Nếu manifest có sẵn Rect.X (DMM / một số bản BW): đọc thẳng
+      if (typeof rectX === 'number' && rectX !== null) {
+        // 1. NHÁNH DMM: Đọc thẳng tọa độ từ file JSON manifest
         cropX = rectX;
-      } else if (flag === 2 || pIdx === 0) {
-        // 2. Trang Bìa / Trang Đơn (Căn giữa): Chia đôi dải diffW
+      } else if (flag === 2) {
+        // 2. NHÁNH PIXIV/BW: Cờ flag = 2 (Trang đơn / Bìa căn giữa)
         cropX = Math.ceil(diffW / 2);
       } else if (flag === 1) {
-        // 3. Trang Đôi Bên Trái: Toàn bộ dải diffW nằm bên Trái
+        // 3. NHÁNH PIXIV/BW: Cờ flag = 1 (Trang đôi bên Trái)
         cropX = diffW;
       } else {
-        // 4. Trang Đôi Bên Phải (flag === 0): Toàn bộ dải diffW nằm bên Phải
+        // 4. NHÁNH PIXIV/BW: Cờ flag = 0 (Trang đôi bên Phải)
         cropX = 0;
       }
     }
 
-    const padLeft = cropX;
-    const padRight = Math.max(0, rawW - (cropX + targetW));
-    const padTop = cropY;
+    const padLeft   = cropX;
+    const padRight  = Math.max(0, rawW - (cropX + targetW));
+    const padTop    = cropY;
     const padBottom = Math.max(0, diffH - padTop);
     const hasPadding = padLeft > 0 || padRight > 0 || padTop > 0 || padBottom > 0;
 
@@ -80,7 +80,7 @@
     }
 
     return { cropX, cropY, padLeft, padRight, padTop, padBottom, hasPadding, dummyText };
-  } 
+  }
 
   /* =========================================================================
    * 1. HOOK MAIN-WORLD CHO BOOKWALKER & PIXIV STORE (CÔ LẬP & ĐỐI CHIẾU FILE GỐC)
@@ -424,8 +424,8 @@
     sCtx.msImageSmoothingEnabled = false;
     sCtx.drawImage(tempCanvas, cropX, cropY, targetW, targetH, 0, 0, targetW, targetH);
 
-    // 3. visualCanvas (Bảo tồn 100% tranh thật, chỉ tô hồng dải padding thừa)
-    const geo = calcPaddingGeometry(rawW, rawH, targetW, targetH, pageObj.pageNo === 1 ? 2 : 0, pageObj.pageNo - 1, cropX, cropY);
+    // 3. visualCanvas (Dán tranh sạch tại geo.cropX, geo.cropY + Tô hồng dải padding)
+    const geo = calcPaddingGeometry(rawW, rawH, targetW, targetH, null, pageObj.pageNo - 1, cropX, cropY);
 
     const visualCanvas = DOC.createElement('canvas');
     visualCanvas.width = rawW;
@@ -435,9 +435,11 @@
     vCtx.mozImageSmoothingEnabled = false;
     vCtx.webkitImageSmoothingEnabled = false;
     vCtx.msImageSmoothingEnabled = false;
-    vCtx.drawImage(tempCanvas, 0, 0);
+    
+    // Dán tranh sạch vào đúng tọa độ gốc
+    vCtx.drawImage(sharpCanvas, geo.cropX, geo.cropY);
 
-    // CHỈ TÔ HỒNG ĐÚNG CÁC DẢI PADDING THỪA (Không vẽ viền đè lên tranh)
+    // Tô hồng dải padding thừa (Tuyệt đối không vẽ strokeRect đè lên tranh)
     vCtx.fillStyle = '#ff007f';
     if (geo.padLeft > 0) vCtx.fillRect(0, 0, geo.padLeft, rawH);
     if (geo.padRight > 0) vCtx.fillRect(rawW - geo.padRight, 0, geo.padRight, rawH);
@@ -722,7 +724,7 @@
             // Tính toán tọa độ động từ flag của engine
             const geo = calcPaddingGeometry(rawW, rawH, targetW, targetH, res.flag, pIdx);
 
-            // visualCanvas: Kích thước full rawW x rawH (Bảo tồn 100% tranh thật)
+            // visualCanvas: Dán tranh sạch tại geo.cropX, geo.cropY + Tô hồng dải padding
             const visualCanvas = DOC.createElement('canvas');
             visualCanvas.width = rawW;
             visualCanvas.height = rawH;
@@ -732,13 +734,10 @@
             vCtx.webkitImageSmoothingEnabled = false;
             vCtx.msImageSmoothingEnabled = false;
 
-            if (res.masterCanvas) {
-              vCtx.drawImage(res.masterCanvas, 0, 0);
-            } else {
-              vCtx.drawImage(res.sharpCanvas, geo.cropX, geo.cropY);
-            }
+            // Dán tranh sạch vào đúng tọa độ gốc
+            vCtx.drawImage(res.sharpCanvas, geo.cropX, geo.cropY);
 
-            // CHỈ TÔ HỒNG ĐÚNG CÁC DẢI PADDING THỪA (Không vẽ viền đè lên tranh)
+            // Tô hồng dải padding thừa (Tuyệt đối không vẽ strokeRect đè lên tranh)
             vCtx.fillStyle = '#ff007f';
             if (geo.padLeft > 0) vCtx.fillRect(0, 0, geo.padLeft, rawH);
             if (geo.padRight > 0) vCtx.fillRect(rawW - geo.padRight, 0, geo.padRight, rawH);

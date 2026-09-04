@@ -1176,7 +1176,12 @@
     if (pagesList.length > 0) {
       state.episodeData = { rt, pagesList };
       
-      // Micro-delay chuẩn 80ms
+      //NHẬN DIỆN BOOKWALKER TRIAL ĐỂ CHUYỂN SANG ZERO-COPY JPG
+      const isBwTrial = WIN.location.hostname.includes("viewer-trial.bookwalker.jp") || WIN.location.href.includes("viewer-trial");
+      if (isBwTrial && ui?.updateFormatUI) {
+        ui.updateFormatUI('jpg');
+      }
+
       await sleep(80);
 
       if (ui) {

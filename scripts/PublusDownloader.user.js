@@ -326,16 +326,18 @@
           ? `normal_default/${isShareFile ? filename.replace('../', '') : filename}/${idx}.jpeg`
           : `${filename}/${idx}.jpeg`;
 
-        const pageUrl = `${cdnBaseUrl}${fileSubPath}?${authQuery}`;
-        const pattern = Tools.computePattern(`${filename}/${idx}`);
-        const size = pageLinkList[idx]?.Page?.Size || { Width: FALLBACK_WIDTH, Height: FALLBACK_HEIGHT };
+        const pageData = pageLinkList[idx]?.Page || {};
+        const size = pageData.Size || { Width: FALLBACK_WIDTH, Height: FALLBACK_HEIGHT };
+        const rect = pageData.Rect || pageData.ContentArea || {};
 
         pages.push({
           pageNo: pages.length + 1,
-          url: pageUrl,
-          pattern: pattern,
+          url: `${cdnBaseUrl}${fileSubPath}?${authQuery}`,
+          pattern: Tools.computePattern(`${filename}/${idx}`),
           width: Number(size.Width || size.width || FALLBACK_WIDTH),
-          height: Number(size.Height || size.height || FALLBACK_HEIGHT)
+          height: Number(size.Height || size.height || FALLBACK_HEIGHT),
+          rectX: Number(rect.X ?? rect.x ?? 0),
+          rectY: Number(rect.Y ?? rect.y ?? 0)
         });
       }
     }
@@ -354,34 +356,49 @@
     const rawBuffer = await Utils.fetchBuffer(pageObj.url);
     const img = await Utils.loadImage(rawBuffer, 'image/jpeg');
 
-    const canvas = DOC.createElement('canvas');
-    canvas.width = pageObj.width;
-    canvas.height = pageObj.height;
+    const rawW = img.width;
+    const rawH = img.height;
+    const targetW = pageObj.width;
+    const targetH = pageObj.height;
+    const cropX = Number(pageObj.rectX ?? 0);
+    const cropY = Number(pageObj.rectY ?? 0);
 
-    const ctx = canvas.getContext('2d', { alpha: false });
-    ctx.imageSmoothingEnabled = false;
-    ctx.mozImageSmoothingEnabled = false;
-    ctx.webkitImageSmoothingEnabled = false;
-    ctx.msImageSmoothingEnabled = false;
+    // 1. Giải mã toàn bộ ma trận container 1448x2048
+    const tempCanvas = DOC.createElement('canvas');
+    tempCanvas.width = rawW;
+    tempCanvas.height = rawH;
+    const tCtx = tempCanvas.getContext('2d', { alpha: false });
+    tCtx.imageSmoothingEnabled = false;
+    tCtx.mozImageSmoothingEnabled = false;
+    tCtx.webkitImageSmoothingEnabled = false;
+    tCtx.msImageSmoothingEnabled = false;
 
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    const coords = Tools.PublusCoordsGenerator(img.width, img.height, 64, 64, pageObj.pattern);
+    const coords = Tools.PublusCoordsGenerator(rawW, rawH, 64, 64, pageObj.pattern);
     for (const piece of coords) {
-      ctx.drawImage(
+      tCtx.drawImage(
         img,
         piece.destX, piece.destY, piece.width, piece.height,
         piece.srcX, piece.srcY, piece.width, piece.height
       );
     }
 
+    // 2. Gọt chuẩn theo Rect.X (cắt bỏ đúng 7px padding thừa bên phải)
+    const sharpCanvas = DOC.createElement('canvas');
+    sharpCanvas.width = targetW;
+    sharpCanvas.height = targetH;
+    const sCtx = sharpCanvas.getContext('2d', { alpha: false });
+    sCtx.imageSmoothingEnabled = false;
+    sCtx.mozImageSmoothingEnabled = false;
+    sCtx.webkitImageSmoothingEnabled = false;
+    sCtx.msImageSmoothingEnabled = false;
+    sCtx.drawImage(tempCanvas, cropX, cropY, targetW, targetH, 0, 0, targetW, targetH);
+
     const mimeType = isJpg ? 'image/jpeg' : 'image/png';
     const outExt = isJpg ? 'jpg' : 'png';
-    const blob = await new Promise(r => canvas.toBlob(r, mimeType, CONFIG.JPEG_QUALITY));
+    const blob = await new Promise(r => sharpCanvas.toBlob(r, mimeType, CONFIG.JPEG_QUALITY));
 
-    canvas.width = 0;
-    canvas.height = 0;
+    tempCanvas.width = 0; tempCanvas.height = 0;
+    sharpCanvas.width = 0; sharpCanvas.height = 0;
 
     return {
       fileName: `${pageObj.pageNo}.${outExt}`,
@@ -581,7 +598,10 @@
     try {
       win.eval(`
         (function() {
-          var capturedPages = new Map();
+          var capturedMasters = new Map();
+          var currentPIdx = 0;
+          var currentPageMeta = null;
+
           try {
             var nativeImg = window.Image;
             window.Image = class extends nativeImg {
@@ -598,41 +618,124 @@
             proto.__bw_hooked = true;
 
             for (var key in proto) {
+              if (key === 'initialize' || key === 'constructor' || typeof proto[key] !== 'function') continue;
+
               (function(methodName) {
                 var orig = proto[methodName];
-                if (typeof orig === 'function' && orig.length === 5) {
-                  proto[methodName] = function() {
-                    var args = Array.prototype.slice.call(arguments);
-                    var page = args[1];
-                    var image = args[2];
-                    var flag = args[4];
+                var fnLen = orig.length;
 
-                    if (image && (image.naturalWidth || image.width) && (image.naturalHeight || image.height)) {
-                      try {
-                        var imgW = image.naturalWidth || image.width;
-                        var imgH = image.naturalHeight || image.height;
-                        
-                        var cleanCanvas = document.createElement('canvas');
-                        cleanCanvas.width = imgW;
-                        cleanCanvas.height = imgH;
-                        var ctx = cleanCanvas.getContext('2d', { alpha: false });
-                        ctx.imageSmoothingEnabled = false;
-                        ctx.mozImageSmoothingEnabled = false;
-                        ctx.webkitImageSmoothingEnabled = false;
-                        ctx.msImageSmoothingEnabled = false;
-                        ctx.fillStyle = '#ffffff';
-                        ctx.fillRect(0, 0, imgW, imgH);
-                        
-                        orig.call(this, cleanCanvas, page, image, { x: 0, y: 0, width: imgW, height: imgH }, flag);
+                proto[methodName] = function() {
+                  var args = Array.prototype.slice.call(arguments);
 
-                        var pIdx = Number(page?.index ?? window.NFBR?.a6G?.Initializer?.T1V?.menu?.model?.get?.('viewerPage') ?? 0);
-                        capturedPages.set(pIdx, cleanCanvas);
-                      } catch (e) {}
+                  try {
+                    // ===============================================================
+                    // 1. HÀM 15 THAM SỐ (X3V / x1e): Bắt Master Canvas sạch 100% từ Web Worker
+                    // ===============================================================
+                    if (fnLen === 15) {
+                      var res = orig.apply(this, arguments);
+                      var dummyCanvas = args[1];
+                      var masterW = args[3] || 1440;
+                      var masterH = args[4] || 2048;
+
+                      if (dummyCanvas && (dummyCanvas instanceof HTMLCanvasElement || dummyCanvas.tagName === 'CANVAS') && dummyCanvas.width >= 500) {
+                        var pIdx = currentPIdx;
+                        var page = currentPageMeta || {};
+                        var targetW = (page && typeof page.width === 'number' && page.width > 0) ? page.width : (args[3] || dummyCanvas.width);
+                        var targetH = (page && typeof page.height === 'number' && page.height > 0) ? page.height : (args[4] || dummyCanvas.height);
+
+                        var existing = capturedMasters.get(pIdx) || {};
+                        var flag = existing.flag ?? (pIdx === 0 ? 2 : 0);
+                        var diffW = dummyCanvas.width > targetW ? (dummyCanvas.width - targetW) : 0;
+                        var cropX = (flag === 2 || pIdx === 0) ? Math.ceil(diffW / 2) : (flag === 1 ? diffW : 0);
+
+                        // Clone Master Canvas sạch 100% (chưa hề qua e1p bóp méo hay F0Y chèn Barcode)
+                        var sharpC = document.createElement('canvas');
+                        sharpC.width = targetW;
+                        sharpC.height = targetH;
+                        var sCtx = sharpC.getContext('2d', { alpha: false });
+                        sCtx.imageSmoothingEnabled = false;
+                        sCtx.mozImageSmoothingEnabled = false;
+                        sCtx.webkitImageSmoothingEnabled = false;
+                        sCtx.msImageSmoothingEnabled = false;
+                        sCtx.drawImage(dummyCanvas, cropX, 0, targetW, targetH, 0, 0, targetW, targetH);
+
+                        capturedMasters.set(pIdx, {
+                          ...existing,
+                          pIdx: pIdx,
+                          sharpCanvas: sharpC,
+                          width: targetW,
+                          height: targetH,
+                          flag: flag,
+                          isScrambled: true
+                        });
+                      }
+                      return res;
                     }
 
-                    return orig.apply(this, arguments);
-                  };
-                }
+                    // ===============================================================
+                    // 2. HÀM 5 THAM SỐ (e1p / i3n): Theo dõi trang, cờ flag và bắt ảnh thô
+                    // Tuyệt đối KHÔNG gọi orig.call để tránh bị dính Watermark/Barcode 2px
+                    // ===============================================================
+                    if (fnLen === 5) {
+                      var page = args[1];
+                      var imgSource = args[2];
+                      var flag = args[4];
+
+                      if (page && typeof page.index === 'number') {
+                        currentPIdx = page.index;
+                        currentPageMeta = page;
+
+                        var existing = capturedMasters.get(page.index) || {};
+                        if (flag !== undefined) existing.flag = flag;
+
+                        var isRealDrawable = imgSource && (
+                          imgSource instanceof HTMLImageElement ||
+                          imgSource instanceof HTMLCanvasElement ||
+                          (typeof ImageBitmap !== 'undefined' && imgSource instanceof ImageBitmap) ||
+                          imgSource.tagName === 'IMG' ||
+                          imgSource.tagName === 'CANVAS'
+                        );
+
+                        if (isRealDrawable) {
+                          var srcW = imgSource.naturalWidth || imgSource.width || 0;
+                          var srcH = imgSource.naturalHeight || imgSource.height || 0;
+
+                          if (srcW >= 500 && srcH >= 500) {
+                            var rawC = document.createElement('canvas');
+                            rawC.width = srcW;
+                            rawC.height = srcH;
+                            var rCtx = rawC.getContext('2d', { alpha: false });
+                            rCtx.imageSmoothingEnabled = false;
+                            rCtx.mozImageSmoothingEnabled = false;
+                            rCtx.webkitImageSmoothingEnabled = false;
+                            rCtx.msImageSmoothingEnabled = false;
+                            rCtx.drawImage(imgSource, 0, 0);
+
+                            existing.rawCanvas = rawC;
+                            existing.rawW = srcW;
+                            existing.rawH = srcH;
+
+                            // Đối với trang bìa / trang không xáo trộn (không đi qua hàm 15 tham số)
+                            // Lưu trực tiếp rawC làm Master sạch 1:1, không qua xử lý bóp méo
+                            if (!existing.sharpCanvas) {
+                              existing.sharpCanvas = rawC;
+                              existing.width = srcW;
+                              existing.height = srcH;
+                              existing.isScrambled = false;
+                            }
+                          }
+                        }
+
+                        capturedMasters.set(page.index, {
+                          ...existing,
+                          pIdx: page.index
+                        });
+                      }
+                    }
+                  } catch(e) {}
+
+                  return orig.apply(this, arguments);
+                };
               })(key);
             }
           }
@@ -646,13 +749,16 @@
           }, 30);
 
           window.__bw_bridge = {
-            capturedPages: capturedPages,
-            capture: function(pIdx, targetW, targetH, mimeType, quality) {
+            capturedMasters: capturedMasters,
+            capture: function(pIdx, mimeType, quality) {
               return new Promise(function(resolve, reject) {
                 try {
-                  var canvas = capturedPages.get(Number(pIdx));
+                  var item = capturedMasters.get(Number(pIdx));
+                  var canvas = item?.sharpCanvas;
+                  var rawCanvas = item?.rawCanvas;
+
                   if (!canvas) {
-                    var init = window.NFBR?.a6G?.Initializer?.T1V || window.NFBR?.a6G?.Initial?.T1V;
+                    var init = window.NFBR?.a6G?.Initializer?.T1V || window.NFBR?.a6G?.Initializer?.F7F || window.NFBR?.a6G?.Initial?.T1V;
                     var menu = init?.menu?.a6l || init?.a6l || init?.menu;
                     var renderer = init?.renderer || menu?.renderer;
                     var screen = renderer?.currentScreen;
@@ -663,40 +769,45 @@
                     return reject(new Error("Canvas chưa sẵn sàng để xuất ảnh."));
                   }
 
-                  var outCanvas = document.createElement('canvas');
-                  outCanvas.width = targetW;
-                  outCanvas.height = targetH;
-                  var ctx = outCanvas.getContext('2d', { alpha: false });
-                  ctx.imageSmoothingEnabled = false;
-                  ctx.mozImageSmoothingEnabled = false;
-                  ctx.webkitImageSmoothingEnabled = false;
-                  ctx.msImageSmoothingEnabled = false;
-                  ctx.fillStyle = '#ffffff';
-                  ctx.fillRect(0, 0, targetW, targetH);
-
-                  if (canvas.width === targetW && canvas.height === targetH) {
-                    ctx.drawImage(canvas, 0, 0);
-                  } else {
-                    ctx.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, targetW, targetH);
+                  function exportBlob(c, mType, qVal) {
+                    return new Promise(function(res, rej) {
+                      if (typeof c.toBlob === 'function') {
+                        c.toBlob(function(blob) {
+                          if (!blob) return rej(new Error("toBlob null"));
+                          var reader = new FileReader();
+                          reader.onload = function() { res(new Uint8Array(reader.result)); };
+                          reader.onerror = rej;
+                          reader.readAsArrayBuffer(blob);
+                        }, mType, qVal);
+                      } else {
+                        var dataUrl = c.toDataURL(mType, qVal);
+                        var base64 = dataUrl.split(',')[1];
+                        var bin = atob(base64);
+                        var ab = new ArrayBuffer(bin.length);
+                        var ua = new Uint8Array(ab);
+                        for (var i = 0; i < bin.length; i++) ua[i] = bin.charCodeAt(i);
+                        res(ua);
+                      }
+                    });
                   }
 
-                  if (typeof outCanvas.toBlob === 'function') {
-                    outCanvas.toBlob(function(blob) {
-                      if (!blob) return reject(new Error("toBlob null"));
-                      var reader = new FileReader();
-                      reader.onload = function() { resolve(reader.result); };
-                      reader.onerror = reject;
-                      reader.readAsArrayBuffer(blob);
-                    }, mimeType, quality);
-                  } else {
-                    var dataUrl = outCanvas.toDataURL(mimeType, quality);
-                    var base64 = dataUrl.split(',')[1];
-                    var bin = atob(base64);
-                    var ab = new ArrayBuffer(bin.length);
-                    var ua = new Uint8Array(ab);
-                    for (var i = 0; i < bin.length; i++) ua[i] = bin.charCodeAt(i);
-                    resolve(ab);
-                  }
+                  exportBlob(canvas, mimeType, quality).then(function(cleanBytes) {
+                    if (item && item.isScrambled === false && rawCanvas) {
+                      // Trang không xáo trộn: Xuất cả bản raw JPG gốc
+                      exportBlob(rawCanvas, 'image/jpeg', 0.98).then(function(rawBytes) {
+                        resolve({
+                          cleanData: cleanBytes,
+                          rawData: rawBytes,
+                          isScrambled: false
+                        });
+                      }).catch(function() {
+                        resolve({ cleanData: cleanBytes, rawData: null, isScrambled: false });
+                      });
+                    } else {
+                      resolve({ cleanData: cleanBytes, rawData: null, isScrambled: true });
+                    }
+                  }).catch(reject);
+
                 } catch (err) {
                   reject(err);
                 }
@@ -772,7 +883,7 @@
 
       ensureIframeBridge(win);
 
-      if (win.__bw_bridge?.capturedPages?.has(Number(pageIndex))) {
+      if (win.__bw_bridge?.capturedMasters?.has(Number(pageIndex))) {
         await sleep(40);
         return { runtime: rt, fromHook: true };
       }
@@ -842,23 +953,20 @@
     const win = iframeEl.contentWindow;
     ensureIframeBridge(win);
 
-    const canvasDim = { width: renderResult.screen?.canvas?.width || FALLBACK_WIDTH, height: renderResult.screen?.canvas?.height || FALLBACK_HEIGHT };
-    const targetDim = getTargetPageDimensions(pageObj, canvasDim);
-
     const mimeType = isJpg ? 'image/jpeg' : 'image/png';
     const quality = isJpg ? CONFIG.JPEG_QUALITY : undefined;
 
-    let arrayBuffer = null;
     if (win.__bw_bridge?.capture) {
-      arrayBuffer = await win.__bw_bridge.capture(pageObj.index, targetDim.width, targetDim.height, mimeType, quality);
+      const res = await win.__bw_bridge.capture(pageObj.index, mimeType, quality);
+      return {
+        cleanData: res.cleanData,
+        rawData: res.rawData,
+        isScrambled: res.isScrambled,
+        ext: isJpg ? 'jpg' : 'png'
+      };
     } else {
       throw new Error("Không thể kết nối tới Bridge trích xuất ảnh sạch.");
     }
-
-    return {
-      data: new Uint8Array(arrayBuffer),
-      ext: isJpg ? 'jpg' : 'png'
-    };
   }
 
   /* =========================================================================
@@ -938,7 +1046,14 @@
           const renderResult = await navigateToPage(workerIframe, pageObj.index);
           const capture = await renderCanvasToBlob(workerIframe, pageObj, renderResult, useJpeg);
 
-          zip.addFile(`${i + 1}.${capture.ext}`, capture.data);
+          // 1. Lưu bản Master sạch (PNG hoặc JPG theo tùy chọn)
+          zip.addFile(`${i + 1}.${capture.ext}`, capture.cleanData);
+
+          // 2. NẾU LÀ TRANG KHÔNG XÁO TRỘN TRONG BỘ TRUYỆN MÃ HÓA (ví dụ ảnh bìa bản Mua)
+          // -> Tự động lưu kèm file JPG gốc từ CDN (1.jpg song song với 1.png)
+          if (capture.isScrambled === false && capture.rawData && capture.ext !== 'jpg') {
+            zip.addFile(`${i + 1}.jpg`, capture.rawData);
+          }
 
           if (ui) {
             ui.updateProgress({

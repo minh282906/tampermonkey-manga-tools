@@ -467,7 +467,7 @@
   }
 
   /* =========================================================================
-   * 3. NHÁNH BOOKWALKER & PIXIV STORE (RUNTIME HOOK)
+   * 3. NHÁNH BOOKWALKER & PIXIV STORE ((RUNTIME HOOK F7F (PIXIV) / T1V (BOOKWALKER))
    * ========================================================================= */
   function getNFBRRuntime(targetWin = WIN) {
     try {
@@ -756,7 +756,7 @@
               visualCanvas: visualCanvas,
               rawCanvas: validRawCanvas,
               img: validRawCanvas,
-              rawExt: "JPG",
+              rawExt: res.rawExt || "JPG",
               isScrambled: isScrambled
             }, pNo);
           } catch (e) { onError(e?.message || String(e)); }

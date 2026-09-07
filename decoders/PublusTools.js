@@ -582,7 +582,7 @@
       const text = await res.text();
       const match = text.match(/^(\w+)=function\(\).+?;\}/m);
       if (!match) throw new Error("Không giải mã được hàm getLoader.");
-      const fn = new Function(`return ${match[0]}; return ${match[1]}();`);
+      const fn = new Function(`${match[0]}; return ${match[1]}();`);
       return fn();
     }
 
@@ -601,6 +601,8 @@
 
       const cookieMatch = document.cookie.match(/(?:^| )u1=([^;]+)/);
       if (cookieMatch) params.set('u1', cookieMatch[1]);
+      const u2Match = document.cookie.match(/(?:^| )u2=([^;]+)/);
+      if (u2Match) params.set('u2', u2Match[1]);
 
       const authApi = isTrial ? '/trial-page/c' : '/browserWebApi/c';
       const authRes = await fetch(`${authApi}?${params.toString()}`);

@@ -1258,6 +1258,7 @@
         if (ui) ui.updateProgress({ completed: 0, total: totalPages, status: "Đang tải..." });
 
         const tasks = pages.map(pageObj => async () => {
+          await sleep(40);
           const rawBuffer = await Utils.fetchBuffer(pageObj.url);
           const img = await Utils.loadImage(rawBuffer, 'image/jpeg');
           const coords = tools.PublusCoordsGenerator(img.width, img.height, 64, 64, pageObj.pattern);

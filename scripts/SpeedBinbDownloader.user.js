@@ -5,6 +5,10 @@
 // @icon         https://www.voyager.co.jp/products/pt/images/service_logo_01.jpg
 // @description  Tải manga trên các nền tảng SpeedBinb (Booklive, Comic Cmoa, Yanmaga, Gaugau Futabanet, ...).
 // @author       anonymous & AI
+// @match        https://kirapo.jp/pt/*
+// @match        https://www.123hon.com/vw/*
+// @match        https://comic-porta.com/p_data/*
+// @match        https://televikun-super-hero-comics.com/rensai/*/*/
 // @match        https://www.cmoa.jp/bib/speedreader/*
 // @match        https://yanmaga.jp/*
 // @match        https://gaugau.futabanet.jp/*
@@ -14,6 +18,14 @@
 // @grant        unsafeWindow
 // @grant        GM_xmlhttpRequest
 // @connect      *
+// @connect      kirapo.jp
+// @connect      *.kirapo.jp
+// @connect      123hon.com
+// @connect      *.123hon.com
+// @connect      comic-porta.com
+// @connect      *.comic-porta.com
+// @connect      televikun-super-hero-comics.com
+// @connect      *.televikun-super-hero-comics.com
 // @connect      cmoa.jp
 // @connect      *.cmoa.jp
 // @connect      *.akamaized.net
@@ -531,7 +543,136 @@
     }
   };
 
-  const ADAPTERS = [CmoaAdapter, YanmagaAdapter, GaugauAdapter, BookliveAdapter];
+  // 5. SPEEDBINB PTIMG PACKAGE (Comic Polca, Kirapo, Comic Porta, Super Hero Comics)
+  const PTImgAdapter = {
+    id: "ptimg",
+
+    // Nhận diện Brand Name và màu sắc theo đúng Header bạn cung cấp
+    get brandInfo() {
+      const href = WIN.location.href.toLowerCase();
+
+      // A. COMIC POLCA (123hon.com/polca) - Nền Xanh đậm (#005BAC), chữ trắng
+      if (href.includes('123hon.com')) {
+        return { name: "Comic Polca", color: "#2563eb", bg: "#ffffff", text: "#1d4ed8", top: "43px" };
+      }
+
+      // B. COMIC PORTA (comic-porta.com) - Nền Cam (#FF9800), chữ đen (#18181b)
+      if (href.includes('comic-porta.com')) {
+        return { name: "Comic Porta", color: "#FF9800", bg: "#ffffff", text: "#18181b", top: "43px" };
+      }
+
+      // C. SUPER HERO COMICS (televikun) - Nền Đỏ (#E11D48), chữ trắng
+      if (href.includes('televikun')) {
+        return { name: "Super Hero Comics", color: "#000000", bg: "#ffffff", text: "#000000", top: "43px" };
+      }
+
+      // D. KIRAPO (kirapo.jp) - Theme Trắng/Đen Monochrome thống nhất toàn sàn
+      if (href.includes('kirapo.jp')) {
+        let labelName = "Kirapo";
+        if (href.includes('/zulet/'))   labelName = "Zulet!";
+        if (href.includes('/meteor/'))  labelName = "Comic Meteor";
+        if (href.includes('/polaris/')) labelName = "Comic Polaris";
+        if (href.includes('/ambre/'))   labelName = "Comic Ambre";
+        if (href.includes('/etoile/'))  labelName = "Comic Etoile";
+        if (href.includes('/astir/'))   labelName = "Comic Astir";
+
+        return { 
+          name: labelName, 
+          color: "#FC4679", 
+          bg: "#ffffff", 
+          text: "#18181b", 
+          top: "43px" 
+        };
+      }
+
+      return { name: "PTImg Viewer", color: "#0284C7", bg: "#0F172A", text: "#38BDF8", top: "60px" };
+    },
+
+    get name() { return this.brandInfo.name; },
+    get theme() { return this.brandInfo; },
+
+    // KHÓA CHẶT: Chỉ trả về true khi thực sự đang ở trang đọc truyện (tránh hiện UI ở trang chủ / list)
+    isMatch: (url) => {
+      try {
+        const u = new URL(url, WIN.location.href);
+        const p = u.pathname;
+        if (u.hostname.includes('123hon.com')) return /\/vw\//.test(p);
+        if (u.hostname.includes('kirapo.jp')) return /\/pt\//.test(p);
+        if (u.hostname.includes('comic-porta.com')) return /\/p_data\//.test(p);
+        if (u.hostname.includes('televikun-super-hero-comics.com')) {
+          const segs = p.split('/').filter(Boolean);
+          return segs.length >= 3 && segs[0] === 'rensai';
+        }
+      } catch (e) {}
+      return false;
+    },
+
+    getBaseUrl: () => {
+      let base = WIN.location.href.split('?')[0].split('#')[0];
+      if (base.endsWith('index.html')) base = base.slice(0, -10);
+      if (base.includes('kirapo.jp')) base = base.replace(/\/viewer\/?$/, '/').replace(/viewer$/, '');
+      if (!base.endsWith('/')) base = base.substring(0, base.lastIndexOf('/') + 1);
+      return base;
+    },
+
+    getCid: () => {
+      try {
+        const cid = new URLSearchParams(WIN.location.search).get('cid');
+        if (cid && cid.trim()) return cid.trim();
+      } catch (e) {}
+      const pathSegments = WIN.location.pathname.split('/').filter(Boolean);
+      // Lấy định danh từ 2 phân đoạn cuối của URL
+      if (pathSegments.length >= 2) {
+        const last = pathSegments[pathSegments.length - 1];
+        const prev = pathSegments[pathSegments.length - 2];
+        if (last === 'viewer' && pathSegments.length >= 3) {
+          return `${pathSegments[pathSegments.length - 3]}_${prev}`;
+        }
+        return `${prev}_${last}`.replace(/index\.html$/, '');
+      }
+      return pathSegments[0] || "PTImg_Episode";
+    },
+
+    fetchManifest: async function(cid, Tools, Utils) {
+      const baseUrl = this.getBaseUrl();
+      const htmlBuf = await Utils.fetchBuffer(WIN.location.href);
+      const html = new TextDecoder().decode(htmlBuf);
+
+      const jsonMatches = html.match(/data\/\d+\.ptimg\.json/gm);
+      if (!jsonMatches || jsonMatches.length === 0) {
+        throw new Error("Không tìm thấy cấu trúc data/*.ptimg.json trên trang này.");
+      }
+
+      // Sắp xếp số học chuẩn: 0, 1, 2, ... 10, 11 (tránh bẫy sắp xếp chữ: 0, 1, 10, 2)
+      const uniqueJsons = [...new Set(jsonMatches)].sort((a, b) => {
+        const numA = parseInt(a.match(/\d+/)?.[0] || 0, 10);
+        const numB = parseInt(b.match(/\d+/)?.[0] || 0, 10);
+        return numA - numB;
+      });
+
+      const files = uniqueJsons.map((jsonRelPath, idx) => ({
+        pageNo: idx + 1,
+        isPTImg: true,
+        baseUrl: baseUrl,
+        jsonUrl: `${baseUrl}${jsonRelPath}`
+      }));
+
+      return {
+        config: { isPTImg: true, title: DOC.title },
+        files: files
+      };
+    },
+
+    getTitle: function(config, cid) {
+      let raw = DOC.title || "";
+      raw = raw.split(/[|｜]/)[0].trim();
+      raw = raw.replace(/^【.*?】\s*/g, '').trim();
+      raw = raw.replace(/[-－–—\s]*(?:きら星ポータル|KIRAPO|コミックポルカ|コミックポルタ|テレびくん).*$/gi, '').trim();
+      return resolveCleanFileName(raw, "", cid);
+    }
+  };
+
+  const ADAPTERS = [CmoaAdapter, YanmagaAdapter, GaugauAdapter, BookliveAdapter, PTImgAdapter];
 
   function resolveSiteAdapter() {
     const currentUrl = WIN.location.href;
@@ -589,20 +730,36 @@
     const Tools = window.SpeedBinbTools || globalThis.SpeedBinbTools;
     const Utils = window.MangaUtils || globalThis.MangaUtils;
 
-    const rawBuffer = await Utils.fetchBuffer(fileObj.src);
-    const img = await Utils.loadImage(rawBuffer);
-
-    const key = Tools.getDecryptionKey(fileObj.filename, config.ctbl, config.ptbl);
-    const decoder = new Tools.CoordDecoder(key[0], key[1]);
-    const coords = decoder.getCoords(img);
-
-    // Kích thước chuẩn xác 100% tính từ ma trận tọa độ giải mã
+    let coords = [];
     let destW = 0, destH = 0;
-    for (const { destX, destY, width, height } of coords) {
-      if (destX + width > destW) destW = destX + width;
-      if (destY + height > destH) destH = destY + height;
+    let imgSrc = fileObj.src;
+
+    // 1. NẾU LÀ NHÁNH PTIMG TĨNH (Kirapo, Valkyrie, 123hon...)
+    if (config.isPTImg || fileObj.isPTImg) {
+      const ptBuf = await Utils.fetchBuffer(fileObj.jsonUrl);
+      const ptData = JSON.parse(new TextDecoder().decode(ptBuf));
+      imgSrc = `${fileObj.baseUrl}data/${ptData.resources.i.src}`;
+      destW = ptData.views[0].width;
+      destH = ptData.views[0].height;
+      coords = ptData.views[0].coords.map(c => Tools.parsePTImgCoords(c)).filter(Boolean);
     }
 
+    const rawBuffer = await Utils.fetchBuffer(imgSrc);
+    const img = await Utils.loadImage(rawBuffer);
+
+    // 2. NẾU LÀ NHÁNH SPEEDBINB ĐỘNG (BookLive, Cmoa, Yanmaga, Gaugau)
+    if (!config.isPTImg && !fileObj.isPTImg) {
+      const key = Tools.getDecryptionKey(fileObj.filename, config.ctbl, config.ptbl);
+      const decoder = new Tools.CoordDecoder(key[0], key[1]);
+      coords = decoder.getCoords(img);
+
+      for (const { destX, destY, width, height } of coords) {
+        if (destX + width > destW) destW = destX + width;
+        if (destY + height > destH) destH = destY + height;
+      }
+    }
+
+    // 3. TÁI TẠO ĐỒ HỌA PIXEL-PERFECT TRÊN CANVAS (DÙNG CHUNG)
     const canvas = DOC.createElement('canvas');
     canvas.width = destW || img.width;
     canvas.height = destH || img.height;
@@ -612,12 +769,11 @@
     ctx.mozImageSmoothingEnabled = false;
     ctx.webkitImageSmoothingEnabled = false;
     ctx.msImageSmoothingEnabled = false;
-    
+
     for (const { srcX, srcY, destX, destY, width, height } of coords) {
       ctx.drawImage(img, srcX, srcY, width, height, destX, destY, width, height);
-  }
+    }
 
-    // Xuất thẳng Blob chuẩn (Kích thước destW x destH đã là kích thước gốc chuẩn 100%)
     const mimeType = isJpg ? 'image/jpeg' : 'image/png';
     const outExt = isJpg ? 'jpg' : 'png';
     const blob = await new Promise(r => canvas.toBlob(r, mimeType, CONFIG.JPEG_QUALITY));

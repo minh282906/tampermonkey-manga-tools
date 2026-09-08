@@ -476,9 +476,6 @@
     ctx.webkitImageSmoothingEnabled = false;
     ctx.msImageSmoothingEnabled = false;
 
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, width, height);
-
     const isIdentity = !scrambleArray || (Array.isArray(scrambleArray) && scrambleArray.length === 16 && scrambleArray.every((val, idx) => val === idx));
 
     if (isIdentity || !Array.isArray(scrambleArray) || scrambleArray.length < 16) {

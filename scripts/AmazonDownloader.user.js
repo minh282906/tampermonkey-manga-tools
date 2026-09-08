@@ -428,8 +428,6 @@
     outCtx.mozImageSmoothingEnabled = false;
     outCtx.webkitImageSmoothingEnabled = false;
     outCtx.msImageSmoothingEnabled = false;
-    outCtx.fillStyle = '#ffffff';
-    outCtx.fillRect(0, 0, outW, h);
     outCtx.drawImage(leftCanvas, cropStartX, 0, outW, h, 0, 0, outW, h);
     return outCanvas;
   }
@@ -479,8 +477,6 @@
     outCtx.mozImageSmoothingEnabled = false;
     outCtx.webkitImageSmoothingEnabled = false;
     outCtx.msImageSmoothingEnabled = false;
-    outCtx.fillStyle = '#ffffff';
-    outCtx.fillRect(0, 0, outW, h);
     outCtx.drawImage(rightCanvas, 0, 0, outW, h, 0, 0, outW, h);
     return outCanvas;
   }
@@ -521,8 +517,6 @@
     outCtx.mozImageSmoothingEnabled = false;
     outCtx.webkitImageSmoothingEnabled = false;
     outCtx.msImageSmoothingEnabled = false;
-    outCtx.fillStyle = '#ffffff';
-    outCtx.fillRect(0, 0, outW, h);
     outCtx.drawImage(srcCanvas, startX, 0, outW, h, 0, 0, outW, h);
     return outCanvas;
   }

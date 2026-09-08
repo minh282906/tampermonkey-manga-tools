@@ -420,8 +420,6 @@
     ctx.mozImageSmoothingEnabled = false;
     ctx.webkitImageSmoothingEnabled = false;
     ctx.msImageSmoothingEnabled = false;
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, width, height);
 
     let finalSeed = seed;
     if (typeof seed === "string") {

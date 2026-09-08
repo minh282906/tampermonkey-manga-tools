@@ -3,7 +3,7 @@
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
 // @version      3.0.0
 // @icon         https://www.google.com/s2/favicons?domain=manga-one.com&sz=128
-// @description  Tải manga trên MangaOne.
+// @description  Tải manga trên MangaONE.
 // @author       anonymous & AI
 // @match        https://manga-one.com/*
 // @run-at       document-start
@@ -228,8 +228,6 @@
     ctx.webkitImageSmoothingEnabled = false;
     ctx.msImageSmoothingEnabled = false;
 
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(img, 0, 0);
 
     const jpgBlob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', CONFIG.JPEG_QUALITY));

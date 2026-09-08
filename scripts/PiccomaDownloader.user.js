@@ -348,9 +348,6 @@
     ctx.webkitImageSmoothingEnabled = false;
     ctx.msImageSmoothingEnabled = false;
 
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, outWidth, outHeight);
-
     if (unscrambledCanvas) {
       ctx.drawImage(unscrambledCanvas, 0, 0);
       unscrambledCanvas.width = 0;

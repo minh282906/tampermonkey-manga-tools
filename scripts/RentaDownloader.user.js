@@ -268,9 +268,6 @@
     ctx.webkitImageSmoothingEnabled = false;
     ctx.msImageSmoothingEnabled = false;
 
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvasW, canvasH);
-
     // 1. Vẽ 2 dải đệm biên (nếu có)
     if (diffWVal > 0 || diffHVal > 0) {
       if (diffWVal > 0 && diffHVal === 0) {

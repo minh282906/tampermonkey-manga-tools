@@ -612,10 +612,7 @@
     ctx.mozImageSmoothingEnabled = false;
     ctx.webkitImageSmoothingEnabled = false;
     ctx.msImageSmoothingEnabled = false;
-
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
+    
     for (const { srcX, srcY, destX, destY, width, height } of coords) {
       ctx.drawImage(img, srcX, srcY, width, height, destX, destY, width, height);
   }

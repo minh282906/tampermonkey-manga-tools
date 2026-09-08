@@ -405,9 +405,6 @@
     ctx.webkitImageSmoothingEnabled = false;
     ctx.msImageSmoothingEnabled = false;
 
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, width, height);
-
     // HẰNG SỐ GIẢI MÃ TẠI ĐÂY
     const DIVIDE_NUM = 4;   // Thuật toán ma trận 4x4
     const MULTIPLE = 8;     // Bội số lưới 8px

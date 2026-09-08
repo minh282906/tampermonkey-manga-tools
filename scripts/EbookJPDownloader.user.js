@@ -83,9 +83,6 @@
                     ctx.webkitImageSmoothingEnabled = false;
                     ctx.msImageSmoothingEnabled = false;
 
-                    ctx.fillStyle = '#ffffff';
-                    ctx.fillRect(0, 0, w, h);
-
                     if (openParamArgs && loader?.funcs?.openParam) {
                       try { loader.funcs.openParam(openParamArgs); } catch (e) {}
                     }

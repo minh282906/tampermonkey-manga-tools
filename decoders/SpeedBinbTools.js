@@ -100,7 +100,21 @@
       }
     }
 
-    return { generateRandomString32, getDecryptedTable, getDecryptionKey, CoordDecoder };
+    function parsePTImgCoords(coordStr) {
+      if (!coordStr || typeof coordStr !== 'string') return null;
+      const m = coordStr.match(/^([^:]+):(\d+),(\d+)\+(\d+),(\d+)>(\d+),(\d+)$/);
+      if (!m) return null;
+      return {
+        srcX: parseInt(m[2], 10),
+        srcY: parseInt(m[3], 10),
+        width: parseInt(m[4], 10),
+        height: parseInt(m[5], 10),
+        destX: parseInt(m[6], 10),
+        destY: parseInt(m[7], 10)
+      };
+    }
+
+    return { generateRandomString32, getDecryptedTable, getDecryptionKey, CoordDecoder, parsePTImgCoords };
   })();
 
   (typeof globalThis !== 'undefined' ? globalThis : window).SpeedBinbTools = SpeedBinbTools;

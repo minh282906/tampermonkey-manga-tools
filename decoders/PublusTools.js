@@ -120,7 +120,7 @@
     }
 
     /* =========================================================================
-     * BỘ GIẢI MÃ 9 TẦNG & MA TRẬN 32px BOOKWALKER (NFBR CIPHER PIPELINE)
+     * BỘ GIẢI MÃ 9 TẦNG & MA TRẬN 32px BOOKWALKER và PIXIV COMIC STORE (NFBR CIPHER PIPELINE)
      * ========================================================================= */
     const Xn3 = [
       [1, 3, 10], [1, 5, 16], [1, 5, 19], [1, 9, 29], [1, 11, 6], [1, 11, 16], [1, 19, 3],
@@ -575,154 +575,15 @@
       return prefix + String.fromCharCode.apply(null, f6m);
     }
 
-    async function getDynamicChallenge() {
-      const isTrial = location.hostname.includes('viewer-trial.bookwalker.jp') || location.href.includes('viewer-trial');
-      if (isTrial) return null;
-
-      let reqUrl = '/browserWebApi/03/getLoader';
-      const scripts = Array.from(document.head.querySelectorAll('script[src*="/browserWebApi/"]'));
-      if (scripts.length > 0) reqUrl = scripts[0].getAttribute('src');
-
-      const res = await fetch(reqUrl);
-      const text = await res.text();
-
-      // Khóa chuẩn xác phần ruột biểu thức Math kết thúc bằng toFixed
-      const match = text.match(/(\w+)\s*=\s*function\(\)\s*\{([^{}]*toFixed[^{}]*)\}/);
-      if (!match) throw new Error("Không giải mã được hàm getLoader.");
-
-      // match[2] chứa nội dung hàm -> Chạy trực tiếp trả về con số thử thách hợp lệ
-      const fn = new Function(match[2]);
-      return fn();
-    }
-
-    async function fetchBookWalkerManifest(cid) {
-      const isTrial = location.hostname.includes('viewer-trial.bookwalker.jp') || location.href.includes('viewer-trial');
-      const challengeNum = await getDynamicChallenge();
-
-      let bid = localStorage.getItem('NFBR.Global/BrowserId');
-      if (!bid) {
-        bid = Date.now() + ("00000000" + Math.floor(Math.random() * 100000000)).slice(-8) + 'NFBR';
-        localStorage.setItem('NFBR.Global/BrowserId', bid);
-      }
-
-      const params = new URLSearchParams({ cid: cid, BID: bid });
-      if (challengeNum) params.set('cr', challengeNum);
-
-      const cookieMatch = document.cookie.match(/(?:^| )u1=([^;]+)/);
-      if (cookieMatch) params.set('u1', cookieMatch[1]);
-      const u2Match = document.cookie.match(/(?:^| )u2=([^;]+)/);
-      if (u2Match) params.set('u2', u2Match[1]);
-
-      const authApi = isTrial ? '/trial-page/c' : '/browserWebApi/c';
-      const authRes = await fetch(`${authApi}?${params.toString()}`);
-      const authData = await authRes.json();
-
-      if (!authData.url || !authData.auth_info) {
-        throw new Error(`Xác thực BookWalker thất bại (${authData.status || '401/Expired'})`);
-      }
-
-      const cdnBase = authData.url.replace(/\/?$/, '/');
-
-      // Gom đủ toàn bộ tham số auth_info không qua encodeURIComponent
-      let authQuery = "";
-      if (typeof authData.auth_info === 'string') {
-        authQuery = authData.auth_info.replace(/^\?/, '');
-      } else if (authData.auth_info && typeof authData.auth_info === 'object') {
-        const info = authData.auth_info;
-        const parts = [];
-        for (const k of Object.keys(info)) {
-          if (info[k] !== undefined && info[k] !== null) {
-            parts.push(`${k}=${info[k]}`);
-          }
-        }
-        authQuery = parts.join('&');
-      }
-
-      const configRes = await fetch(`${cdnBase}configuration_pack.json?${authQuery}`);
-      const configJson = await configRes.json();
-
-      // Phân nhánh Paid vs Trial: Bản Trial là JSON thô, KHÔNG có trường data mã hóa Base64
-      let config, fileNameVersion, key1 = null, key2 = null, key3 = null;
-      if (configJson.data && typeof configJson.data === 'string') {
-        const decryptedPack = decryptConfigurationPack(configJson.data);
-        config = decryptedPack.config;
-        fileNameVersion = config.configuration?.['file-name-version'];
-        key1 = decryptedPack.key1;
-        key2 = decryptedPack.key2;
-        key3 = decryptedPack.key3;
-      } else {
-        config = configJson;
-        fileNameVersion = config.configuration?.['file-name-version'];
-      }
-
-      const rawContents = config.configuration?.contents || [];
-
-      const pages = [];
-      let pageIndex = 0;
-
-      for (let i = 0; i < rawContents.length; i++) {
-        const item = rawContents[i];
-        const fileInfo = config[item.file];
-        if (!fileInfo || fileInfo.Linear === 0) continue;
-
-        const pageList = fileInfo.FileLinkInfo?.PageLinkInfoList || [];
-        const pageCount = fileInfo.FileLinkInfo?.PageCount || pageList.length;
-
-        for (let pIdx = 0; pIdx < pageCount; pIdx++) {
-          const pageObj = pageList[pIdx]?.Page;
-          if (!pageObj) continue;
-
-          pageObj.imgName = item.file;
-          if (key1 && key2 && key3) {
-            calcU2F(pageObj, key1, key2, key3);
-          }
-
-          const pNo = (pageObj.No !== undefined && pageObj.No !== null) ? String(pageObj.No) : "0";
-          const imgHash = (key1 && key2 && key3)
-            ? getImgURLHash(pNo, item.file, key1, key2, key3, fileNameVersion)
-            : pNo;
-
-          const isCover = (pageIndex === 0);
-          let fileName = `${imgHash}.jpeg`;
-          // Chỉ bản Mua mới có hậu tố bvCoverImage ở ảnh bìa, bản Trial dùng .jpeg chuẩn
-          if (!isTrial && isCover) fileName += 'bvCoverImage';
-
-          const subPath = `${item.file}/${fileName}`;
-          const dummyW = Number(pageObj.DummyWidth || 0);
-          const dummyH = Number(pageObj.DummyHeight || 0);
-
-          // Page.Size.Width / Height ĐÃ LÀ KÍCH THƯỚC TRANH THẬT RỒI! Không trừ dummyW
-          const targetW = Number(pageObj.Size?.Width || 1440);
-          const targetH = Number(pageObj.Size?.Height || 2048);
-
-          pages.push({
-            pageNo: pageIndex + 1,
-            url: `${cdnBase}${subPath}?${authQuery}`,
-            width: targetW,
-            height: targetH,
-            rawW: targetW + dummyW,
-            rawH: targetH + dummyH,
-            pageInfo: pageObj,
-            isCover: isCover,
-            isScrambled: Boolean(pageObj.BlockWidth)
-          });
-
-          pageIndex++;
-        }
-      }
-
-      return {
-        title: authData.cti || config.configuration?.title || "BookWalker",
-        cid: cid,
-        pages: pages
-      };
-    }
-
     async function unscrambleBookWalkerImage(imgElement, pageItem, isJpg, quality = 0.95) {
       const rawW = imgElement.naturalWidth || imgElement.width;
       const rawH = imgElement.naturalHeight || imgElement.height;
       const targetW = pageItem.width;
       const targetH = pageItem.height;
+
+      const pageObj = pageItem.pageInfo || {};
+      const cropX = Number(pageObj.ContentArea?.X || pageObj.Rect?.X || 0);
+      const cropY = Number(pageObj.ContentArea?.Y || pageObj.Rect?.Y || 0);
 
       const canvas = document.createElement('canvas');
       canvas.width = targetW;
@@ -735,7 +596,7 @@
       ctx.msImageSmoothingEnabled = false;
 
       if (!pageItem.isScrambled) {
-        ctx.drawImage(imgElement, 0, 0, targetW, targetH, 0, 0, targetW, targetH);
+        ctx.drawImage(imgElement, cropX, cropY, targetW, targetH, 0, 0, targetW, targetH);
       } else {
         const blocks = getBlocks(pageItem.pageInfo, rawW, rawH);
         for (let i = 0; i < blocks.length; i++) {
@@ -743,7 +604,7 @@
           ctx.drawImage(
             imgElement,
             b.destX, b.destY, b.width, b.height,
-            b.srcX, b.srcY, b.width, b.height
+            b.srcX - cropX, b.srcY - cropY, b.width, b.height
           );
         }
       }
@@ -763,10 +624,11 @@
     return {
       PublusCoordsGenerator,
       computePattern,
-      fetchBookWalkerManifest,
-      unscrambleBookWalkerImage,
       decryptConfigurationPack,
-      getBlocks
+      calcU2F,
+      getImgURLHash,
+      getBlocks,
+      unscrambleBookWalkerImage
     };
   })();
 

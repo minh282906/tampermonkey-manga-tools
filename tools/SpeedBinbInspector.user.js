@@ -9,6 +9,10 @@
 // @match        https://www.cmoa.jp/bib/speedreader/*
 // @match        https://yanmaga.jp/*
 // @match        https://gaugau.futabanet.jp/*
+// @match        https://kirapo.jp/pt/*
+// @match        https://www.123hon.com/vw/*
+// @match        https://comic-porta.com/p_data/*
+// @match        https://televikun-super-hero-comics.com/rensai/*/*/
 // @grant        unsafeWindow
 // @grant        GM_xmlhttpRequest
 // @connect      *
@@ -151,24 +155,94 @@
       }
       return { site: "Gaugau Futabanet", cid, ctbl, ptbl, files };
     }
+
+    // E. PTIMG SITES (Comic Polca, Kirapo, Comic Porta, Super Hero Comics)
+    const u = new URL(url, origin);
+    const p = u.pathname;
+    let isPTImg = false;
+    let siteName = "PTImg";
+
+    if (u.hostname.includes('123hon.com') && /\/vw\//.test(p)) {
+      isPTImg = true; siteName = "Comic Polca";
+    } else if (u.hostname.includes('kirapo.jp') && /\/pt\//.test(p)) {
+      isPTImg = true; siteName = "Kirapo";
+      if (p.includes('/zulet/')) siteName = "Zulet!";
+      else if (p.includes('/meteor/')) siteName = "Comic Meteor";
+      else if (p.includes('/polaris/')) siteName = "Comic Polaris";
+      else if (p.includes('/ambre/')) siteName = "Comic Ambre";
+      else if (p.includes('/etoile/')) siteName = "Comic Etoile";
+      else if (p.includes('/astir/')) siteName = "Comic Astir";
+    } else if (u.hostname.includes('comic-porta.com') && /\/p_data\//.test(p)) {
+      isPTImg = true; siteName = "Comic Porta";
+    } else if (u.hostname.includes('televikun-super-hero-comics.com')) {
+      const segs = p.split('/').filter(Boolean);
+      if (segs.length >= 3 && segs[0] === 'rensai') {
+        isPTImg = true; siteName = "Super Hero Comics";
+      }
+    }
+
+    if (isPTImg) {
+      let base = location.href.split('?')[0].split('#')[0];
+      if (base.endsWith('index.html')) base = base.slice(0, -10);
+      if (base.includes('kirapo.jp')) base = base.replace(/\/viewer\/?$/, '/').replace(/viewer$/, '');
+      if (!base.endsWith('/')) base = base.substring(0, base.lastIndexOf('/') + 1);
+
+      const htmlBuf = await Utils.fetchBuffer(location.href);
+      const html = new TextDecoder().decode(htmlBuf);
+      const jsonMatches = html.match(/data\/\d+\.ptimg\.json/gm);
+      if (!jsonMatches || !jsonMatches.length) return null;
+
+      const uniqueJsons = [...new Set(jsonMatches)].sort((a, b) => {
+        const numA = parseInt(a.match(/\d+/)?.[0] || 0, 10);
+        const numB = parseInt(b.match(/\d+/)?.[0] || 0, 10);
+        return numA - numB;
+      });
+
+      const files = uniqueJsons.map((jsonRelPath, idx) => ({
+        filename: `page_${idx + 1}`,
+        isPTImg: true,
+        baseUrl: base,
+        jsonUrl: `${base}${jsonRelPath}`
+      }));
+
+      return { site: siteName, isPTImg: true, files };
+    }
+
     return null;
   }
 
   async function processSpeedBinbPage(fileObj, ctbl, ptbl, Tools, Utils) {
-    const rawBuffer = await Utils.fetchBuffer(fileObj.src);
+    let coords = [];
+    let destW = 0, destH = 0;
+    let imgSrc = fileObj.src;
+
+    // 1. NHÁNH PTIMG TĨNH (Kirapo, Polca, Porta, Televikun)
+    if (fileObj.isPTImg) {
+      const ptBuf = await Utils.fetchBuffer(fileObj.jsonUrl);
+      const ptData = JSON.parse(new TextDecoder().decode(ptBuf));
+      imgSrc = `${fileObj.baseUrl}data/${ptData.resources.i.src}`;
+      destW = ptData.views[0].width;
+      destH = ptData.views[0].height;
+      coords = ptData.views[0].coords.map(c => Tools.parsePTImgCoords(c)).filter(Boolean);
+    }
+
+    const rawBuffer = await Utils.fetchBuffer(imgSrc);
     const rawExt = Utils.detectExt(rawBuffer);
     const img = await Utils.loadImage(rawBuffer);
 
-    const key = Tools.getDecryptionKey(fileObj.filename, ctbl, ptbl);
-    const decoder = new Tools.CoordDecoder(key[0], key[1]);
-    const coords = decoder.getCoords(img);
+    // 2. NHÁNH SPEEDBINB ĐỘNG (BookLive, Cmoa, Yanmaga, Gaugau)
+    if (!fileObj.isPTImg) {
+      const key = Tools.getDecryptionKey(fileObj.filename, ctbl, ptbl);
+      const decoder = new Tools.CoordDecoder(key[0], key[1]);
+      coords = decoder.getCoords(img);
 
-    let destW = 0, destH = 0;
-    for (const { destX, destY, width, height } of coords) {
-      if (destX + width > destW) destW = destX + width;
-      if (destY + height > destH) destH = destY + height;
+      for (const { destX, destY, width, height } of coords) {
+        if (destX + width > destW) destW = destX + width;
+        if (destY + height > destH) destH = destY + height;
+      }
     }
 
+    // 3. TÁI TẠO SHARP CANVAS (Ảnh sạch xuất file)
     const sharpCanvas = DOC.createElement('canvas');
     sharpCanvas.width = destW; sharpCanvas.height = destH;
     const sharpCtx = sharpCanvas.getContext('2d', { alpha: false });
@@ -177,6 +251,7 @@
       sharpCtx.drawImage(img, srcX, srcY, width, height, destX, destY, width, height);
     }
 
+    // 4. TÁI TẠO VISUAL CANVAS (Soi Live: Nền Hồng vùng đệm rãnh + Viền Cyan nét liền)
     const visualCanvas = DOC.createElement('canvas');
     visualCanvas.width = img.naturalWidth; visualCanvas.height = img.naturalHeight;
     const visualCtx = visualCanvas.getContext('2d', { alpha: false });

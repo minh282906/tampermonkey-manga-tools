@@ -12,6 +12,7 @@
      * @param {number} pattern - Khóa hoán vị (1, 2, 3, hoặc 4)
      * @returns {Array<{srcX, srcY, destX, destY, width, height}>} Ma trận lát cắt
      */
+
     function PublusCoordsGenerator(imgW, imgH, tileW = 64, tileH = 64, pattern = 1) {
       const calcPositionWithRest = (e, t, r, i) => e * i + (e >= t ? r : 0);
       const calcXCoordXRest = (e, t, r) => (e + 61 * r) % t;
@@ -575,60 +576,13 @@
       return prefix + String.fromCharCode.apply(null, f6m);
     }
 
-    async function unscrambleBookWalkerImage(imgElement, pageItem, isJpg, quality = 0.95) {
-      const rawW = imgElement.naturalWidth || imgElement.width;
-      const rawH = imgElement.naturalHeight || imgElement.height;
-      const targetW = pageItem.width;
-      const targetH = pageItem.height;
-
-      const pageObj = pageItem.pageInfo || {};
-      const cropX = Number(pageObj.ContentArea?.X || pageObj.Rect?.X || 0);
-      const cropY = Number(pageObj.ContentArea?.Y || pageObj.Rect?.Y || 0);
-
-      const canvas = document.createElement('canvas');
-      canvas.width = targetW;
-      canvas.height = targetH;
-
-      const ctx = canvas.getContext('2d', { alpha: false });
-      ctx.imageSmoothingEnabled = false;
-      ctx.mozImageSmoothingEnabled = false;
-      ctx.webkitImageSmoothingEnabled = false;
-      ctx.msImageSmoothingEnabled = false;
-
-      if (!pageItem.isScrambled) {
-        ctx.drawImage(imgElement, cropX, cropY, targetW, targetH, 0, 0, targetW, targetH);
-      } else {
-        const blocks = getBlocks(pageItem.pageInfo, rawW, rawH);
-        for (let i = 0; i < blocks.length; i++) {
-          const b = blocks[i];
-          ctx.drawImage(
-            imgElement,
-            b.destX, b.destY, b.width, b.height,
-            b.srcX - cropX, b.srcY - cropY, b.width, b.height
-          );
-        }
-      }
-
-      const mimeType = isJpg ? 'image/jpeg' : 'image/png';
-      const outExt = isJpg ? 'jpg' : 'png';
-      const blob = await new Promise(r => canvas.toBlob(r, mimeType, quality));
-
-      canvas.width = 0; canvas.height = 0;
-
-      return {
-        fileName: `${pageItem.pageNo}.${outExt}`,
-        data: new Uint8Array(await blob.arrayBuffer())
-      };
-    }
-
     return {
       PublusCoordsGenerator,
       computePattern,
       decryptConfigurationPack,
       calcU2F,
       getImgURLHash,
-      getBlocks,
-      unscrambleBookWalkerImage
+      getBlocks
     };
   })();
 

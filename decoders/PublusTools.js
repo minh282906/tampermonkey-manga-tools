@@ -358,12 +358,12 @@
           for (I2s = 0; I2s < Q2s; I2s++) {
             if (1 == (1 & I2s) && J2s) { const F = v2s[I2s]; v2s[I2s] = v2s[I2s - 1]; v2s[I2s - 1] = F; }
             if (3 == (3 & I2s)) {
-              if (G2s) for (let N = I2s - 2, w = I2s; N < w;) { const F = v2s[w]; v2s[w--] = v2s[N]; v2s[N--] = F; }
+              if (G2s) for (let N = I2s - 2, limit = N, c = I2s; limit < c;) { const F = v2s[c]; v2s[c--] = v2s[N]; v2s[N--] = F; }
               if (7 == (7 & I2s)) {
-                if (h2s) for (let N = I2s - 4, w = I2s; N < w;) { const F = v2s[w]; v2s[w--] = v2s[N]; v2s[N--] = F; }
+                if (h2s) for (let N = I2s - 4, limit = N, c = I2s; limit < c;) { const F = v2s[c]; v2s[c--] = v2s[N]; v2s[N--] = F; }
                 if (15 == (15 & I2s)) {
-                  if (r2s) for (let N = I2s - 8, w = I2s; N < w;) { const F = v2s[w]; v2s[w--] = v2s[N]; v2s[N--] = F; }
-                  if (31 == (31 & I2s) && n2s) for (let N = I2s - 16, w = I2s; N < w;) { const F = v2s[w]; v2s[w--] = v2s[N]; v2s[N--] = F; }
+                  if (r2s) for (let N = I2s - 8, limit = N, c = I2s; limit < c;) { const F = v2s[c]; v2s[c--] = v2s[N]; v2s[N--] = F; }
+                  if (31 == (31 & I2s) && n2s) for (let N = I2s - 16, limit = N, c = I2s; limit < c;) { const F = v2s[c]; v2s[c--] = v2s[N]; v2s[N--] = F; }
                 }
               }
             }
@@ -459,11 +459,11 @@
 
     function decryptConfigurationPack(conf64Data) {
       const rawBinary = atob(conf64Data);
-      const key1 = new Uint8Array(32), key2 = new Uint8Array(32), key3 = new Uint8Array(32);
+      const key1 = [], key2 = [], key3 = [];
       for (let i = 0; i < 32; i++) {
-        key1[i] = rawBinary.charCodeAt(i);
-        key2[i] = rawBinary.charCodeAt(32 + i);
-        key3[i] = rawBinary.charCodeAt(64 + i);
+        key1.push(rawBinary.charCodeAt(i));
+        key2.push(rawBinary.charCodeAt(32 + i));
+        key3.push(rawBinary.charCodeAt(64 + i));
       }
       const dataLen = rawBinary.length - 96;
       const dataArr = new Uint8Array(dataLen);
@@ -538,15 +538,20 @@
       while (v6m < 256) { v6m += j6m; s6m++; }
 
       let d6m = 1670739, O6m = 1282576, k6m = 2237221, Sjm = 0;
-      let bjm = L6m; pjm = 0;
-      while (true) {
-        while (bjm < j6m) {
-          const M6m = 435 * d6m + ((3 & O6m) << 19) + ((4194296 & (k6m ^= l6m[bjm++] ^ keyXor[pjm++])) >>> 3) +
-            (((435 * O6m + ((7 & k6m) << 18) + ((435 * k6m) >>> 22))) >>> 21);
-          k6m = 4194303 & (435 * k6m); O6m = 2097151 & (435 * O6m + ((7 & k6m) << 18) + (k6m >>> 22));
-          d6m = 2097151 & M6m;
-          if (pjm >= keyXor.length) pjm = 0;
-        }
+      let bjm = L6m;
+      pjm = 0;
+      let m6m, o6m, k6mProduct;
+
+      for (Sjm = pjm = 0;;) {
+        for (;
+          m6m = 435 * d6m + ((3 & O6m) << 19) + ((4194296 & (k6m ^= l6m[bjm++] ^ keyXor[pjm++])) >>> 3) +
+            ((o6m = 435 * O6m + ((7 & k6m) << 18) + ((k6mProduct = 435 * k6m) >>> 22)) >>> 21),
+          k6m = 4194303 & k6mProduct,
+          O6m = 2097151 & o6m,
+          d6m = 2097151 & m6m,
+          32 <= pjm && (pjm = 0),
+          !(j6m <= bjm);
+        ) {}
         if (++Sjm >= s6m) break;
         bjm = 0;
       }
@@ -571,18 +576,22 @@
     }
 
     async function getDynamicChallenge() {
-      const scripts = Array.from(document.head.querySelectorAll('script[src*="/browserWebApi/"]'));
-      let reqUrl = '/browserWebApi/03/getLoader';
-      if (scripts.length > 0) reqUrl = scripts[0].getAttribute('src');
-
       const isTrial = location.hostname.includes('viewer-trial.bookwalker.jp') || location.href.includes('viewer-trial');
       if (isTrial) return null;
 
+      let reqUrl = '/browserWebApi/03/getLoader';
+      const scripts = Array.from(document.head.querySelectorAll('script[src*="/browserWebApi/"]'));
+      if (scripts.length > 0) reqUrl = scripts[0].getAttribute('src');
+
       const res = await fetch(reqUrl);
       const text = await res.text();
-      const match = text.match(/^(\w+)=function\(\).+?;\}/m);
+
+      // Khóa chuẩn xác phần ruột biểu thức Math kết thúc bằng toFixed
+      const match = text.match(/(\w+)\s*=\s*function\(\)\s*\{([^{}]*toFixed[^{}]*)\}/);
       if (!match) throw new Error("Không giải mã được hàm getLoader.");
-      const fn = new Function(`${match[0]}; return ${match[1]}();`);
+
+      // match[2] chứa nội dung hàm -> Chạy trực tiếp trả về con số thử thách hợp lệ
+      const fn = new Function(match[2]);
       return fn();
     }
 
@@ -613,7 +622,21 @@
       }
 
       const cdnBase = authData.url.replace(/\/?$/, '/');
-      const authQuery = new URLSearchParams(authData.auth_info).toString();
+
+      // Gom đủ toàn bộ tham số auth_info không qua encodeURIComponent
+      let authQuery = "";
+      if (typeof authData.auth_info === 'string') {
+        authQuery = authData.auth_info.replace(/^\?/, '');
+      } else if (authData.auth_info && typeof authData.auth_info === 'object') {
+        const info = authData.auth_info;
+        const parts = [];
+        for (const k of Object.keys(info)) {
+          if (info[k] !== undefined && info[k] !== null) {
+            parts.push(`${k}=${info[k]}`);
+          }
+        }
+        authQuery = parts.join('&');
+      }
 
       const configRes = await fetch(`${cdnBase}configuration_pack.json?${authQuery}`);
       const configJson = await configRes.json();
@@ -621,40 +644,54 @@
       const decryptedPack = decryptConfigurationPack(configJson.data);
       const config = decryptedPack.config;
       const fileNameVersion = config.configuration?.['file-name-version'];
-      const contents = config.configuration?.contents || [];
+      const rawContents = config.configuration?.contents || [];
 
       const pages = [];
-      for (const item of contents) {
+      let pageIndex = 0;
+
+      for (let i = 0; i < rawContents.length; i++) {
+        const item = rawContents[i];
         const fileInfo = config[item.file];
-        const pageList = fileInfo?.FileLinkInfo?.PageLinkInfoList || [];
-        const isCover = (item.index === 1);
+        if (!fileInfo || fileInfo.Linear === 0) continue; // Lọc bỏ trang phụ trợ
 
-        for (const p of pageList) {
-          const pageObj = p.Page;
+        const pageList = fileInfo.FileLinkInfo?.PageLinkInfoList || [];
+        const pageCount = fileInfo.FileLinkInfo?.PageCount || pageList.length;
+
+        for (let pIdx = 0; pIdx < pageCount; pIdx++) {
+          const pageObj = pageList[pIdx]?.Page;
+          if (!pageObj) continue;
+
           pageObj.imgName = item.file;
-
           calcU2F(pageObj, decryptedPack.key1, decryptedPack.key2, decryptedPack.key3);
 
-          let imgHash = getImgURLHash(pageObj.No, item.file, decryptedPack.key1, decryptedPack.key2, decryptedPack.key3, fileNameVersion);
-          let subPath = `${item.file}/${imgHash}.${item.type}`;
-          if (isCover) subPath += 'bvCoverImage';
+          const pNo = (pageObj.No !== undefined && pageObj.No !== null) ? String(pageObj.No) : "0";
+          const imgHash = getImgURLHash(pNo, item.file, decryptedPack.key1, decryptedPack.key2, decryptedPack.key3, fileNameVersion);
 
+          const isCover = (pageIndex === 0);
+          let fileName = `${imgHash}.jpeg`;
+          if (isCover) fileName += 'bvCoverImage';
+
+          const subPath = `${item.file}/${fileName}`;
           const dummyW = Number(pageObj.DummyWidth || 0);
           const dummyH = Number(pageObj.DummyHeight || 0);
-          const fullW = Number(pageObj.Size?.Width || 1440);
-          const fullH = Number(pageObj.Size?.Height || 2048);
+
+          // Page.Size.Width / Height ĐÃ LÀ KÍCH THƯỚC TRANH THẬT RỒI! Không trừ dummyW
+          const targetW = Number(pageObj.Size?.Width || 1440);
+          const targetH = Number(pageObj.Size?.Height || 2048);
 
           pages.push({
-            pageNo: pages.length + 1,
+            pageNo: pageIndex + 1,
             url: `${cdnBase}${subPath}?${authQuery}`,
-            width: fullW - dummyW,
-            height: fullH - dummyH,
-            rawW: fullW,
-            rawH: fullH,
+            width: targetW,
+            height: targetH,
+            rawW: targetW + dummyW,
+            rawH: targetH + dummyH,
             pageInfo: pageObj,
             isCover: isCover,
             isScrambled: Boolean(pageObj.BlockWidth)
           });
+
+          pageIndex++;
         }
       }
 
@@ -680,9 +717,6 @@
       ctx.mozImageSmoothingEnabled = false;
       ctx.webkitImageSmoothingEnabled = false;
       ctx.msImageSmoothingEnabled = false;
-
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, targetW, targetH);
 
       if (!pageItem.isScrambled) {
         ctx.drawImage(imgElement, 0, 0, targetW, targetH, 0, 0, targetW, targetH);

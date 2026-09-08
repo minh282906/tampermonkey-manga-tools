@@ -641,9 +641,20 @@
       const configRes = await fetch(`${cdnBase}configuration_pack.json?${authQuery}`);
       const configJson = await configRes.json();
 
-      const decryptedPack = decryptConfigurationPack(configJson.data);
-      const config = decryptedPack.config;
-      const fileNameVersion = config.configuration?.['file-name-version'];
+      // Phân nhánh Paid vs Trial: Bản Trial là JSON thô, KHÔNG có trường data mã hóa Base64
+      let config, fileNameVersion, key1 = null, key2 = null, key3 = null;
+      if (configJson.data && typeof configJson.data === 'string') {
+        const decryptedPack = decryptConfigurationPack(configJson.data);
+        config = decryptedPack.config;
+        fileNameVersion = config.configuration?.['file-name-version'];
+        key1 = decryptedPack.key1;
+        key2 = decryptedPack.key2;
+        key3 = decryptedPack.key3;
+      } else {
+        config = configJson;
+        fileNameVersion = config.configuration?.['file-name-version'];
+      }
+
       const rawContents = config.configuration?.contents || [];
 
       const pages = [];
@@ -652,7 +663,7 @@
       for (let i = 0; i < rawContents.length; i++) {
         const item = rawContents[i];
         const fileInfo = config[item.file];
-        if (!fileInfo || fileInfo.Linear === 0) continue; // Lọc bỏ trang phụ trợ
+        if (!fileInfo || fileInfo.Linear === 0) continue;
 
         const pageList = fileInfo.FileLinkInfo?.PageLinkInfoList || [];
         const pageCount = fileInfo.FileLinkInfo?.PageCount || pageList.length;
@@ -662,14 +673,19 @@
           if (!pageObj) continue;
 
           pageObj.imgName = item.file;
-          calcU2F(pageObj, decryptedPack.key1, decryptedPack.key2, decryptedPack.key3);
+          if (key1 && key2 && key3) {
+            calcU2F(pageObj, key1, key2, key3);
+          }
 
           const pNo = (pageObj.No !== undefined && pageObj.No !== null) ? String(pageObj.No) : "0";
-          const imgHash = getImgURLHash(pNo, item.file, decryptedPack.key1, decryptedPack.key2, decryptedPack.key3, fileNameVersion);
+          const imgHash = (key1 && key2 && key3)
+            ? getImgURLHash(pNo, item.file, key1, key2, key3, fileNameVersion)
+            : pNo;
 
           const isCover = (pageIndex === 0);
           let fileName = `${imgHash}.jpeg`;
-          if (isCover) fileName += 'bvCoverImage';
+          // Chỉ bản Mua mới có hậu tố bvCoverImage ở ảnh bìa, bản Trial dùng .jpeg chuẩn
+          if (!isTrial && isCover) fileName += 'bvCoverImage';
 
           const subPath = `${item.file}/${fileName}`;
           const dummyW = Number(pageObj.DummyWidth || 0);

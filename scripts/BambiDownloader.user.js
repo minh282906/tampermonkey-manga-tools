@@ -2,7 +2,7 @@
 // @name         Bambi Universal Downloader
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
 // @version      1.0.0
-// @icon         https://pocket.shonenmagazine.com/img/favicon.ico
+// @icon         https://www.google.com/s2/favicons?domain=link-u.group&sz=128
 // @description  Tải manga trên toàn bộ hệ sinh thái Link-U Bambi Engine (Pocket Shonen Magazine, K MANGA, Ciao Plus).
 // @author       anonymous & AI
 // @match        https://pocket.shonenmagazine.com/*

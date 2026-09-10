@@ -39,7 +39,7 @@
    * CẤU HÌNH HỆ THỐNG
    * ========================================================================= */
   const CONFIG = {
-    MAX_CONCURRENT: 6,   // 6 luồng tải song song (Kịch trần TCP Socket)
+    MAX_CONCURRENT: 6,   // 6 luồng tải song song (TCP Socket)
     JPEG_QUALITY: 0.95   // Chất lượng xuất JPG nếu chuyển đổi
   };
 

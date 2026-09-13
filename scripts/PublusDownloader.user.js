@@ -215,7 +215,8 @@
     const path = WIN.location.pathname;
     const search = WIN.location.search;
     if (isDmm()) {
-      return search.includes('cid=') || /\/(?:product|streaming)\//.test(path);
+      // Bắt buộc có ?cid= VÀ đường dẫn thuộc đúng các route viewer (đọc thử, free, streaming, binding)
+      return search.includes('cid=') && /\/(?:tachiyomi|free_streaming|streaming|binding|viewer)/.test(path);
     }
     return /\/viewer\.html/.test(path) || /\/static\/viewer/.test(path) || search.includes('cid=');
   }
@@ -1471,6 +1472,7 @@
 
     if (ui?.panel) {
       ui.panel.style.display = "block";
+      if (!DOC.body.contains(ui.panel)) DOC.body.appendChild(ui.panel); // Ghim chặt vào body
       ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
     }
 
@@ -1498,9 +1500,6 @@
         if (ui?.panel) {
           ui.panel.style.top = getDmmTopOffset(resolveSiteTheme().top);
         }
-
-        // Micro-delay chuẩn 80ms mượt mà
-        await sleep(80);
 
         if (ui) {
           ui.updateProgress({
@@ -1596,15 +1595,23 @@
   const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
   if (typeof watchRoute === "function") {
     watchRoute(() => {
-      state.episodeData = null;
-      state.dmmData = null;
-      state.bwData = null;
-      state.running = false;
       const ui = getUI();
-      if (ui) {
-        ui.setBusy(false);
-        ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
+
+      // Nếu thực sự thoát ra ngoài (không còn cid=) -> Ẩn bảng
+      if (!isEpisodeUrl()) {
+        if (ui?.panel) ui.panel.style.display = "none";
+        state.dmmData = null;
+        state.bwData = null;
+        state.episodeData = null;
+        return;
       }
+
+      // NẾU VẪN Ở TRANG TRUYỆN: Khóa cứng hiển thị, tự ghim lại vào body nếu bị DMM xóa
+      if (ui?.panel) {
+        ui.panel.style.display = "block";
+        if (!DOC.body.contains(ui.panel)) DOC.body.appendChild(ui.panel);
+      }
+
       boot();
     });
   }

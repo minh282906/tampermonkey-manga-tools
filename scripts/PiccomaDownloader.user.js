@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         Piccoma Downloader
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
-// @version      3.1.0
+// @version      3.0.0
 // @icon         https://www.google.com/s2/favicons?domain=piccoma.com&sz=128
-// @description  Tải manga trên Piccoma chuẩn 4 luồng RAM.
+// @description  Tải manga trên Piccoma.
 // @author       anonymous & AI
 // @match        https://piccoma.com/web/viewer/*
 // @match        https://jp.piccoma.com/web/viewer/*
@@ -15,7 +15,7 @@
 // @connect      *.piccoma.com
 // @connect      *.kakaocdn.net
 //
-// --- TỰ ĐỘNG TẢI VÀ UPDATE PHIÊN BẢN ---
+// --- TỰ ĐỘNG TẢI VÀ UPDATE PHIÊN BẢN
 // @updateURL    https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/PiccomaDownloader.user.js
 // @downloadURL  https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/PiccomaDownloader.user.js
 //
@@ -24,7 +24,6 @@
 // @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/cores/UniversalUI.js
 // @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/cores/RouteWatcher.js
 // @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/cores/MangaUtils.js
-// @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/decoders/PiccomaTools.js
 // ==/UserScript==
 
 (function piccomaUniversalDownloader() {
@@ -34,7 +33,7 @@
    * CẤU HÌNH HỆ THỐNG
    * ========================================================================= */
   const CONFIG = {
-    MAX_CONCURRENT: 4,   // 4 luồng an toàn (tối ưu Quad-Core CPU & Wasm)
+    MAX_CONCURRENT: 4,   // 4 luồng tải song song (chuẩn an toàn cho web giải mã Wasm/Canvas)
     JPEG_QUALITY: 0.95   // Chất lượng xuất JPG nếu chọn
   };
 
@@ -85,6 +84,7 @@
 
       state.ui = createUI(uiConfig);
 
+      // Tiêu đề 2 tầng (ẩn tầng 2 bằng visibility: hidden để cố định khoảng trống)
       if (state.ui?.panel) {
         const titleEl = state.ui.panel.querySelector('[style*="font: 800 13px"], [style*="font:800 13px"]');
         if (titleEl) {
@@ -99,7 +99,7 @@
   }
 
   /* =========================================================================
-   * BỘ HỖ TRỢ XỬ LÝ CHUỖI & TÊN FILE CHUẨN GOLDEN RULES
+   * BỘ HỖ TRỢ XỬ LÝ CHUỖI & TÊN FILE CHUẨN
    * ========================================================================= */
   function isEpisodeUrl() {
     return /\/viewer\/(?:[a-zA-Z]+\/)?\d+\/\d+/.test(WIN.location.pathname);
@@ -124,6 +124,7 @@
     return "piccoma_episode";
   }
 
+  // BẮT BUỘC: [Tên Truyện] - [Tên Tập/Chap].zip
   function getCleanTitle() {
     try {
       let seriesTitle = "";
@@ -155,6 +156,7 @@
 
       let cleanEpisode = cleanString(episodeTitle);
 
+      // Cắt bỏ phần tên truyện nếu bị lặp lại trong tên chap
       let baseWithoutVol = cleanSeries.replace(/\s*[0-9０-９]+\s*巻.*$/i, '').trim();
       if (baseWithoutVol && cleanEpisode.startsWith(baseWithoutVol)) {
         cleanEpisode = cleanString(cleanEpisode.substring(baseWithoutVol.length));
@@ -173,7 +175,7 @@
   }
 
   /* =========================================================================
-   * BÓC TÁCH DỮ LIỆU _pdata_ (RAM HOOK + DOM FALLBACK)
+   * BÓC TÁCH DỮ LIỆU _pdata_
    * ========================================================================= */
   function extractPData() {
     if (capturedPData?.img?.length > 0) return capturedPData;
@@ -232,6 +234,7 @@
       if (!url) continue;
       if (url.startsWith('//')) url = 'https:' + url;
 
+      // Loại bỏ ảnh rác kết thúc
       if (!url.includes('/dna/') && !/\.(?:jpg|jpeg|png|webp)/i.test(url)) {
         continue;
       }
@@ -249,18 +252,40 @@
   }
 
   /* =========================================================================
-   * BĂM HẠT GIỐNG QUA PICCOMATOOLS & WASM WIN.dd()
+   * THUẬT TOÁN GIẢI MÃ MA TRẬN 50PX TILE TRONG RAM (WASM ENGINE)
    * ========================================================================= */
-  async function computeImageSeed(url) {
-    const Tools = window.PiccomaTools || globalThis.PiccomaTools;
-    const { rawSeed } = Tools ? Tools.parseUrlSeedParams(url) : { rawSeed: '' };
+  function getChecksum(url) {
+    try {
+      const clean = url.split('?')[0];
+      const parts = clean.split('/');
+      return parts[parts.length - 2] || '';
+    } catch { return ''; }
+  }
 
-    // Nạp hạt giống thô vào máy ảo Wasm dd() của Piccoma
+  function getSeed(checksum, expires) {
+    if (!expires || !checksum) return checksum;
+    let sum = 0;
+    for (let i = 0; i < expires.length; i++) {
+      const digit = parseInt(expires[i], 10);
+      if (!isNaN(digit)) sum += digit;
+    }
+    const shift = sum % checksum.length;
+    if (shift === 0) return checksum;
+    return checksum.slice(-shift) + checksum.slice(0, -shift);
+  }
+
+  async function computeImageSeed(url) {
+    const checksum = getChecksum(url);
+    const match = url.match(/[?&]expires=([0-9]+)/);
+    const expires = match ? match[1] : '';
+    const rawSeed = getSeed(checksum, expires);
+
+    // Gọi hàm WebAssembly dd của Piccoma
     let attempts = 0;
     while (attempts < 30) {
       if (typeof WIN.dd === "function") {
         try {
-          return await WIN.dd(rawSeed);
+          return WIN.dd(rawSeed);
         } catch (e) {}
       }
       await sleep(50);
@@ -271,7 +296,7 @@
 
   async function processPiccomaImage(rawBuffer, pageObj, isJpg) {
     const Utils = window.MangaUtils || globalThis.MangaUtils;
-    const TILE_SIZE = 50; // Ma trận 50px
+    const TILE_SIZE = 50; // Hằng số ma trận cắt mảnh 50px
 
     if (!pageObj.isScrambled) {
       const uint8 = new Uint8Array(rawBuffer);
@@ -284,7 +309,6 @@
       }
     }
 
-    // Nạp ảnh qua createImageBitmap phần cứng (Zero Color Loss)
     const img = await Utils.loadImage(rawBuffer);
     let unscrambledCanvas = null;
 
@@ -372,7 +396,7 @@
       const Utils = window.MangaUtils || globalThis.MangaUtils;
       const zip = new ZipClass();
 
-      // Golden Rule 2: File ID định danh .txt ở thư mục gốc
+      // Đính kèm file txt định danh ID tập vào thư mục gốc ZIP
       const episodeId = getEpisodeId();
       zip.addFile(`${episodeId}.txt`, new Uint8Array(0));
 
@@ -447,6 +471,7 @@
     }
   }
 
+  // Khởi động SPA Route Watcher
   const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
   if (typeof watchRoute === "function") {
     watchRoute(() => {

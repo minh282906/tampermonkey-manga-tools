@@ -86,6 +86,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 - Comic J&N (`comic.j-nbooks.jp`)
 - booklistaSTUDIOweb (`studio.booklista.co.jp`)
 - Manga Zegra (`manga-zegra.com`)
+- MANGABU (`mangabu.jp`)
 
 </details>
 

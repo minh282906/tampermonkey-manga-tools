@@ -34,6 +34,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 | **JumpRookie Downloader**  | (`rookie.shonenjump.com`)                                                                                                            | 🟢 Hoạt động | [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/JumpRookieDownloader.user.js) |
 | **Comici Downloader**      | (`comici.jp`)                                                                                                                        | 🟢 Hoạt động |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/ComiciJPDownloader.user.js)  |
 | **MechaComic Downloader**  | (`mechacomic.jp`)                                                                                                                    | 🟢 Hoạt động | [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/MechaComicDownloader.user.js) |
+| **Alphapolis Downloader**       | (`alphapolis.co.jp`)                                                                                                                 | 🟢 Hoạt động |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/PixivDownloader.user.js)   |
 | **Amazon Downloader**      | (`amazon.co.jp`)                                                                                                                     | 🟢 Hoạt động |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/AmazonDownloader.user.js)   |
 
 ---
@@ -159,6 +160,8 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 
 </details>
 
+- ********pixiv (`pixiv.net`)********
+- ********Alphapolis (`alphapolis.co.jp`)********
 - ********DLsite Play (`dlsite.com`)********
 - ********EbookJP (`ebookjapan.yahoo.co.jp`)********
 - ********Piccoma Manga (`piccoma.com`)********

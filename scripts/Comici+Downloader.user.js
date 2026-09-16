@@ -33,6 +33,7 @@
 // @match        https://comic.j-nbooks.jp/*
 // @match        https://studio.booklista.co.jp/*
 // @match        https://manga-zegra.com/*
+// @match        https://mangabu.jp/*
 // @run-at       document-start
 // @grant        unsafeWindow
 // @grant        GM_xmlhttpRequest
@@ -66,6 +67,7 @@
 // @connect      *.j-nbooks.jp
 // @connect      *.booklista.co.jp
 // @connect      *.manga-zegra.com
+// @connect      *.mangabu.jp
 //
 // --- TỰ ĐỘNG TẢI VÀ UPDATE PHIÊN BẢN
 // @updateURL    https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/Comici+Downloader.user.js
@@ -133,6 +135,7 @@
     "j-nbooks.jp":            { name: "Comic J-N",            top: "60px", color: "#16a34a", bg: "#E6F871", text: "#15803d" },
     "booklista.co.jp":        { name: "booklista STUDIO web", top: "60px", color: "#B10000", bg: "#ffffff", text: "#F8606F" },
     "manga-zegra.com":        { name: "Manga Zegra",          top: "60px", color: "#1A63FF", bg: "#ffffff", text: "#F50100" },
+    "mangabu.jp":             { name: "Manga Bu",             top: "60px", color: "#E60027", bg: "#ffffff", text: "#187FC5" },
     // Nhóm đặc thù
     "rimacomiplus.jp":        { name: "Rimacomi+",            top: "60px", color: "#F389CF", bg: "#ffffff", text: "#FF4486" },
     "comics.comici.jp":       { name: "comic Bro",            top: "60px", color: "#D80C25", bg: "#ffffff", text: "#D80C25" },

@@ -174,18 +174,20 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 
 ---
 
-## ********🛠️ Dành Cho Lập Trình Viên & Đóng Góp (Contribution)********
+## 🛠️ Dành Cho Lập Trình Viên & Đóng Góp (Contribution)
 
-********Rất hoan nghênh sự đóng góp (Pull Request) cải tiến code từ cộng đồng!********
+Rất hoan nghênh sự đóng góp (Pull Request) cải tiến code từ cộng đồng!
 
-### ********Quy trình phát triển:********
+### Quy trình phát triển:
 
-1. ********Clone dự án về máy:****
-
-   ---
-2. ********Chỉnh sửa code trực tiếp trong thư mục********
-3. ********Kiểm tra script chạy thử trên Tampermonkey.********
-4. ********Tạo **Pull Request** lên nhánh `main`.********
+1. Clone dự án về máy:
+   ```bash
+   git clone https://github.com/minh282906/tampermonkey-manga-tools.git
+   cd manga-downloaders
+   ```
+2. Chỉnh sửa code trực tiếp trong thư mục
+3. Kiểm tra script chạy thử trên Tampermonkey.
+4. Tạo **Pull Request** lên nhánh `main`.
 
 ---
 

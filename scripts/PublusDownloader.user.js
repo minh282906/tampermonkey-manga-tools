@@ -1,15 +1,20 @@
 // ==UserScript==
 // @name         PUBLUS Universal Downloader
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
-// @version      4.0.0
+// @version      5.0.0
 // @icon         http://www.google.com/s2/favicons?domain=publus.jp&sz=128
-// @description  Tải manga trên toàn bộ hệ sinh thái ACCESS PUBLUS Reader / NFBR (BookWalker, Pixiv Comic Store, DMM Books).
+// @description  Tải manga trên toàn bộ hệ sinh thái ACCESS PUBLUS Reader / NFBR (BookWalker, Pixiv Comic Store, DMM Books, COMIC nettai, PASH UP!, Comic Boost, d Anime Store).
 // @author       anonymous & AI
 // @match        https://viewer.bookwalker.jp/*/viewer.html*
 // @match        https://viewer-trial.bookwalker.jp/*/viewer.html*
 // @match        https://comic-store-viewer.pixiv.net/static/viewer*
 // @match        https://book.dmm.com/*
 // @match        https://book.dmm.co.jp/*
+// @match        https://www.comicnettai.com/*/viewer.html*
+// @match        https://comicnettai.com/*/viewer.html*
+// @match        https://pash-up.jp/*/viewer.html*
+// @match        https://comic-boost.com/viewer/viewer.html*
+// @match        https://animestore.docomo.ne.jp/animestore/comic_viewer/viewer.html*
 // @run-at       document-start
 // @grant        unsafeWindow
 // @grant        GM_xmlhttpRequest
@@ -23,6 +28,14 @@
 // @connect      *.dmm.com
 // @connect      dmm.co.jp
 // @connect      *.dmm.co.jp
+// @connect      comicnettai.com
+// @connect      *.comicnettai.com
+// @connect      pash-up.jp
+// @connect      *.pash-up.jp
+// @connect      comic-boost.com
+// @connect      *.comic-boost.com
+// @connect      animestore.docomo.ne.jp
+// @connect      *.docomo.ne.jp
 //
 // --- TỰ ĐỘNG TẢI VÀ UPDATE PHIÊN BẢN
 // @updateURL    https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/PublusDownloader.user.js
@@ -56,9 +69,8 @@
   const state = {
     running: false,
     convertJpeg: localStorage.getItem("publus-dl:convert-jpeg") === '1',
+    chapterData: null,
     episodeData: null,
-    dmmData: null,
-    bwData: null,
     ui: null
   };
 
@@ -87,7 +99,31 @@
       name: "DMM Books", color: "#00a4bd", bg: "#ffffff", text: "#000000", btnBg: "#00a4bd",
       btnColor: "#ffffff", btnBorder: "0", tabBg: "#00a4bd", tabColor: "#ffffff",
       tabBorder: "none", top: "64px"
-    }
+    // COMIC nettai
+    },
+    "comicnettai.com": { 
+      name: "COMIC nettai", color: "#eb6124", bg: "#ffffff", text: "#eb6124", 
+      btnBg: "#eb6124", btnColor: "#ffffff", btnBorder: "0", 
+      tabBg: "#eb6124", tabColor: "#ffffff", tabBorder: "none", top: "44px" 
+    },
+    // PASH UP!
+    "pash-up.jp": { 
+      name: "PASH UP!", color: "#38bdf8", bg: "#ffffff", text: "#e8364b", 
+      btnBg: "#e8364b", btnColor: "#ffffff", btnBorder: "0", 
+      tabBg: "#38bdf8", tabColor: "#ffffff", tabBorder: "none", top: "44px" 
+    },
+    // Comic Boost
+    "comic-boost.com": { 
+      name: "Comic Boost", color: "#53B5E7", bg: "#ffffff", text: "#0088cc", 
+      btnBg: "#53B5E7", btnColor: "#ffffff", btnBorder: "0", 
+      tabBg: "#53B5E7", tabColor: "#ffffff", tabBorder: "none", top: "44px" 
+    },
+    // d Anime Store
+    "docomo.ne.jp": { 
+      name: "d Anime Store", color: "#EB5427", bg: "#ffffff", text: "#EB5427", 
+      btnBg: "#EB5427", btnColor: "#ffffff", btnBorder: "0", 
+      tabBg: "#EB5427", tabColor: "#ffffff", tabBorder: "none", top: "44px" 
+    },
   };
 
   function isBookWalker() {
@@ -100,6 +136,22 @@
   
   function isDmm() {
     return WIN.location.hostname.includes("dmm.co.jp") || WIN.location.hostname.includes("dmm.com");
+  }
+
+  function isComicNettai() {
+    return WIN.location.hostname.includes('comicnettai.com');
+  }
+
+  function isPashUp() {
+    return WIN.location.hostname.includes('pash-up.jp');
+  }
+
+  function isComicBoost() {
+    return WIN.location.hostname.includes('comic-boost.com');
+  }
+
+  function isDocomo() {
+    return WIN.location.hostname.includes('docomo.ne.jp');
   }
 
   // Xử lý webtoon
@@ -143,8 +195,12 @@
       t.top = getDmmTopOffset(t.top);
       return t;
     }
-    if (host.includes("pixiv.net")) return SITE_THEMES["pixiv.net"];
-    if (host.includes("bookwalker.jp")) return SITE_THEMES["bookwalker.jp"];
+    if (host.includes("pixiv.net"))       return SITE_THEMES["pixiv.net"];
+    if (host.includes("bookwalker.jp"))   return SITE_THEMES["bookwalker.jp"];
+    if (host.includes("comicnettai.com")) return SITE_THEMES["comicnettai.com"];
+    if (host.includes("pash-up.jp"))      return SITE_THEMES["pash-up.jp"];
+    if (host.includes("comic-boost.com")) return SITE_THEMES["comic-boost.com"];
+    if (host.includes("docomo.ne.jp"))    return SITE_THEMES["docomo.ne.jp"];
 
     return { name: "PUBLUS Reader", color: "#0284c7", bg: "#ffffff", text: "#0284c7", top: "44px" };
   }
@@ -214,8 +270,12 @@
   function isEpisodeUrl() {
     const path = WIN.location.pathname;
     const search = WIN.location.search;
+
+    if (isComicNettai() || isPashUp() || isComicBoost() || isDocomo()) {
+      return path.includes('viewer.html') && search.includes('cid=');
+    }
+
     if (isDmm()) {
-      // Bắt buộc có ?cid= VÀ đường dẫn thuộc đúng các route viewer (đọc thử, free, streaming, binding)
       return search.includes('cid=') && /\/(?:tachiyomi|free_streaming|streaming|binding|viewer)/.test(path);
     }
     return /\/viewer\.html/.test(path) || /\/static\/viewer/.test(path) || search.includes('cid=');
@@ -280,6 +340,56 @@
     } catch (e) {}
 
     return `Publus_${getEpisodeId()}`;
+  }
+
+  /* =========================================================================
+   * HELPER DUYỆT TRANG DÙNG CHUNG CHO PUBLUS 32PX
+   * ========================================================================= */
+  function buildPublusPages(config, key1, key2, key3, baseUrl, queryPart, Tools) {
+    const rawContents = config.configuration?.contents || [];
+    const fileNameVersion = config.configuration?.['file-name-version'];
+    const pages = [];
+    let pageIndex = 0;
+
+    for (let i = 0; i < rawContents.length; i++) {
+      const item = rawContents[i];
+      const fileInfo = config[item.file];
+      if (!fileInfo || fileInfo.Linear === 0) continue;
+
+      const pageList = fileInfo.FileLinkInfo?.PageLinkInfoList || [];
+      const pageCount = fileInfo.FileLinkInfo?.PageCount || pageList.length;
+
+      for (let pIdx = 0; pIdx < pageCount; pIdx++) {
+        const pageObj = pageList[pIdx]?.Page;
+        if (!pageObj) continue;
+
+        pageObj.imgName = item.file;
+        if (key1 && key2 && key3) {
+          Tools.calcU2F(pageObj, key1, key2, key3);
+        }
+
+        const pNo = (pageObj.No !== undefined && pageObj.No !== null) ? String(pageObj.No) : "0";
+        const imgHash = (key1 && key2 && key3 && fileNameVersion === "1.0")
+          ? Tools.getImgURLHash(pNo, item.file, key1, key2, key3, fileNameVersion)
+          : pNo;
+
+        const subPath = `${item.file}/${imgHash}.jpeg`;
+        const targetW = Number(pageObj.Size?.Width || 1440);
+        const targetH = Number(pageObj.Size?.Height || 2048);
+
+        pages.push({
+          pageNo: pageIndex + 1,
+          url: `${baseUrl}${subPath}${queryPart}`,
+          width: targetW,
+          height: targetH,
+          pageInfo: pageObj,
+          isScrambled: Boolean(pageObj.BlockWidth)
+        });
+
+        pageIndex++;
+      }
+    }
+    return pages;
   }
 
   /* =========================================================================
@@ -607,6 +717,191 @@
       cid: cid,
       pages: pages
     };
+  }
+
+  /* =========================================================================
+   * 3.D NHÁNH PASH UP!
+   * ========================================================================= */
+  async function fetchPashUpManifest(cid) {
+    const Utils = window.MangaUtils || globalThis.MangaUtils;
+    const Tools = window.PublusTools || globalThis.PublusTools;
+
+    const authBuf = await Utils.fetchBuffer(`https://pash-up.jp/pageapi/viewer/c.php${WIN.location.search}`);
+    const auth = JSON.parse(new TextDecoder().decode(authBuf));
+    const authQuery = auth.auth_info ? (typeof auth.auth_info === 'string' ? auth.auth_info : new URLSearchParams(auth.auth_info).toString()) : '';
+    const queryPart = authQuery ? `?${authQuery}` : '';
+
+    let configBuf = null;
+    let finalBaseUrl = auth.url.replace(/\/?$/, '/');
+
+    // Dò đường dẫn kép: Root vs normal_default/ (Trị lỗi 403 trên Pash Up)
+    try {
+      configBuf = await Utils.fetchBuffer(`${finalBaseUrl}configuration_pack.json${queryPart}`);
+    } catch (err) {
+      configBuf = await Utils.fetchBuffer(`${finalBaseUrl}normal_default/configuration_pack.json${queryPart}`);
+      finalBaseUrl = `${finalBaseUrl}normal_default/`;
+    }
+
+    const configJson = JSON.parse(new TextDecoder().decode(configBuf));
+    const { config, key1, key2, key3 } = Tools.decryptConfigurationPack(configJson.data);
+
+    // --- XỬ LÝ TIÊU ĐỀ PASH UP (TỰ ĐẢO VỊ TRÍ CHUỖI CTI BỊ NGƯỢC CỦA API) ---
+    let raw = cleanString(auth.cti || DOC.title || "");
+    raw = raw.replace(/[-－–—\s]*PASH UP!.*/i, '').trim();
+
+    let title = raw;
+    // Bắt vế 1 (Chứa 第...話) và vế 2 (Tên truyện), sau đó ĐẢO LẠI: vế 2 - vế 1
+    const invMatch = raw.match(/^((?:第\s*)?[0-9０-９]+(?:話|回|巻|章|話目).*?)\s*[-－–—]\s*(.+)$/i);
+    if (invMatch) {
+      title = `${cleanString(invMatch[2])} - ${cleanString(invMatch[1])}`;
+    }
+    title = title || `PashUp_${cid}`;
+
+    return {
+      title,
+      cid,
+      pages: buildPublusPages(config, key1, key2, key3, finalBaseUrl, queryPart, Tools)
+    };
+  }
+
+  /* =========================================================================
+   * 3.E NHÁNH COMIC BOOST
+   * ========================================================================= */
+  async function fetchComicBoostManifest(cid) {
+    const Utils = window.MangaUtils || globalThis.MangaUtils;
+    const Tools = window.PublusTools || globalThis.PublusTools;
+
+    const authBuf = await Utils.fetchBuffer(`https://comic-boost.com/pageapi/viewer/c.php?cid=${encodeURIComponent(cid)}`);
+    const auth = JSON.parse(new TextDecoder().decode(authBuf));
+    const authQuery = auth.auth_info ? (typeof auth.auth_info === 'string' ? auth.auth_info : new URLSearchParams(auth.auth_info).toString()) : '';
+    const queryPart = authQuery ? `?${authQuery}` : '';
+    const finalBaseUrl = auth.url.replace(/\/?$/, '/');
+
+    const configBuf = await Utils.fetchBuffer(`${finalBaseUrl}configuration_pack.json${queryPart}`);
+    const configJson = JSON.parse(new TextDecoder().decode(configBuf));
+    const { config, key1, key2, key3 } = Tools.decryptConfigurationPack(configJson.data);
+
+    // --- XỬ LÝ TIÊU ĐỀ COMIC BOOST (ĐẢO NGƯỢC) ---
+    let raw = cleanString(auth.cti || DOC.title || "");
+    raw = raw.replace(/[-－–—\s]*comic-boost.*/i, '').trim();
+
+    let title = raw;
+    const parts = raw.split(/\s*[-－–—]\s*/);
+    if (parts.length >= 2) {
+      const isEp = s => /^(?:第\s*)?[0-9０-９]+(?:話|回|巻|章|話目)/i.test(s);
+      if (isEp(parts[0]) && !isEp(parts[1])) {
+        title = `${cleanString(parts[1])} - ${cleanString(parts[0])}`;
+      } else if (!isEp(parts[0]) && isEp(parts[1])) {
+        title = `${cleanString(parts[0])} - ${cleanString(parts[1])}`;
+      }
+    }
+
+    return {
+      title: title || `ComicBoost_${cid}`,
+      cid,
+      pages: buildPublusPages(config, key1, key2, key3, finalBaseUrl, queryPart, Tools)
+    };
+  }
+
+  /* =========================================================================
+   * 3.F NHÁNH D ANIME STORE (DOCOMO)
+   * ========================================================================= */
+  async function fetchDocomoManifest(cid) {
+    const Utils = window.MangaUtils || globalThis.MangaUtils;
+    const Tools = window.PublusTools || globalThis.PublusTools;
+
+    const authBuf = await Utils.fetchBuffer(`https://api.book.animestore.docomo.ne.jp/api/publus/approval?cid=${cid}`);
+    const auth = JSON.parse(new TextDecoder().decode(authBuf));
+    const authQuery = auth.auth_info ? (typeof auth.auth_info === 'string' ? auth.auth_info : new URLSearchParams(auth.auth_info).toString()) : '';
+    const queryPart = authQuery ? `?${authQuery}` : '';
+    const finalBaseUrl = auth.url.replace(/\/?$/, '/');
+
+    const configBuf = await Utils.fetchBuffer(`${finalBaseUrl}configuration_pack.json${queryPart}`);
+    const configJson = JSON.parse(new TextDecoder().decode(configBuf));
+
+    // Docomo dùng khóa ct, st, et nhúng sẵn dạng hex thay vì base64
+    const unhex = hex => {
+      const arr = [];
+      for (let i = 0; i < hex.length; i += 2) arr.push(parseInt(hex.substr(i, 2), 16));
+      return arr;
+    };
+    const key1 = unhex(configJson.ct);
+    const key2 = unhex(configJson.st);
+    const key3 = unhex(configJson.et);
+
+    // --- XỬ LÝ TIÊU ĐỀ DOCOMO (TANKOBON NGUYÊN BẢN, KHỬ TRÙNG LẶP SERIES) ---
+    let raw = cleanString(auth.cti || DOC.title || "");
+    raw = raw.replace(/[-－–—\s]*dアニメストア.*/i, '').trim();
+
+    // Khử trùng lặp do Docomo tự ghép "[Tên Series] [Tên Series（1）]"
+    const spaceIdx = raw.indexOf(' ');
+    if (spaceIdx > 0) {
+      const part1 = raw.substring(0, spaceIdx).trim();
+      const part2 = raw.substring(spaceIdx + 1).trim();
+      if (part1 && part2 && part2.startsWith(part1)) {
+        raw = part2; // Chỉ giữ vế sau (đã có đầy đủ tên sách, số tập và phụ đề)
+      }
+    }
+
+    const title = cleanString(raw) || `Docomo_${cid}`;
+
+    return {
+      title,
+      cid,
+      pages: buildPublusPages(configJson, key1, key2, key3, finalBaseUrl, queryPart, Tools)
+    };
+  }
+
+  /* =========================================================================
+   * 3.G NHÁNH COMIC NETTAI
+   * ========================================================================= */
+  async function fetchComicNettaiManifest(cid) {
+    const Utils = window.MangaUtils || globalThis.MangaUtils;
+    const Tools = window.PublusTools || globalThis.PublusTools;
+
+    const authBuf = await Utils.fetchBuffer(`https://www.comicnettai.com/api/viewer/c${WIN.location.search}`);
+    const auth = JSON.parse(new TextDecoder().decode(authBuf));
+    const authQuery = auth.auth_info ? (typeof auth.auth_info === 'string' ? auth.auth_info : new URLSearchParams(auth.auth_info).toString()) : '';
+    const queryPart = authQuery ? `?${authQuery}` : '';
+    const finalBaseUrl = auth.url.replace(/\/?$/, '/');
+
+    const configBuf = await Utils.fetchBuffer(`${finalBaseUrl}configuration_pack.json${queryPart}`);
+    const configJson = JSON.parse(new TextDecoder().decode(configBuf));
+    const { config, key1, key2, key3 } = Tools.decryptConfigurationPack(configJson.data);
+
+    // --- XỬ LÝ TIÊU ĐỀ COMIC NETTAI ---
+    const rawContents = config?.configuration?.contents || [];
+    const firstFile = rawContents[0]?.file;
+    let ser = cleanString(config?.[firstFile]?.Title || config?.configuration?.title || "");
+
+    if (!ser) {
+      const domSeries = DOC.querySelector('#pagetitle .titleText, .series-title, .comic-title, h1');
+      if (domSeries) ser = cleanString(domSeries.getAttribute('title') || domSeries.textContent);
+    }
+    if (!ser && DOC.title) {
+      ser = cleanString(DOC.title.split(/[|｜]/)[0].replace(/[-－–—\s]*コミック熱帯.*/i, ''));
+    }
+
+    let ep = cleanString(auth.cti || "");
+    const title = (ser && ep && !ser.includes(ep)) ? `${ser} - ${ep}` : (ser || ep || `ComicNettai_${cid}`);
+
+    return {
+      title,
+      cid,
+      pages: buildPublusPages(config, key1, key2, key3, finalBaseUrl, queryPart, Tools)
+    };
+  }
+
+  // Hàm gọi riêng các nhánh
+  async function fetchSiteManifest(cid) {
+    if (isPashUp())      return await fetchPashUpManifest(cid);
+    if (isComicBoost())  return await fetchComicBoostManifest(cid);
+    if (isDocomo())      return await fetchDocomoManifest(cid);
+    if (isComicNettai()) return await fetchComicNettaiManifest(cid);
+    if (isBookWalker())  return await fetchBookWalkerManifest(cid);
+    if (isPixivStore())  return await fetchPixivStoreManifest(cid);
+    if (isDmm())         return await fetchDmmManifest();
+    return null;
   }
 
   /* =========================================================================
@@ -1241,21 +1536,23 @@
       const tools = window.PublusTools || globalThis.PublusTools;
       const zip = new ZipClass();
 
-      // ==========================================
-      // NHÁNH A: DMM BOOKS (6 LUỒNG SONG SONG)
-      // ==========================================
-      if (isDmm()) {
-        let dmmData = state.dmmData;
-        if (!dmmData) {
-          dmmData = await fetchDmmManifest();
-          state.dmmData = dmmData;
-        }
+      const cid = getEpisodeId();
 
-        const pages = dmmData.pages;
+      // Nạp dữ liệu từ RAM hoặc gọi Router
+      let data = state.chapterData;
+      if (!data) {
+        data = await fetchSiteManifest(cid);
+        state.chapterData = data;
+      }
+
+      // =======================================================================
+      // NHÁNH 1: DMM BOOKS & FANZA BOOKS (THẾ HỆ CŨ 64PX)
+      // =======================================================================
+      if (isDmm() && data?.pages?.length > 0) {
+        const pages = data.pages;
         const totalPages = pages.length;
-        if (!totalPages) throw new Error("Không tìm thấy trang truyện DMM.");
 
-        zip.addFile(`${dmmData.cid}.txt`, new Uint8Array(0));
+        zip.addFile(`${data.cid}.txt`, new Uint8Array(0));
         if (ui) ui.updateProgress({ completed: 0, total: totalPages, status: "Đang tải..." });
 
         const tasks = pages.map(pageObj => async () => {
@@ -1267,6 +1564,7 @@
           const cropY = Number(pageObj.rectY ?? 0);
           return await renderPublusCanvas(img, coords, pageObj.width, pageObj.height, cropX, cropY, useJpeg, pageObj.pageNo);
         });
+
         const results = await Utils.runParallelQueue(tasks, CONFIG.MAX_CONCURRENT, (completed, total) => {
           if (ui) ui.updateProgress({ completed, total, status: "Đang tải..." });
         });
@@ -1278,28 +1576,19 @@
           if (res?.data) zip.addFile(res.fileName, res.data);
         }
 
-        const zipName = `${getCleanTitle()}.zip`;
-        zip.download(zipName);
-
+        zip.download(`${getCleanTitle()}.zip`);
         if (ui) ui.updateProgress({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
         return;
       }
 
       // =======================================================================
-      // NHÁNH B: BOOKWALKER & PIXIV (6 LUỒNG SONG SONG)
+      // NHÁNH 2: TOÀN BỘ CÁC SÀN 32PX DIRECT (BW, PIXIV, PASH UP, BOOST, DOCOMO, NETTAI)
       // =======================================================================
-      let bwData = state.bwData;
-      if (!bwData) {
-        if (isBookWalker()) bwData = await fetchBookWalkerManifest(getEpisodeId());
-        else if (isPixivStore()) bwData = await fetchPixivStoreManifest(getEpisodeId());
-        state.bwData = bwData;
-      }
-
-      if (bwData?.pages?.length > 0) {
-        const pages = bwData.pages;
+      if (data?.pages?.length > 0) {
+        const pages = data.pages;
         const totalPages = pages.length;
 
-        zip.addFile(`${bwData.cid}.txt`, new Uint8Array(0));
+        zip.addFile(`${data.cid}.txt`, new Uint8Array(0));
         if (ui) ui.updateProgress({ completed: 0, total: totalPages, status: "Đang tải..." });
 
         let currentAuthQuery = null;
@@ -1320,9 +1609,9 @@
                 referrer: ""
               });
 
-              // Tự động gia hạn token nếu bị 403 giữa chừng
-              if (res.status === 403) {
-                const freshData = isBookWalker() ? await fetchBookWalkerManifest(getEpisodeId()) : await fetchPixivStoreManifest(getEpisodeId());
+              // Tự gia hạn token nếu bị 403 giữa chừng (đặc thù BookWalker TTL ngắn)
+              if (res.status === 403 && (isBookWalker() || isPixivStore())) {
+                const freshData = isBookWalker() ? await fetchBookWalkerManifest(cid) : await fetchPixivStoreManifest(cid);
                 if (freshData?.pages?.[0]?.url) {
                   currentAuthQuery = freshData.pages[0].url.split('?')[1];
                   retryCount++;
@@ -1334,7 +1623,7 @@
               if (!res.ok) throw new Error(`HTTP ${res.status}`);
               const rawBuffer = await res.arrayBuffer();
 
-              // Trang không xáo trộn (Bìa / Trial) -> Ghi mảng byte gốc vào ZIP
+              // Trang không xáo trộn (Bìa / Trial) -> Ghi thẳng mảng byte gốc
               if (!pageObj.isScrambled) {
                 const uint8 = new Uint8Array(rawBuffer);
                 if (isBwTrial || useJpeg) {
@@ -1374,22 +1663,24 @@
         for (const res of results) {
           if (res?.data) {
             zip.addFile(res.fileName, res.data);
+            // Bảo tồn file JPG gốc cho trang bìa BookWalker Paid
             if (!isBwTrial && res.pageNo === 1 && res.isScrambled === false && res.rawData && !res.fileName.endsWith('.jpg')) {
               zip.addFile(`1.jpg`, res.rawData);
             }
           }
         }
 
-        const zipName = `${getCleanTitle()}.zip`;
-        zip.download(zipName);
+        // Ưu tiên tiêu đề riêng đã giải quyết sạch của từng sàn
+        const finalZipName = data.title ? `${data.title}.zip` : `${getCleanTitle()}.zip`;
+        zip.download(finalZipName);
 
         if (ui) ui.updateProgress({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
         return;
       }
 
-      // ==========================================
-      // NHÁNH C: BOOKWALKER & PIXIV STORE (IFRAME)
-      // ==========================================
+      // =======================================================================
+      // NHÁNH 3: PHAO CỨU SINH IFRAME FALLBACK (BOOKWALKER & PIXIV STORE)
+      // =======================================================================
       if (!state.episodeData) return;
       const { rt: mainRt, pagesList } = state.episodeData;
       const totalPages = pagesList.length;
@@ -1397,8 +1688,7 @@
       if (!totalPages) throw new Error("Không tìm thấy trang truyện.");
 
       const initialPageIndex = getCurrentPageIndex(mainRt);
-      const episodeId = getEpisodeId();
-      zip.addFile(`${episodeId}.txt`, new Uint8Array(0));
+      zip.addFile(`${cid}.txt`, new Uint8Array(0));
 
       const workerIframe = createWorkerIframe(pagesList[0]);
       if (ui) ui.updateProgress({ completed: 0, total: totalPages, status: "Đang tải..." });
@@ -1410,11 +1700,8 @@
           const renderResult = await navigateToPage(workerIframe, pageObj.index);
           const capture = await renderCanvasToBlob(workerIframe, pageObj, renderResult, useJpeg);
 
-          // 1. Lưu bản Master sạch (PNG hoặc JPG theo tùy chọn)
           zip.addFile(`${i + 1}.${capture.ext}`, capture.cleanData);
 
-          // 2. NẾU LÀ TRANG KHÔNG XÁO TRỘN TRONG BỘ TRUYỆN MÃ HÓA (ví dụ ảnh bìa bản Mua)
-          // -> Tự động lưu kèm file JPG gốc từ CDN (1.jpg song song với 1.png)
           if (capture.isScrambled === false && capture.rawData && capture.ext !== 'jpg') {
             zip.addFile(`${i + 1}.jpg`, capture.rawData);
           }
@@ -1433,9 +1720,7 @@
         if (ui) ui.updateProgress({ completed: totalPages, total: totalPages, status: "Đang đóng gói file ZIP..." });
         await sleep(50);
 
-        const zipName = `${getCleanTitle()}.zip`;
-        zip.download(zipName);
-
+        zip.download(`${getCleanTitle()}.zip`);
         if (ui) ui.updateProgress({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
       } finally {
         if (workerIframe) {
@@ -1472,92 +1757,49 @@
 
     if (ui?.panel) {
       ui.panel.style.display = "block";
-      if (!DOC.body.contains(ui.panel)) DOC.body.appendChild(ui.panel); // Ghim chặt vào body
+      if (!DOC.body.contains(ui.panel)) DOC.body.appendChild(ui.panel);
       ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
     }
 
-    // ==========================================
-    // A. NHÁNH DMM & FANZA BOOKS (CÓ RETRY LOOP)
-    // ==========================================
-    if (isDmm()) {
-      let dmmData = null;
-      let retries = 0;
+    const cid = getEpisodeId();
+    let data = null;
+    let retries = 0;
 
-      // Vòng lặp chờ Cookie và Auth API sẵn sàng (tối đa 25 lần x 150ms)
-      while (retries < 25) {
-        try {
-          dmmData = await fetchDmmManifest();
-          if (dmmData && dmmData.pages?.length > 0) break;
-        } catch (e) {}
-        await sleep(150);
-        retries++;
+    while (retries < 25) {
+      try {
+        data = await fetchSiteManifest(cid);
+        if (data && data.pages?.length > 0) break;
+      } catch (e) {}
+      await sleep(150);
+      retries++;
+    }
+
+    if (data && data.pages?.length > 0) {
+      state.chapterData = data;
+
+      // Cập nhật vị trí top chuẩn xác cho DMM Tateyomi
+      if (isDmm() && ui?.panel) {
+        ui.panel.style.top = getDmmTopOffset(resolveSiteTheme().top);
       }
 
-      if (dmmData && dmmData.pages?.length > 0) {
-        state.dmmData = dmmData;
-
-        // Cập nhật lại top chính xác nếu phát hiện タテヨミ từ tiêu đề vừa lấy
-        if (ui?.panel) {
-          ui.panel.style.top = getDmmTopOffset(resolveSiteTheme().top);
-        }
-
-        if (ui) {
-          ui.updateProgress({
-            completed: 0,
-            total: dmmData.pages.length,
-            status: "Sẵn sàng."
-          });
-        }
-      } else {
-        console.error("[publus-dl] Không thể lấy dữ liệu DMM sau 25 lần thử.");
-        if (ui) ui.updateProgress({ status: "Sẵn sàng." });
+      // Nhận diện BookWalker Trial để chuyển UI sang JPG
+      const isBwTrial = WIN.location.hostname.includes("viewer-trial.bookwalker.jp") || WIN.location.href.includes("viewer-trial");
+      if (isBwTrial) {
+        state.convertJpeg = true;
+        if (ui?.updateFormatUI) ui.updateFormatUI('jpg');
       }
+
+      await sleep(80);
+      if (ui) ui.updateProgress({ completed: 0, total: data.pages.length, status: "Sẵn sàng." });
       return;
     }
 
-    // ==========================================
-    // B. NHÁNH BOOKWALKER & PIXIV COMIC STORE
-    // ==========================================
-    const isBwTrial = WIN.location.hostname.includes("viewer-trial.bookwalker.jp") || WIN.location.href.includes("viewer-trial");
-    const cid = getEpisodeId();
-
-    const tools = window.PublusTools || globalThis.PublusTools;
-
-    // Ưu tiên số 1: Tải trực tiếp 9 tầng BookWalker
-    if (isBookWalker() && cid && !cid.includes("Publus")) {
-      try {
-        const bwData = await fetchBookWalkerManifest(cid);
-        if (bwData?.pages?.length > 0) {
-          state.bwData = bwData;
-          if (isBwTrial) {
-            state.convertJpeg = true;
-            if (ui?.updateFormatUI) ui.updateFormatUI('jpg');
-          }
-          await sleep(80);
-          if (ui) ui.updateProgress({ completed: 0, total: bwData.pages.length, status: "Sẵn sàng." });
-          return;
-        }
-      } catch (e) {}
-    }
-
-    if (isPixivStore() && cid) {
-      try {
-        const pixivData = await fetchPixivStoreManifest(cid);
-        if (pixivData?.pages?.length > 0) {
-          state.bwData = pixivData;
-          await sleep(80);
-          if (ui) ui.updateProgress({ completed: 0, total: pixivData.pages.length, status: "Sẵn sàng." });
-          return;
-        }
-      } catch (e) {}
-    }
-
-    // 2. Dự phòng an toàn (Iframe fallback)
+    // DỰ PHÒNG AN TOÀN (IFRAME FALLBACK CHO BOOKWALKER / PIXIV STORE)
     let rt = null;
     let pagesList = [];
     let attempts = 0;
 
-    while (attempts < 100) {
+    while (attempts < 60) {
       rt = getNFBRRuntime(WIN);
       if (rt) {
         try {
@@ -1571,22 +1813,8 @@
 
     if (pagesList.length > 0) {
       state.episodeData = { rt, pagesList };
-      
-      //NHẬN DIỆN BOOKWALKER TRIAL ĐỂ CHUYỂN SANG ZERO-COPY JPG
-      const isBwTrial = WIN.location.hostname.includes("viewer-trial.bookwalker.jp") || WIN.location.href.includes("viewer-trial");
-      if (isBwTrial && ui?.updateFormatUI) {
-        ui.updateFormatUI('jpg');
-      }
-
       await sleep(80);
-
-      if (ui) {
-        ui.updateProgress({
-          completed: 0,
-          total: pagesList.length,
-          status: "Sẵn sàng."
-        });
-      }
+      if (ui) ui.updateProgress({ completed: 0, total: pagesList.length, status: "Sẵn sàng." });
     } else {
       if (ui) ui.updateProgress({ status: "Sẵn sàng." });
     }

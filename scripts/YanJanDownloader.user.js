@@ -2,7 +2,7 @@
 // @name         YanJan! (YNJN) Universal Downloader
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
 // @version      1.0.0
-// @icon         https://ynjn.jp/favicon.ico
+// @icon         https://www.google.com/s2/favicons?domain=ynjn.jp&sz=128
 // @description  Tải manga trên nền tảng YanJan!.
 // @author       anonymous & AI
 // @match        https://ynjn.jp/*

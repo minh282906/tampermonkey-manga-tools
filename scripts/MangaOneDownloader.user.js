@@ -1,11 +1,12 @@
 // ==UserScript==
-// @name         MangaONE Downloader
+// @name         MangaONE & Ura Sunday Downloader
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
-// @version      3.0.0
+// @version      1.0.0
 // @icon         https://www.google.com/s2/favicons?domain=manga-one.com&sz=128
 // @description  Tải manga trên MangaONE.
 // @author       anonymous & AI
 // @match        https://manga-one.com/*
+// @match        https://urasunday.com/*
 // @run-at       document-start
 // @grant        unsafeWindow
 // @grant        GM_xmlhttpRequest
@@ -13,6 +14,8 @@
 // @connect      manga-one.com
 // @connect      *.manga-one.com
 // @connect      app.manga-one.com
+// @connect      urasunday.com
+// @connect      *.urasunday.com
 //
 // --- TỰ ĐỘNG TẢI VÀ UPDATE PHIÊN BẢN
 // @updateURL    https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/MangaOneDownloader.user.js
@@ -39,6 +42,7 @@
   const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;
   const DOC = WIN.document;
   const sleep = ms => new Promise(resolve => WIN.setTimeout(resolve, ms));
+  const isUrasunday = WIN.location.hostname.includes("urasunday.com");
 
   if (WIN.top !== WIN.self) return;
 
@@ -54,29 +58,33 @@
     if (state.ui) return state.ui;
     const createUI = window.createMangaDownloaderUI || globalThis.createMangaDownloaderUI;
     if (typeof createUI === "function" && DOC.body) {
+      // Tự động phối màu: MangaONE (Hồng Magenta) | Ura Sunday (Vàng Sấm Sét #FFD800 & Nền Tối)
+      const themeColor = isUrasunday ? "#FFD800" : "#e52865";
+      const titleColor = isUrasunday ? "#FFD800" : "#f472b6";
+      const siteTitle  = isUrasunday ? "Ura Sunday" : "MangaONE";
+      const topOffset  = isUrasunday ? "100px" : "80px"; 
+
       state.ui = createUI({
-        storagePrefix: "mangaone-dl",
-        title: "MangaONE",
-        themeColor: "#e52865",
+        storagePrefix: isUrasunday ? "urasunday-dl" : "mangaone-dl",
+        title: siteTitle,
+        themeColor: themeColor,
         themeBg: "#18181b",
-        titleColor: "#f472b6",
-        topOffset: "80px",
+        titleColor: titleColor,
+        topOffset: topOffset,
         defaultJpgText: "Xuất file JPG (ảnh gốc là WebP)",
         onDownload: startDownload,
         onJpgChange: (checked) => {
           state.convertJpeg = checked;
-          localStorage.setItem("mangaone-dl:convert-jpeg", checked ? '1' : '0');
+          localStorage.setItem(`${isUrasunday ? "urasunday" : "mangaone"}-dl:convert-jpeg`, checked ? '1' : '0');
         }
       });
 
-      // Tạm comment dòng SHOGAKUKAN (sau này mở cmt ra là ăn ngay 2 tầng)
       if (state.ui?.panel) {
         const titleEl = state.ui.panel.querySelector('[style*="font: 800 13px"], [style*="font:800 13px"]');
         if (titleEl) {
           titleEl.innerHTML = `
-              <div style="all:initial;display:block;font:800 13px/1.2 system-ui,sans-serif;color:#f472b6;letter-spacing:0.2px;">MangaONE</div>
-              <!-- Khi nào muốn hiện chữ SHOGAKUKAN, bạn chỉ cần XÓA đoạn ";visibility:hidden;" ở cuối style -->
-              <div style="all:initial;display:block;font:700 9px/1.2 system-ui,sans-serif;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;margin-top:1px;visibility:hidden;">SHOGAKUKAN</div>
+              <div style="all:initial;display:block;font:800 13px/1.2 system-ui,sans-serif;color:${titleColor};letter-spacing:0.2px;">${siteTitle}</div>
+              <div style="all:initial;display:block;font:700 9px/1.2 system-ui,sans-serif;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;margin-top:2px;">SHOGAKUKAN</div>
             `;
         }
       }
@@ -88,13 +96,21 @@
    * BỘ HỖ TRỢ XỬ LÝ CHUỖI & TÊN FILE CHUẨN (GOLDEN RULES)
    * ========================================================================= */
   function isEpisodeUrl() {
+    if (isUrasunday) {
+      return /\/title\/\d+\/\d+/.test(WIN.location.pathname);
+    }
     return /\/manga\/\d+\/chapter\/\d+/.test(WIN.location.pathname);
   }
 
   function getIdsFromUrl() {
     try {
-      const match = WIN.location.pathname.match(/\/manga\/(\d+)\/chapter\/(\d+)/);
-      if (match) return { titleId: match[1], chapterId: match[2] };
+      if (isUrasunday) {
+        const match = WIN.location.pathname.match(/\/title\/(\d+)\/(\d+)/);
+        if (match) return { titleId: match[1], chapterId: match[2] };
+      } else {
+        const match = WIN.location.pathname.match(/\/manga\/(\d+)\/chapter\/(\d+)/);
+        if (match) return { titleId: match[1], chapterId: match[2] };
+      }
     } catch (e) {}
     return { titleId: null, chapterId: null };
   }
@@ -109,35 +125,57 @@
       .trim();
   }
 
+  /* =========================================================================
+   * BỘ HỖ TRỢ XỬ LÝ CHUỖI & TÊN FILE CHUẨN
+   * ========================================================================= */
   function getCleanTitle() {
     try {
-      let seriesTitle = "";
-      let episodeTitle = "";
+      const isUra = WIN.location.hostname.includes("urasunday.com");
+      const { chapterId } = getIdsFromUrl();
 
-      const ogTitle = DOC.querySelector('meta[property="og:title"]')?.getAttribute('content');
-      let rawTitle = (ogTitle || DOC.title || "").split('｜')[0].split('|')[0].trim();
-      rawTitle = rawTitle.replace(/【[^】]*】/g, '').trim();
-
-      const match = rawTitle.match(/^(.*?)(?:\s+[-－–—]\s+|\s+)((?:第\s*)?[0-9０-９IVXLCDMivxlcdm一二三四五六七八九十百千万\s\-\–\—\ー\~〜\.]+(?:話|曲|局|話目|限目|時限目|部|エピソード|分冊版|単話|前編|中編|後編)?.*)$/i);
-      if (match) {
-        seriesTitle = cleanString(match[1]);
-        episodeTitle = cleanString(match[2]);
-      } else {
-        seriesTitle = cleanString(rawTitle);
+      // 1. URASUNDAY
+      if (isUra) {
+        const series = cleanString(
+          DOC.querySelector('.info h1')?.textContent || 
+          DOC.title.split('｜')[0].split('|')[0]
+        );
+        let chapter = cleanString(DOC.querySelector('.title > div > div:first-child')?.textContent);
+        if (!chapter && chapterId) {
+          const chapLink = DOC.querySelector(`a[href*="/${chapterId}"]`);
+          if (chapLink) {
+            const divs = Array.from(chapLink.querySelectorAll('div > div:not(.new)'));
+            chapter = cleanString(divs.map(d => d.textContent).join(' '));
+          }
+        }
+        if (series && chapter) return `${series} - ${chapter}`;
+        if (series) return series;
       }
 
-      // Cắt bỏ phần tên truyện nếu bị lặp lại trong tên chap
-      let baseWithoutVol = seriesTitle.replace(/\s*[0-9０-９]+\s*巻.*$/i, '').trim();
-      if (baseWithoutVol && episodeTitle.startsWith(baseWithoutVol)) {
-        episodeTitle = cleanString(episodeTitle.substring(baseWithoutVol.length));
+      // 2. MANGAONE: Nhặt chính xác thẻ <h1> duy nhất trên header
+      const h1El = DOC.querySelector('header h1, main h1, h1');
+      const sourceTitle = h1El ? h1El.textContent.trim() : DOC.title || "";
+
+      // Tách: "第1話 出逢いの季節" và "かくして季節はアオを知る"
+      const parts = sourceTitle
+        .split(/\s*[|｜]\s*/)
+        .map(p => cleanString(p))
+        .filter(p => p && !p.includes('マンガワン') && !p.includes('MangaONE'));
+
+      if (parts.length >= 2) {
+        const isChap = str => /第\s*[0-9０-９IVXLCDM一二三四五六七八九十]+|話/i.test(str);
+        const episodeTitle = isChap(parts[0]) ? parts[0] : parts[1];
+        const seriesTitle  = isChap(parts[0]) ? parts[1] : parts[0];
+
+        if (seriesTitle && episodeTitle) {
+          return `${seriesTitle} - ${episodeTitle}`;
+        }
       }
 
-      if (seriesTitle && episodeTitle && !seriesTitle.includes(episodeTitle)) {
-        return `${seriesTitle} - ${episodeTitle}`;
-      }
-      return seriesTitle || episodeTitle || `MangaOne_${getIdsFromUrl().chapterId}`;
+      // 3. DỰ PHÒNG CUỐI CÙNG
+      const raw = cleanString(DOC.title.split('|')[0].split('｜')[0]);
+      return raw || `Manga_${chapterId || 'Episode'}`;
     } catch (e) {
-      return `MangaOne_${getIdsFromUrl().chapterId || 'Episode'}`;
+      return `Manga_${getIdsFromUrl().chapterId || 'Episode'}`;
     }
   }
 
@@ -189,6 +227,29 @@
     });
   }
 
+  function parseUrasundayPages(htmlString) {
+    // Quét trực tiếp mảng zao.Viewer trong source HTML
+    const regex = /src:\s*'([^']+manga_page(?:_high)?.*?\.webp[^']+)'/g;
+    let matches;
+    const urls = [];
+    while ((matches = regex.exec(htmlString)) !== null) {
+      urls.push(matches[1]);
+    }
+
+    if (urls.length === 0) throw new Error("Không tìm thấy link ảnh trên Ura Sunday.");
+
+    state.detectedSourceFormat = 'webp';
+    const ui = getUI();
+    if (ui) ui.updateFormatUI('webp');
+
+    return urls.map((url, idx) => ({
+      pageNo: idx + 1,
+      url: url,
+      isEncrypted: false, // Ura Sunday là ảnh thật, không bị mã hóa
+      crypto: null
+    }));
+  }
+
   function unhex(hexString) {
     const arr = new Uint8Array(hexString.length / 2);
     for (let i = 0; i < hexString.length; i += 2) arr[i / 2] = parseInt(hexString.substring(i, i + 2), 16);
@@ -197,7 +258,7 @@
 
   async function decryptAndFormatImage(pageItem, forceJpg) {
     const Utils = window.MangaUtils || globalThis.MangaUtils;
-    let buffer = await Utils.fetchBuffer(pageItem.url, { "Referer": "https://manga-one.com/" });
+    let buffer = await Utils.fetchBuffer(pageItem.url, { "Referer": WIN.location.href });
 
     // 1. Giải mã phần cứng AES-CBC qua crypto.subtle
     if (pageItem.isEncrypted && pageItem.crypto?.key && pageItem.crypto?.iv) {
@@ -257,8 +318,12 @@
 
       let pages = state.chapterData;
       if (!pages || pages.length === 0) {
-        const configText = await fetchChapterConfig(titleId, chapterId);
-        pages = parseConfigString(configText, chapterId);
+        if (isUrasunday) {
+          pages = parseUrasundayPages(DOC.documentElement.innerHTML);
+        } else {
+          const configText = await fetchChapterConfig(titleId, chapterId);
+          pages = parseConfigString(configText, chapterId);
+        }
         state.chapterData = pages;
       }
 
@@ -317,8 +382,13 @@
     if (!titleId || !chapterId) return;
 
     try {
-      const configText = await fetchChapterConfig(titleId, chapterId);
-      const pages = parseConfigString(configText, chapterId);
+      let pages;
+      if (isUrasunday) {
+        pages = parseUrasundayPages(DOC.documentElement.innerHTML);
+      } else {
+        const configText = await fetchChapterConfig(titleId, chapterId);
+        pages = parseConfigString(configText, chapterId);
+      }
       state.chapterData = pages;
 
       if (ui) {
@@ -329,7 +399,7 @@
         });
       }
     } catch (err) {
-      console.error("[mangaone-dl] Boot error:", err);
+      console.error(`[${isUrasunday ? "urasunday" : "mangaone"}-dl] Boot error:`, err);
       if (ui) ui.updateProgress({ status: "Sẵn sàng." });
     }
   }

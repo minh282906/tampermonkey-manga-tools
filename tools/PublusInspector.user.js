@@ -9,6 +9,11 @@
 // @match        https://comic-store-viewer.pixiv.net/static/viewer*
 // @match        https://book.dmm.com/*
 // @match        https://book.dmm.co.jp/*
+// @match        https://www.comicnettai.com/*/viewer.html*
+// @match        https://comicnettai.com/*/viewer.html*
+// @match        https://pash-up.jp/*/viewer.html*
+// @match        https://comic-boost.com/viewer/viewer.html*
+// @match        https://animestore.docomo.ne.jp/animestore/comic_viewer/viewer.html*
 // @grant        unsafeWindow
 // @grant        GM_xmlhttpRequest
 // @connect      *
@@ -30,6 +35,18 @@
   const isDmm = location.hostname.includes('dmm.com') || location.hostname.includes('dmm.co.jp');
   const isFanza = location.hostname.includes('dmm.co.jp');
   const isBookWalker = location.hostname.includes('bookwalker.jp');
+  const isComicNettai = () => location.hostname.includes('comicnettai.com');
+  const isPashUp      = () => location.hostname.includes('pash-up.jp');
+  const isComicBoost  = () => location.hostname.includes('comic-boost.com');
+  const isDocomo      = () => location.hostname.includes('docomo.ne.jp');
+
+  function getInspectorCid() {
+    try {
+      const match = location.search.match(/[?&]cid=([^&#]+)/);
+      if (match && match[1]) return decodeURIComponent(match[1]);
+    } catch (e) {}
+    return "Publus_Episode";
+  }
   const FALLBACK_WIDTH = 1440;
   const FALLBACK_HEIGHT = 2048;
 
@@ -298,6 +315,191 @@
         })();
       `);
     } catch(e) {}
+  }
+
+  /* =========================================================================
+   * BỘ BÓC TÁCH & GIẢI MÃ MA TRẬN 32PX CHO 4 SÀN MỚI
+   * ========================================================================= */
+  function buildInspectorPublusPages(config, key1, key2, key3, baseUrl, queryPart, Tools) {
+    const rawContents = config.configuration?.contents || [];
+    const fileNameVersion = config.configuration?.['file-name-version'];
+    const pages = [];
+    let pageIndex = 0;
+
+    for (let i = 0; i < rawContents.length; i++) {
+      const item = rawContents[i];
+      const fileInfo = config[item.file];
+      if (!fileInfo || fileInfo.Linear === 0) continue;
+
+      const pageList = fileInfo.FileLinkInfo?.PageLinkInfoList || [];
+      const pageCount = fileInfo.FileLinkInfo?.PageCount || pageList.length;
+
+      for (let pIdx = 0; pIdx < pageCount; pIdx++) {
+        const pageObj = pageList[pIdx]?.Page;
+        if (!pageObj) continue;
+
+        pageObj.imgName = item.file;
+        if (key1 && key2 && key3) Tools.calcU2F(pageObj, key1, key2, key3);
+
+        const pNo = (pageObj.No !== undefined && pageObj.No !== null) ? String(pageObj.No) : "0";
+        const imgHash = (key1 && key2 && key3 && fileNameVersion === "1.0")
+          ? Tools.getImgURLHash(pNo, item.file, key1, key2, key3, fileNameVersion)
+          : pNo;
+
+        const subPath = `${item.file}/${imgHash}.jpeg`;
+        const targetW = Number(pageObj.Size?.Width || 1440);
+        const targetH = Number(pageObj.Size?.Height || 2048);
+
+        pages.push({
+          pageNo: pageIndex + 1,
+          url: `${baseUrl}${subPath}${queryPart}`,
+          width: targetW,
+          height: targetH,
+          pageInfo: pageObj,
+          isScrambled: Boolean(pageObj.BlockWidth)
+        });
+
+        pageIndex++;
+      }
+    }
+    return pages;
+  }
+
+  async function fetchClassicInspectorPages(cid) {
+    const Utils = window.MangaUtils || globalThis.MangaUtils;
+    const Tools = window.PublusTools || globalThis.PublusTools;
+    const search = location.search;
+
+    let auth = null;
+    if (isPashUp()) {
+      const buf = await Utils.fetchBuffer(`https://pash-up.jp/pageapi/viewer/c.php${search}`);
+      const d = JSON.parse(new TextDecoder().decode(buf));
+      auth = { baseUrl: d.url.replace(/\/?$/, '/'), authInfo: d.auth_info || "", title: "Pash Up!" };
+    } else if (isComicNettai()) {
+      const buf = await Utils.fetchBuffer(`https://www.comicnettai.com/api/viewer/c${search}`);
+      const d = JSON.parse(new TextDecoder().decode(buf));
+      auth = { baseUrl: d.url.replace(/\/?$/, '/'), authInfo: d.auth_info || "", title: "Comic Nettai" };
+    } else if (isComicBoost()) {
+      const buf = await Utils.fetchBuffer(`https://comic-boost.com/pageapi/viewer/c.php?cid=${encodeURIComponent(cid)}`);
+      const d = JSON.parse(new TextDecoder().decode(buf));
+      auth = { baseUrl: d.url.replace(/\/?$/, '/'), authInfo: d.auth_info || "", title: "Comic Boost" };
+    } else if (isDocomo()) {
+      const buf = await Utils.fetchBuffer(`https://api.book.animestore.docomo.ne.jp/api/publus/approval?cid=${cid}`);
+      const d = JSON.parse(new TextDecoder().decode(buf));
+      auth = { baseUrl: d.url.replace(/\/?$/, '/'), authInfo: d.auth_info || {}, title: "d Anime Store", isDocomo: true };
+    }
+
+    if (!auth) return null;
+
+    const authQuery = typeof auth.authInfo === 'string' ? auth.authInfo : new URLSearchParams(auth.authInfo).toString();
+    const queryPart = authQuery ? `?${authQuery}` : '';
+
+    let configBuf = null;
+    let finalBaseUrl = auth.baseUrl;
+
+    try {
+      configBuf = await Utils.fetchBuffer(`${auth.baseUrl}configuration_pack.json${queryPart}`);
+    } catch (err) {
+      configBuf = await Utils.fetchBuffer(`${auth.baseUrl}normal_default/configuration_pack.json${queryPart}`);
+      finalBaseUrl = `${auth.baseUrl}normal_default/`;
+    }
+
+    const configJson = JSON.parse(new TextDecoder().decode(configBuf));
+    let config = null, key1 = null, key2 = null, key3 = null;
+
+    if (configJson.data && typeof configJson.data === 'string') {
+      const dec = Tools.decryptConfigurationPack(configJson.data);
+      config = dec.config;
+      key1 = dec.key1; key2 = dec.key2; key3 = dec.key3;
+    } else if (configJson.ct && configJson.st && configJson.et) {
+      config = configJson;
+      const unhex = hex => {
+        const arr = [];
+        for (let i = 0; i < hex.length; i += 2) arr.push(parseInt(hex.substr(i, 2), 16));
+        return arr;
+      };
+      key1 = unhex(configJson.ct);
+      key2 = unhex(configJson.st);
+      key3 = unhex(configJson.et);
+    } else {
+      config = configJson;
+    }
+
+    return {
+      title: auth.title,
+      pages: buildInspectorPublusPages(config, key1, key2, key3, finalBaseUrl, queryPart, Tools)
+    };
+  }
+
+  async function process32pxInspectorPage(pageObj) {
+    const Utils = window.MangaUtils || globalThis.MangaUtils;
+    const Tools = window.PublusTools || globalThis.PublusTools;
+
+    const rawBuffer = await Utils.fetchBuffer(pageObj.url);
+    const ext = Utils.detectExt(rawBuffer);
+    const mime = Utils.detectMimeType(rawBuffer);
+    const img = await Utils.loadImage(rawBuffer, mime);
+
+    const rawW = img.width;
+    const rawH = img.height;
+    const targetW = pageObj.width;
+    const targetH = pageObj.height;
+
+    const pageInfo = pageObj.pageInfo || {};
+    const cropX = Number(pageInfo.ContentArea?.X || pageInfo.Rect?.X || 0);
+    const cropY = Number(pageInfo.ContentArea?.Y || pageInfo.Rect?.Y || 0);
+
+    // 1. sharpCanvas (Bản xuất sạch 100% targetW x targetH)
+    const coords = pageObj.isScrambled ? Tools.getBlocks(pageInfo, rawW, rawH) : null;
+    const sharpCanvas = DOC.createElement('canvas');
+    sharpCanvas.width = targetW;
+    sharpCanvas.height = targetH;
+    const sCtx = sharpCanvas.getContext('2d', { alpha: false });
+    sCtx.imageSmoothingEnabled = false;
+
+    if (!coords || coords.length === 0) {
+      sCtx.drawImage(img, cropX, cropY, targetW, targetH, 0, 0, targetW, targetH);
+    } else {
+      for (let i = 0; i < coords.length; i++) {
+        const b = coords[i];
+        sCtx.drawImage(
+          img,
+          b.destX, b.destY, b.width, b.height,
+          b.srcX - cropX, b.srcY - cropY, b.width, b.height
+        );
+      }
+    }
+
+    // 2. rawCanvas (Bản ảnh xáo trộn thô từ CDN rawW x rawH)
+    const rawCanvas = DOC.createElement('canvas');
+    rawCanvas.width = rawW;
+    rawCanvas.height = rawH;
+    const rCtx = rawCanvas.getContext('2d', { alpha: false });
+    rCtx.imageSmoothingEnabled = false;
+    rCtx.drawImage(img, 0, 0);
+
+    // 3. visualCanvas (Soi Live: Khung container rawW x rawH, dán sharpCanvas tại cropX, cropY + tô hồng dải padding)
+    const geo = calcPaddingGeometry(rawW, rawH, targetW, targetH, null, pageObj.pageNo - 1, cropX, cropY);
+    const visualCanvas = DOC.createElement('canvas');
+    visualCanvas.width = rawW;
+    visualCanvas.height = rawH;
+    const vCtx = visualCanvas.getContext('2d', { alpha: false });
+    vCtx.imageSmoothingEnabled = false;
+    vCtx.drawImage(sharpCanvas, geo.cropX, geo.cropY);
+
+    vCtx.fillStyle = '#ff007f';
+    if (geo.padLeft > 0)   vCtx.fillRect(0, 0, geo.padLeft, rawH);
+    if (geo.padRight > 0)  vCtx.fillRect(rawW - geo.padRight, 0, geo.padRight, rawH);
+    if (geo.padTop > 0)    vCtx.fillRect(0, 0, rawW, geo.padTop);
+    if (geo.padBottom > 0) vCtx.fillRect(0, rawH - geo.padBottom, rawW, geo.padBottom);
+
+    return {
+      rawW, rawH, gridW: targetW, gridH: targetH,
+      dummyText: geo.dummyText,
+      sharpCanvas, visualCanvas, rawCanvas, img,
+      rawExt: ext.toUpperCase(), rawBuf: rawBuffer,
+      isScrambled: pageObj.isScrambled
+    };
   }
 
   /* =========================================================================
@@ -607,6 +809,95 @@
     while (!DOC.body) await sleep(50);
 
     const createUI = window.createInspectorUI || globalThis.createInspectorUI;
+
+    // ==========================================
+    // NHÁNH MỚI: 4 SÀN 32PX (PASH UP, BOOST, NETTAI, DOCOMO)
+    // ==========================================
+    if (isPashUp() || isComicBoost() || isComicNettai() || isDocomo()) {
+      const cid = getInspectorCid();
+      let siteData = null;
+      let retries = 0;
+
+      while (retries < 25) {
+        try {
+          siteData = await fetchClassicInspectorPages(cid);
+          if (siteData?.pages?.length) break;
+        } catch (e) {}
+        await sleep(150);
+        retries++;
+      }
+
+      if (!siteData?.pages?.length) return;
+
+      let inspectorTitle = "PUBLUS INSPECTOR (32PX)";
+      if (isPashUp())      inspectorTitle = "PUBLUS INSPECTOR (PASH UP!)";
+      if (isComicBoost())  inspectorTitle = "PUBLUS INSPECTOR (COMIC BOOST)";
+      if (isDocomo())      inspectorTitle = "PUBLUS INSPECTOR (D ANIME STORE)";
+      if (isComicNettai()) inspectorTitle = "PUBLUS INSPECTOR (COMIC NETTAI)";
+
+      createUI({
+        title: inspectorTitle,
+        totalPages: siteData.pages.length,
+        onPreview: async (pNo, onSuccess, onError) => {
+          const pageObj = siteData.pages[pNo - 1];
+          if (!pageObj) return onError("Trang không tồn tại!");
+          try {
+            const res = await process32pxInspectorPage(pageObj);
+            onSuccess(res, pNo);
+          } catch (e) { onError(e?.message || String(e)); }
+        },
+        onDownload: async (pageArray, fmt, quality, statusText, btn) => {
+          btn.disabled = true;
+          try {
+            const mimeType = fmt === 'png' ? 'image/png' : (fmt === 'webp' ? 'image/webp' : 'image/jpeg');
+
+            if (pageArray.length === 1) {
+              const pNo = pageArray[0];
+              const pageObj = siteData.pages[pNo - 1];
+              const res = await process32pxInspectorPage(pageObj);
+
+              // 1. Tải bản raw xáo trộn gốc từ CDN (đúng định dạng nhị phân)
+              const a1 = DOC.createElement('a');
+              a1.href = URL.createObjectURL(new Blob([res.rawBuf], { type: 'image/jpeg' }));
+              a1.download = `Publus_Trang_${pNo}_raw.${res.rawExt.toLowerCase()}`;
+              a1.click();
+
+              // 2. Tải bản giải mã sạch 100% (đã gọt sạch viền đệm)
+              const a2 = DOC.createElement('a');
+              a2.href = URL.createObjectURL(await new Promise(r => res.sharpCanvas.toBlob(r, mimeType, quality)));
+              a2.download = `Publus_Trang_${pNo}_decoded.${fmt}`;
+              a2.click();
+
+              statusText.textContent = `✅ Đã tải xong 2 bản trang ${pNo}!`;
+            } else {
+              const ZipClass = window.PureZipWriter || globalThis.PureZipWriter;
+              const zip = new ZipClass();
+
+              for (let i = 0; i < pageArray.length; i++) {
+                const pNo = pageArray[i];
+                statusText.textContent = `Đang giải mã: ${i + 1}/${pageArray.length} (Trang ${pNo})...`;
+                const pageObj = siteData.pages[pNo - 1];
+                const res = await process32pxInspectorPage(pageObj);
+
+                const sharpBlob = await new Promise(r => res.sharpCanvas.toBlob(r, mimeType, quality));
+                zip.addFile(`1_raw/${pNo}.${res.rawExt.toLowerCase()}`, new Uint8Array(res.rawBuf));
+                zip.addFile(`2_decoded/${pNo}.${fmt}`, new Uint8Array(await sharpBlob.arrayBuffer()));
+              }
+
+              statusText.textContent = `Đang đóng gói file ZIP...`;
+              await sleep(60);
+              zip.download(`Publus_Compare_${siteData.title}_${pageArray[0]}-${pageArray[pageArray.length - 1]}.zip`);
+              statusText.textContent = `✅ Đã xuất xong file ZIP đối chiếu!`;
+            }
+          } catch (e) {
+            statusText.textContent = `❌ ${e?.message || String(e)}`;
+          } finally {
+            btn.disabled = false;
+          }
+        }
+      });
+      return;
+    }
 
     // ==========================================
     // NHÁNH A: DMM & FANZA BOOKS (CÓ RETRY LOOP)

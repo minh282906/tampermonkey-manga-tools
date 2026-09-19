@@ -19,7 +19,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 | **Pixiv Downloader**       | Tải chuẩn arts original trên pixiv (`pixiv.net`)                                                                                                                 | 🟢 Hoạt động |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/PixivDownloader.user.js)   |
 | **EbookJapan Downloader**  | EbookJapan (`ebookjapan.yahoo.co.jp`)                                                                                                | 🟢 Hoạt động |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/EbookJPDownloader.user.js)  |
 | **DLsite Downloader**      | Bao gồm tất cả DLsite Play, trong đó có cả Comipo Play (`dlsite.com`)                                                         | 🟢 Hoạt động |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/DLsiteDownloader.user.js)   |
-| **PUBLUS Downloader**      | Bao gốm các bên sử dụng engine PUBLUS Reader / NFBR (BookWalker, PixivComic (tankobon), DMM Books, FANZA Books)                   | 🟢 Hoạt động |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/PublusDownloader.user.js)   |
+| **PUBLUS Downloader**      | Bao gốm các bên sử dụng engine PUBLUS Reader / NFBR (BookWalker, PixivComic (tankobon), DMM Books, FANZA Books, COMIC nettai, Comic Boost, PASH UP!, d Anime Store)                   | 🟢 Hoạt động |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/PublusDownloader.user.js)   |
 | **Piccoma Downloader**     | Piccoma (`piccoma.com`)                                                                                                              | 🟢 Hoạt động |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/PiccomaDownloader.user.js)  |
 | **RakutenKobo Downloader** | [books.rakuten.co.jp/e-book](https://books.rakuten.co.jp/e-book/)                                                                       | 🟢 Hoạt động  |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/RakutenKoboDownloader.user.js)   |
 | **Renta Downloader**       | (`renta.papy.co.jp`)                                                                                                                 | 🟢 Hoạt động |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/RentaDownloader.user.js)   |
@@ -98,6 +98,10 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 - Pixiv Comic Store (`comic-store-viewer.pixiv.net`)
 - DMM Books (`book.dmm.com`)
 - FANZA Books (`book.dmm.co.jp`)
+- PASH UP! (`pash-up.jp`)
+- COMIC nettai (`comicnettai.com`)
+- Comic Boost (`comic-boost.com`)
+- d Anime Store (`animestore.docomo.ne.jp`)
 
 </details>
 
@@ -138,6 +142,8 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 - Comic C'moA (`cmoa.jp`)
 - Gaugau Futabanet Manga (`gaugau.futabanet.jp`)
 - BookLive (`booklive.jp`)
+- Voltage Comics (`voltage-comics.com`)
+- Manga Yomonga (`yomonga.com`)
 - Kirapo (`kirapo.jp`) (Zulet!, Comic Meteor, Comic Polaris, Comic Ambre, Comic Etoile, Comic Astir)
 - Comic Polca (`123hon.com/polca`)
 - Comic Porta (`comic-porta.com`)

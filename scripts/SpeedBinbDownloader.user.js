@@ -14,6 +14,10 @@
 // @match        https://gaugau.futabanet.jp/*
 // @match        https://booklive.jp/*
 // @match        https://*.booklive.jp/*
+// @match        https://voltage-comics.com/*
+// @match        https://*.voltage-comics.com/*
+// @match        https://www.yomonga.com/*
+// @match        https://yomonga.com/*
 // @run-at       document-start
 // @grant        unsafeWindow
 // @grant        GM_xmlhttpRequest
@@ -35,6 +39,10 @@
 // @connect      *.futabanet.jp
 // @connect      booklive.jp
 // @connect      *.booklive.jp
+// @connect      voltage-comics.com
+// @connect      *.voltage-comics.com
+// @connect      yomonga.com
+// @connect      *.yomonga.com
 //
 // --- TỰ ĐỘNG TẢI VÀ UPDATE PHIÊN BẢN
 // @updateURL    https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/SpeedBinbDownloader.user.js
@@ -543,7 +551,210 @@
     }
   };
 
-  // 5. SPEEDBINB PTIMG PACKAGE (Comic Polca, Kirapo, Comic Porta, Super Hero Comics)
+  // 5. VOLTAGE COMICS (voltage-comics.com)
+  const VoltageAdapter = {
+    id: "voltage",
+    name: "Voltage Comics",
+    theme: { color: "#559d99", bg: "#ffffff", text: "#559d99", top: "43px" },
+
+    isMatch: (url) => url.includes("voltage-comics.com") && (
+      url.includes("/viewer/") ||
+      Boolean(new URL(url, WIN.location.origin).searchParams.get('cid')) ||
+      Boolean(DOC.getElementById('content')?.getAttribute('data-ptbinb-cid'))
+    ),
+
+    getCid: () => {
+      try {
+        const cid = new URL(WIN.location.href).searchParams.get('cid');
+        if (cid && cid.trim()) return cid.trim();
+      } catch (e) {}
+      const attr = DOC.getElementById('content')?.getAttribute('data-ptbinb-cid') || DOC.getElementById('content')?.dataset?.ptbinbCid;
+      return (attr && attr.trim()) ? attr.trim() : "Voltage_Episode";
+    },
+
+    fetchManifest: async function(cid, Tools, Utils) {
+      const randomString = Tools.generateRandomString32(cid);
+      const infoUrl = `https://voltage-comics.com/sws/bibGetCntntInfo?cid=${cid}&dmytime=${Date.now()}&k=${randomString}`;
+
+      const infoBuffer = await Utils.fetchBuffer(infoUrl);
+      const infoJson = JSON.parse(new TextDecoder().decode(infoBuffer));
+      const data = infoJson.items?.[0];
+      if (!data?.ContentsServer) throw new Error("Không lấy được ContentsServer từ Voltage Comics.");
+
+      const config = {
+        title: data.Title || data.title || "",
+        subTitle: data.SubTitle || data.subtitle || "",
+        contentServer: data.ContentsServer || data.contentsServer,
+        ctbl: Tools.getDecryptedTable(cid, randomString, data.ctbl),
+        ptbl: Tools.getDecryptedTable(cid, randomString, data.ptbl)
+      };
+
+      const contentUrl = `${config.contentServer}content`;
+      const contentBuffer = await Utils.fetchBuffer(contentUrl);
+      const rawText = new TextDecoder().decode(contentBuffer);
+      const contentJson = JSON.parse(rawText);
+      const ttx = contentJson.ttx || "";
+
+      // BÓC TÁCH TIÊU ĐỀ THẬT TỪ FILE TTX HOẶC METADATA CỦA VOYAGER
+      let ttxTitle = "";
+      const ttxMatch = ttx.match(/<title>([^<]+)<\/title>/i) || ttx.match(/title=["']([^"']+)["']/i);
+      if (ttxMatch) ttxTitle = ttxMatch[1];
+
+      config.title = data.Title || contentJson.title || contentJson.Title || ttxTitle || "";
+      config.subTitle = data.SubTitle || contentJson.subTitle || "";
+
+      const seen = new Set();
+      const files = [];
+      for (const match of ttx.matchAll(/(pages\/[a-zA-Z0-9_]*.jpg)[^A-Z]*orgwidth="(\d*)" orgheight="(\d*)"/gm)) {
+        const filename = match[1];
+        if (!seen.has(filename)) {
+          seen.add(filename);
+          files.push({
+            pageNo: files.length + 1,
+            filename: filename,
+            width: parseInt(match[2], 10),
+            height: parseInt(match[3], 10),
+            src: `${config.contentServer}img/${filename}?q=1`
+          });
+        }
+      }
+
+      return { config, files };
+    },
+
+    getTitle: function(config, cid) {
+      let raw = config.title || "";
+
+      // 1. Dò tìm trên DOM hoặc document.title
+      if (!raw) {
+        const domTitle = DOC.querySelector('h1, h2, .title, [class*="title"], #contentTitle')?.textContent;
+        if (domTitle) raw = domTitle;
+      }
+      if (!raw && DOC.title && !DOC.title.includes("speed.html") && !DOC.title.includes("BinB")) {
+        raw = DOC.title;
+      }
+
+      // 2. Dò tìm từ Referrer / Breadcrumbs nếu mở từ trang truyện sang
+      if (!raw && DOC.referrer && DOC.referrer.includes("voltage-comics.com")) {
+        try {
+          const matchRef = DOC.referrer.match(/\/title\/([^\/?#]+)/);
+          if (matchRef) raw = decodeURIComponent(matchRef[1]);
+        } catch(e) {}
+      }
+
+      raw = raw.split(/[|｜]/)[0].trim();
+      raw = raw.replace(/[-－–—\s]*(?:ボルテージ|Voltage|ぼるコミ).*$/gi, '').trim();
+
+      // 3. Phân tách Tên truyện và Số tập (Ví dụ: "...とろあまセックス〜 1" hoặc "キスでふさいで、バレないで。 1")
+      let series = "";
+      let episode = "";
+
+      if (config.subTitle) {
+        series = raw;
+        episode = cleanString(config.subTitle);
+      } else {
+        const match = raw.match(/^(.*?)(?:\s+[-－–—/]\s+|\s+)(\d+|[0-9０-９]+)$/);
+        if (match) {
+          series = match[1];
+          episode = match[2];
+        } else {
+          const numMatch = raw.match(/^(.*?)\s+((?:第\s*)?\d+.*)$/);
+          if (numMatch) {
+            series = numMatch[1];
+            episode = numMatch[2];
+          } else {
+            series = raw;
+          }
+        }
+      }
+
+      return resolveCleanFileName(series, episode, cid);
+    }
+  };
+
+  // 6. YOMONGA (yomonga.com)
+  const YomongaAdapter = {
+    id: "yomonga",
+    name: "Yomonga",
+    theme: { color: "#F55070", bg: "#ffffff", text: "#F55070", top: "115px" },
+
+    isMatch: (url) => url.includes("yomonga.com") && (
+      url.includes("/titles/") ||
+      Boolean(new URL(url, WIN.location.origin).searchParams.get('cid')) ||
+      Boolean(DOC.getElementById('content')?.getAttribute('data-ptbinb-cid'))
+    ),
+
+    getCid: () => {
+      try {
+        const cid = new URL(WIN.location.href).searchParams.get('cid');
+        if (cid && cid.trim()) return cid.trim();
+      } catch (e) {}
+      const attr = DOC.getElementById('content')?.getAttribute('data-ptbinb-cid') || DOC.getElementById('content')?.dataset?.ptbinbCid;
+      return (attr && attr.trim()) ? attr.trim() : "Yomonga_Episode";
+    },
+
+    fetchManifest: async function(cid, Tools, Utils) {
+      const randomString = Tools.generateRandomString32(cid);
+      const infoUrl = `https://www.yomonga.com/binb/sws/apis/bibGetCntntInfo.php?cid=${cid}&dmytime=${Date.now()}&k=${randomString}`;
+
+      const infoBuffer = await Utils.fetchBuffer(infoUrl);
+      const infoJson = JSON.parse(new TextDecoder().decode(infoBuffer));
+      const data = infoJson.items?.[0];
+      if (!data?.ContentsServer) throw new Error("Không lấy được ContentsServer từ Yomonga.");
+
+      const config = {
+        title: data.Title || "",
+        contentServer: data.ContentsServer,
+        ctbl: Tools.getDecryptedTable(cid, randomString, data.ctbl),
+        ptbl: Tools.getDecryptedTable(cid, randomString, data.ptbl)
+      };
+
+      const contentUrl = `${config.contentServer}content`;
+      const contentBuffer = await Utils.fetchBuffer(contentUrl);
+      const { ttx } = JSON.parse(new TextDecoder().decode(contentBuffer));
+
+      const seen = new Set();
+      const files = [];
+      // Yomonga dùng images/...jpg thay vì pages/...jpg
+      for (const match of ttx.matchAll(/(images\/[a-zA-Z0-9_]*.jpg)[^A-Z]*orgwidth="(\d*)" orgheight="(\d*)"/gm)) {
+        const filename = match[1];
+        if (!seen.has(filename)) {
+          seen.add(filename);
+          files.push({
+            pageNo: files.length + 1,
+            filename: filename,
+            width: parseInt(match[2], 10),
+            height: parseInt(match[3], 10),
+            src: `${config.contentServer}img/${filename}?q=1`
+          });
+        }
+      }
+
+      return { config, files };
+    },
+
+    getTitle: function(config, cid) {
+      let raw = config.title || DOC.title || "";
+      raw = raw.split(/[|｜]/)[0].trim();
+      raw = raw.replace(/[-－–—\s]*(?:よもんが|Yomonga|マンガよもんが).*$/gi, '').trim();
+
+      let series = "";
+      let episode = "";
+
+      // Tách chuỗi: [Tên truyện] [Chapter... / 第...話 / ...巻]
+      const match = raw.match(/^(.*?)\s+((?:Chapter|第|Vol|[0-9０-９]+)[\s\S]*)$/i);
+      if (match) {
+        series = match[1];
+        episode = match[2];
+      } else {
+        series = raw;
+      }
+
+      return resolveCleanFileName(series, episode, cid);
+    }
+  };
+
+  // 7. SPEEDBINB PTIMG PACKAGE (Comic Polca, Kirapo, Comic Porta, Super Hero Comics)
   const PTImgAdapter = {
     id: "ptimg",
 
@@ -672,7 +883,7 @@
     }
   };
 
-  const ADAPTERS = [CmoaAdapter, YanmagaAdapter, GaugauAdapter, BookliveAdapter, PTImgAdapter];
+  const ADAPTERS = [CmoaAdapter, YanmagaAdapter, GaugauAdapter, BookliveAdapter, VoltageAdapter, YomongaAdapter, PTImgAdapter];
 
   function resolveSiteAdapter() {
     const currentUrl = WIN.location.href;

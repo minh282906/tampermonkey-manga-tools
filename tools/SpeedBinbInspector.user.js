@@ -9,6 +9,10 @@
 // @match        https://www.cmoa.jp/bib/speedreader/*
 // @match        https://yanmaga.jp/*
 // @match        https://gaugau.futabanet.jp/*
+// @match        https://voltage-comics.com/*
+// @match        https://*.voltage-comics.com/*
+// @match        https://www.yomonga.com/*
+// @match        https://yomonga.com/*
 // @match        https://kirapo.jp/pt/*
 // @match        https://www.123hon.com/vw/*
 // @match        https://comic-porta.com/p_data/*
@@ -206,6 +210,56 @@
       }));
 
       return { site: siteName, isPTImg: true, files };
+    }
+
+    // E. VOLTAGE COMICS
+    if (url.includes('voltage-comics.com')) {
+      let cid = new URL(url).searchParams.get('cid') || DOC.getElementById('content')?.dataset?.ptbinbCid || DOC.getElementById('content')?.getAttribute('data-ptbinb-cid');
+      if (!cid) return null;
+
+      const k = Tools.generateRandomString32(cid);
+      const infoBuf = await Utils.fetchBuffer(`https://voltage-comics.com/sws/bibGetCntntInfo?cid=${cid}&dmytime=${Date.now()}&k=${k}`);
+      const info = JSON.parse(new TextDecoder().decode(infoBuf));
+      const item = info.items?.[0]; if (!item?.ContentsServer) return null;
+
+      const server = item.ContentsServer;
+      const ctbl = Tools.getDecryptedTable(cid, k, item.ctbl), ptbl = Tools.getDecryptedTable(cid, k, item.ptbl);
+      const cntntBuf = await Utils.fetchBuffer(`${server}content`);
+      const { ttx } = JSON.parse(new TextDecoder().decode(cntntBuf));
+
+      const files = [], seen = new Set();
+      for (const m of ttx.matchAll(/(pages\/[a-zA-Z0-9_]*.jpg)[^A-Z]*orgwidth="(\d*)" orgheight="(\d*)"/gm)) {
+        if (m[1] && !seen.has(m[1])) {
+          seen.add(m[1]);
+          files.push({ filename: m[1], src: `${server}img/${m[1]}?q=1` });
+        }
+      }
+      return { site: "Voltage Comics", cid, ctbl, ptbl, files };
+    }
+
+    // F. YOMONGA
+    if (url.includes('yomonga.com')) {
+      let cid = new URL(url).searchParams.get('cid') || DOC.getElementById('content')?.dataset?.ptbinbCid || DOC.getElementById('content')?.getAttribute('data-ptbinb-cid');
+      if (!cid) return null;
+
+      const k = Tools.generateRandomString32(cid);
+      const infoBuf = await Utils.fetchBuffer(`https://www.yomonga.com/binb/sws/apis/bibGetCntntInfo.php?cid=${cid}&dmytime=${Date.now()}&k=${k}`);
+      const info = JSON.parse(new TextDecoder().decode(infoBuf));
+      const item = info.items?.[0]; if (!item?.ContentsServer) return null;
+
+      const server = item.ContentsServer;
+      const ctbl = Tools.getDecryptedTable(cid, k, item.ctbl), ptbl = Tools.getDecryptedTable(cid, k, item.ptbl);
+      const cntntBuf = await Utils.fetchBuffer(`${server}content`);
+      const { ttx } = JSON.parse(new TextDecoder().decode(cntntBuf));
+
+      const files = [], seen = new Set();
+      for (const m of ttx.matchAll(/(images\/[a-zA-Z0-9_]*.jpg)[^A-Z]*orgwidth="(\d*)" orgheight="(\d*)"/gm)) {
+        if (m[1] && !seen.has(m[1])) {
+          seen.add(m[1]);
+          files.push({ filename: m[1], src: `${server}img/${m[1]}?q=1` });
+        }
+      }
+      return { site: "Yomonga", cid, ctbl, ptbl, files };
     }
 
     return null;

@@ -203,9 +203,8 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 
 ## ************🐛 Báo Lỗi & Yêu Cầu Tính Năng************
 
-************Nếu bạn gặp trang web bị lỗi, không tải được ảnh hoặc muốn đóng góp ý tưởng mới, vui lòng gửi báo lỗi tại:
-
-**************[Tạo Issue Báo Lỗi Mới](https://github.com/minh282906/tampermonkey-manga-tools/issues/new)**
+**Nếu bạn gặp trang web bị lỗi, không tải được ảnh hoặc muốn đóng góp ý tưởng mới, vui lòng gửi báo lỗi tại:
+[Tạo Issue Báo Lỗi Mới](https://github.com/minh282906/tampermonkey-manga-tools/issues/new)**
 
 ---
 

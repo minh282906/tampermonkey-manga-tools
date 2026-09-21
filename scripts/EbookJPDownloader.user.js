@@ -722,7 +722,8 @@
       state.loader = null;
       state.publication = null;
       state.running = false;
-      const ui = getUI();
+      state.engineMode = WIN.location.pathname.startsWith('/viewer') ? 'LIBER NUXT' : 'BUNCHVIEWER';
+      const ui = getUI(state.engineMode);
       if (ui) {
         ui.setBusy(false);
         ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });

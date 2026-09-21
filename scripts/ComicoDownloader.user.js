@@ -3,7 +3,7 @@
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
 // @version      1.0.0
 // @icon         https://www.google.com/s2/favicons?domain=comico.jp&sz=128
-// @description  Tải manga / webtoon trên toàn bộ hệ thống Comico (comico.jp, comico.kr).
+// @description  Tải manga trên Comico.
 // @author       anonymous & AI
 // @match        https://www.comico.jp/*
 // @match        https://comico.jp/*
@@ -16,10 +16,6 @@
 // @connect      api.comico.jp
 // @connect      images.comico.io
 // @connect      *.comico.io
-// @connect      comico.kr
-// @connect      *.comico.kr
-// @connect      pocketcomics.com
-// @connect      *.pocketcomics.com
 //
 // --- TỰ ĐỘNG TẢI VÀ UPDATE PHIÊN BẢN
 // @updateURL    https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/ComicoDownloader.user.js
@@ -40,10 +36,10 @@
    * ========================================================================= */
   const CONFIG = {
     MAX_CONCURRENT: 6,
-    JPEG_QUALITY: 1.0 // Chuẩn Golden Rule mới của dự án
+    JPEG_QUALITY: 1.0
   };
 
-  // Khóa tĩnh giải mã URL đối xứng của Comico
+  // Khóa tĩnh giải mã URL đối xứng của Comico (IMPORTANT)
   const STATIC_AES_KEY = 'a7fc9dc89f2c873d79397f8a0028a4cd';
 
   const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;
@@ -75,11 +71,11 @@
       state.ui = createUI({
         storagePrefix: "comico-dl",
         title: titleName,
-        engine: "NHN",
-        themeColor: "#ea3535",      // Đỏ cam Comico
-        themeBg: "#ffffff",         // Nền trắng sáng
-        titleColor: "#ea3535",
-        btnBg: "#ea3535",
+        engine: "COMICO VIEWER",
+        themeColor: "#F40008",      
+        themeBg: "#ffffff",         
+        titleColor: "#F40008",
+        btnBg: "#F40008",
         btnColor: "#ffffff",
         topOffset: "60px",
         defaultJpgText: "Xuất file JPG (ảnh gốc là JPG)",
@@ -94,8 +90,8 @@
         const titleEl = state.ui.panel.querySelector('[style*="font: 800 13px"], [style*="font:800 13px"]');
         if (titleEl) {
           titleEl.innerHTML = `
-            <div style="all:initial;display:block;font:800 13px/1.2 system-ui,sans-serif;color:#ea3535;letter-spacing:0.2px;">${titleName}</div>
-            <div style="all:initial;display:block;font:700 9px/1.2 system-ui,sans-serif;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;margin-top:2px;">NHN COMICO</div>
+            <div style="all:initial;display:block;font:800 13px/1.2 system-ui,sans-serif;color:#F40008;letter-spacing:0.2px;">${titleName}</div>
+            <div style="all:initial;display:block;font:700 9px/1.2 system-ui,sans-serif;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;margin-top:2px;visibility:hidden;">COMICO VIEWER</div>
           `;
         }
       }
@@ -104,7 +100,7 @@
   }
 
   /* =========================================================================
-   * BỘ HỖ TRỢ XỬ LÝ CHUỖI & ĐẶT TÊN THEO GOLDEN RULES
+   * BỘ HỖ TRỢ XỬ LÝ CHUỖI & ĐẶT TÊN
    * ========================================================================= */
   function isEpisodeUrl() {
     return /\/(?:comic|magazine_comic)\/\d+\/chapter\/\d+/i.test(WIN.location.pathname);
@@ -127,16 +123,14 @@
 
   function getCleanTitle(data) {
     try {
-      let series = cleanString(data?.comicName);
-      let episode = cleanString(data?.title);
+      let series = cleanString(data?.seriesName);
+      let episode = cleanString(data?.chapterName);
 
-      // 1. Quét DOM tìm tên truyện nếu thiếu
       if (!series) {
         const sEl = DOC.querySelector('h1[class*="title"], [class*="comic-title"], .article-title, h1');
         if (sEl) series = cleanString(sEl.textContent);
       }
 
-      // 2. Dự phòng lấy từ document.title
       if (!series || !episode) {
         let raw = (DOC.title || "").split(/[|｜]/)[0].trim();
         raw = raw.replace(/[-－–—\s]*(?:comico|コミコ|Pocket Comics).*$/gi, '').trim();
@@ -162,7 +156,7 @@
       } else if (episode) {
         return episode;
       } else if (series) {
-        return `${series} - ${getEpisodeId()}`;
+        return series;
       }
     } catch (e) {}
 
@@ -170,7 +164,7 @@
   }
 
   /* =========================================================================
-   * THUẬT TOÁN MẬT MÃ: NATIVE WEB CRYPTO API (KHÔNG CẦN CRYPTOJS)
+   * THUẬT TOÁN MẬT MÃ: NATIVE WEB CRYPTO API
    * ========================================================================= */
   async function decryptAesUrl(base64Ciphertext) {
     const keyBytes = new TextEncoder().encode(STATIC_AES_KEY);
@@ -211,7 +205,6 @@
       return cached;
     }
 
-    // Quét toàn bộ link preload và script module trên trang
     const scriptEls = Array.from(DOC.querySelectorAll('link[rel="modulepreload"], script[src*="_nuxt/"], script[type="module"]'));
     for (const el of scriptEls) {
       const src = el.getAttribute('href') || el.getAttribute('src');
@@ -220,19 +213,15 @@
         const fullUrl = new URL(src, WIN.location.origin).href;
         const buf = await Utils.fetchBuffer(fullUrl);
         const txt = new TextDecoder().decode(buf);
-        // Bắt chính xác chuỗi gán muối của Comico: "32-hex" + biến + biến
         const m = txt.match(/"([0-9a-f]{32})"\s*\+\s*[a-zA-Z0-9_$]+\s*\+\s*[a-zA-Z0-9_$]+/);
         if (m && m[1]) {
           const k = m[1];
           sessionStorage.setItem('comico_web_key', k);
           state.cachedWebKey = k;
-          console.log("[comico-dl] 🔑 Đã bóc được webKey:", k);
           return k;
         }
       } catch (e) {}
     }
-
-    console.warn("[comico-dl] ⚠️ Không bóc được webKey động, dùng fallback rỗng.");
     return "";
   }
 
@@ -248,12 +237,9 @@
     const timestamp = Math.round(Date.now() / 1000);
     const checkSum = await computeCheckSum(webKey, timestamp);
 
-    // Chuẩn hóa endpoint API luôn có đuôi /product
     let cleanPath = path.replace(/\/product\/?$/, '').replace(/\/$/, '');
     const apiOrigin = WIN.location.origin.replace('www.', 'api.');
     const apiUrl = `${apiOrigin}${cleanPath}/product`;
-
-    console.log("[comico-dl] 🌐 Đang gọi API:", apiUrl);
 
     const headers = {
       'Accept': 'application/json, text/plain, */*',
@@ -270,32 +256,31 @@
 
     let json = null;
     try {
-      // Ưu tiên dùng WIN.fetch gửi kèm Cookie phiên của web
       const res = await WIN.fetch(apiUrl, { headers, credentials: 'include' });
       json = await res.json();
     } catch (fetchErr) {
-      // Dự phòng GM_xhr nếu fetch bị chặn
       const resBuf = await Utils.fetchBuffer(apiUrl, headers);
       json = JSON.parse(new TextDecoder().decode(resBuf));
     }
 
-    console.log("[comico-dl] 📦 Dữ liệu API nhận về:", json);
+    const chapter = json?.data?.chapter || json?.data?.product?.chapter || json?.data;
+    const content = json?.data?.content || json?.data?.product?.content;
+    if (!chapter) throw new Error("API Comico không trả về dữ liệu chương.");
 
-    // Bóc tách đối tượng chứa dữ liệu sách (hỗ trợ các cấp lồng nhau của Comico)
-    const chapter = json?.data?.chapter || json?.data?.product || json?.data || json?.chapter;
-    if (!chapter) throw new Error("API Comico không trả về dữ liệu chương (data rỗng).");
+    // Bắt chính xác tên truyện và tên tập theo đúng cấu trúc JSON
+    const seriesName = content?.name || chapter?.comicName || "";
+    const chapterName = chapter?.name || "";
 
     const pages = [];
+    let detectedFormat = 'jpg';
 
-    // NHÁNH 1: MAGAZINE COMIC (EPUB QUA STANDARD.OPF NHƯ BẠN PHÁT HIỆN)
+    // 1. NHÁNH MAGAZINE COMIC (EPUB FIXED-LAYOUT QUA STANDARD.OPF)
     const epubData = chapter.epub || json?.data?.epub;
     if (epubData?.chapterEpubIncludedFile) {
       const epubConfig = epubData.chapterEpubIncludedFile;
-      console.log("[comico-dl] 🔓 Đang giải mã AES chuỗi URL thư mục EPUB...");
       const decryptedBase = await decryptAesUrl(epubConfig.url);
       const opfUrl = `${decryptedBase}${epubConfig.rootPath}${epubConfig.rootFileName}?${epubConfig.parameter}`;
 
-      console.log("[comico-dl] 📄 Đang kéo file mục lục standard.opf:", opfUrl);
       const opfBuf = await Utils.fetchBuffer(opfUrl);
       const opfXml = new TextDecoder().decode(opfBuf);
       const xmlDoc = new DOMParser().parseFromString(opfXml, 'text/xml');
@@ -305,6 +290,12 @@
 
       items.forEach((item, idx) => {
         const href = item.getAttribute('href');
+        const mediaType = item.getAttribute('media-type') || '';
+        if (idx === 0) {
+          if (mediaType.includes('png')) detectedFormat = 'png';
+          else if (mediaType.includes('webp')) detectedFormat = 'webp';
+          else detectedFormat = 'jpg';
+        }
         if (href) {
           pages.push({
             pageNo: idx + 1,
@@ -313,12 +304,16 @@
         }
       });
     }
-    // NHÁNH 2: WEBTOON CUỘN DỌC (COMIC THƯỜNG)
+    // 2. NHÁNH WEBTOON CUỘN DỌC (COMIC THƯỜNG)
     else if (Array.isArray(chapter.images)) {
-      console.log(`[comico-dl] 🔓 Đang giải mã ${chapter.images.length} ảnh Webtoon...`);
       for (let idx = 0; idx < chapter.images.length; idx++) {
         const imgObj = chapter.images[idx];
         const decryptedUrl = await decryptAesUrl(imgObj.url);
+        if (idx === 0) {
+          if (decryptedUrl.includes('.png')) detectedFormat = 'png';
+          else if (decryptedUrl.includes('.webp')) detectedFormat = 'webp';
+          else detectedFormat = 'jpg';
+        }
         const param = imgObj.parameter ? `?${imgObj.parameter}` : '';
         pages.push({
           pageNo: idx + 1,
@@ -327,11 +322,10 @@
       }
     }
 
-    console.log(`[comico-dl] 📚 Bóc tách thành công ${pages.length} trang.`);
-
     return {
-      title: chapter.name || "",
-      comicName: chapter.comicName || chapter.title || "",
+      seriesName,
+      chapterName,
+      detectedFormat,
       pages
     };
   }
@@ -371,7 +365,15 @@
       if (ui) ui.updateProgress({ completed: 0, total: totalPages, status: "Đang tải..." });
 
       const tasks = pages.map((pageObj) => async () => {
-        const rawBuffer = await Utils.fetchBuffer(pageObj.url);
+        let rawBuffer = null;
+        try {
+          // Tải trực tiếp trong tab (cực nhanh, không qua cầu nối trung gian)
+          const res = await WIN.fetch(pageObj.url);
+          if (res.ok) rawBuffer = await res.arrayBuffer();
+        } catch (e) {}
+
+        // Fallback sang GM_xhr nếu bị chặn CORS
+        if (!rawBuffer) rawBuffer = await Utils.fetchBuffer(pageObj.url);
         const ext = Utils.detectExt(rawBuffer);
 
         // ZERO-COPY: Nếu không ép JPG hoặc ảnh vốn đã là JPG -> Ghi thẳng byte vào ZIP
@@ -390,6 +392,9 @@
 
         const ctx = canvas.getContext('2d', { alpha: false });
         ctx.imageSmoothingEnabled = false;
+        ctx.mozImageSmoothingEnabled = false;
+        ctx.webkitImageSmoothingEnabled = false;
+        ctx.msImageSmoothingEnabled = false;
         ctx.drawImage(img, 0, 0);
 
         const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', CONFIG.JPEG_QUALITY));
@@ -447,15 +452,23 @@
       try {
         data = await fetchComicoPages();
         if (data && data.pages?.length > 0) break;
-      } catch (e) {
-        console.error(`[comico-dl] Lỗi lần thử #${retries + 1}:`, e);
-      }
+      } catch (e) {}
       await sleep(150);
       retries++;
     }
 
     if (data && data.pages?.length > 0) {
       state.chapterData = data;
+
+      // CẬP NHẬT UI ĐỊNH DẠNG: Khóa cứng nếu là JPG, mở cho chọn nếu là WebP/PNG
+      const fmt = data.detectedFormat || 'jpg';
+      if (ui?.updateFormatUI) {
+        ui.updateFormatUI(fmt);
+      }
+      if (fmt === 'jpg') {
+        state.convertJpeg = true;
+      }
+
       if (ui) {
         ui.updateProgress({
           completed: 0,

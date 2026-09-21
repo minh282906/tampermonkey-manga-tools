@@ -1,12 +1,12 @@
 // ==UserScript==
 // @name         EbookJapan Downloader
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
-// @version      3.0.0
+// @version      4.0.0
 // @icon         https://ebookjapan.yahoo.co.jp/favicon.ico
-// @description  Tải manga trên EbookJapan.
+// @description  Tải manga trên EbookJapan
 // @author       anonymous & AI
-// @match        https://ebookjapan.yahoo.co.jp/bviewer*
 // @match        https://ebookjapan.yahoo.co.jp/viewer/*
+// @match        https://ebookjapan.yahoo.co.jp/bviewer*
 // @run-at       document-start
 // @grant        unsafeWindow
 // @grant        GM_xmlhttpRequest
@@ -14,11 +14,9 @@
 // @connect      ebookjapan.yahoo.co.jp
 // @connect      prod-contents-br-page.akamaized.net
 //
-// --- TỰ ĐỘNG TẢI VÀ UPDATE PHIÊN BẢN
 // @updateURL    https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/EbookJPDownloader.user.js
 // @downloadURL  https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/EbookJPDownloader.user.js
 //
-// --- TỰ ĐỘNG NẠP KHI CÀI ĐẶT ĐỘC LẬP QUA JSDELIVR ---
 // @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/cores/PureZipWriter.js
 // @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/cores/UniversalUI.js
 // @require      https://cdn.jsdelivr.net/gh/minh282906/tampermonkey-manga-tools@main/cores/RouteWatcher.js
@@ -28,114 +26,47 @@
 (function ebookJapanUniversalDownloader() {
   'use strict';
 
-  const CONFIG = { JPEG_QUALITY: 0.95 };
-  const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;
+  const CONFIG = {
+    PRELOAD_COUNT: 4,      // Số trang mạng kéo trước vào RAM (Pipeline đa luồng)
+    JPEG_QUALITY: 0.95,    // Chất lượng nén khi người dùng chọn xuất JPG
+    DECODE_DELAY: 15       // Micro-delay nhường nhịp Event Loop sau mỗi trang (ms)
+  };
+
+  const WIN = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
   const DOC = WIN.document;
   const sleep = ms => new Promise(resolve => WIN.setTimeout(resolve, ms));
 
-  if (!WIN.location.pathname.startsWith('/bviewer')) return;
-
-  const FORMATS = {
-    png: { extension: "png", type: "image/png" },
-    jpg: { extension: "jpg", type: "image/jpeg", quality: CONFIG.JPEG_QUALITY }
-  };
+  if (!WIN.location.pathname.startsWith('/bviewer') && !WIN.location.pathname.startsWith('/viewer')) return;
 
   const state = {
     running: false,
+    booting: false,
+    engineMode: 'BUNCHVIEWER', // 'BUNCHVIEWER' hoặc 'LIBER NUXT'
     convertJpeg: localStorage.getItem("ej-dl:convert-jpeg") === '1',
-    readerData: null,
-    pageLoads: new WeakMap(),
+    readerData: null,          // Cho BViewer (React Fiber)
+    loader: null,              // Cho Liber Nuxt (WasmFactory)
+    publication: null,         // Cho Liber Nuxt
     ui: null
   };
 
   /* =========================================================================
-   * MAIN-WORLD BRIDGE (BYPASS ANTI-SCRAPING & GIẢI MÃ WASM)
+   * GIAO DIỆN UNIVERSAL UI (ĐỔI TÊN ENGINE ĐỘNG THEO NUXT / BVIEWER)
    * ========================================================================= */
-  function ensureMainWorldBridge() {
-    if (WIN.__ej_bridge) return true;
-    try {
-      WIN.eval(`
-        (function() {
-          // Khôi phục cơ chế lấy hàm xuất ảnh gốc (pristine) bị EbookJapan chặn
-          var pristineToDataURL;
-          try {
-            var iframe = document.createElement('iframe');
-            iframe.style.display = 'none';
-            document.body.appendChild(iframe);
-            pristineToDataURL = iframe.contentWindow.HTMLCanvasElement.prototype.toDataURL;
-            document.body.removeChild(iframe);
-          } catch(e) {}
-
-          window.__ej_bridge = {
-            render: function(dataUrl, w, h, loader, pageObj, pageIndex, mimeType, quality, openParamArgs) {
-              return new Promise(function(resolve, reject) {
-                var img = new Image();
-                img.decoding = 'async';
-                img.onload = function() {
-                  try {
-                    var useOffscreen = typeof OffscreenCanvas === 'function' && typeof OffscreenCanvas.prototype.convertToBlob === 'function';
-                    var canvas = useOffscreen ? new OffscreenCanvas(w, h) : document.createElement('canvas');
-                    if (!useOffscreen) { canvas.width = w; canvas.height = h; }
-                    
-                    var ctx = canvas.getContext('2d', { alpha: false });
-                    ctx.imageSmoothingEnabled = false;
-                    ctx.mozImageSmoothingEnabled = false;
-                    ctx.webkitImageSmoothingEnabled = false;
-                    ctx.msImageSmoothingEnabled = false;
-
-                    if (openParamArgs && loader?.funcs?.openParam) {
-                      try { loader.funcs.openParam(openParamArgs); } catch (e) {}
-                    }
-
-                    loader.shuffle({ ctx: ctx, x: 0, y: 0, data: { image: img }, autographed: pageObj.autographed, page: pageIndex });
-
-                    if (useOffscreen) {
-                      var opts = { type: mimeType };
-                      if (typeof quality === 'number') opts.quality = quality;
-                      canvas.convertToBlob(opts).then(function(blob) {
-                        var reader = new FileReader();
-                        reader.onload = function() { resolve(reader.result); };
-                        reader.onerror = reject;
-                        reader.readAsArrayBuffer(blob);
-                      }).catch(reject);
-                    } else {
-                      // Fallback an toàn thay cho toBlob bị lỗi
-                      var toData = pristineToDataURL || HTMLCanvasElement.prototype.toDataURL;
-                      var dataUri = toData.call(canvas, mimeType, quality);
-                      var byteString = atob(dataUri.split(',')[1]);
-                      var ab = new ArrayBuffer(byteString.length);
-                      var ia = new Uint8Array(ab);
-                      for (var i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
-                      resolve(ab);
-                    }
-                  } catch (err) { reject(err); }
-                };
-                img.onerror = reject;
-                img.src = dataUrl;
-              });
-            }
-          };
-        })();
-      `);
-      return true;
-    } catch (e) {
-      console.error('[ej-dl] Lỗi khởi tạo Main-World Bridge:', e);
-      return false;
+  function getUI(engineName = state.engineMode) {
+    if (state.ui) {
+      // Cập nhật nhãn engine nếu chế độ thay đổi
+      const engineSubEl = state.ui.panel?.querySelector('#ej-engine-sub');
+      if (engineSubEl) engineSubEl.textContent = engineName;
+      return state.ui;
     }
-  }
 
-  /* =========================================================================
-   * GIAO DIỆN UNIVERSAL UI CHUẨN V2.1
-   * ========================================================================= */
-  function getUI() {
-    if (state.ui) return state.ui;
     const createUI = window.createMangaDownloaderUI || globalThis.createMangaDownloaderUI;
 
     if (typeof createUI === "function" && DOC.body) {
-      const uiConfig = {
+      state.ui = createUI({
         storagePrefix: "ej-dl",
         title: "EbookJapan",
-        engine: "YAHOO",
+        engine: engineName,
         themeColor: "#F8485E",
         themeBg: "#ffffff",
         titleColor: "#F8485E",
@@ -146,16 +77,14 @@
           state.convertJpeg = checked;
           localStorage.setItem("ej-dl:convert-jpeg", checked ? '1' : '0');
         }
-      };
-
-      state.ui = createUI(uiConfig);
+      });
 
       if (state.ui?.panel) {
         const titleEl = state.ui.panel.querySelector('[style*="font: 800 13px"], [style*="font:800 13px"]');
         if (titleEl) {
           titleEl.innerHTML = `
-            <div style="all:initial;display:block;font:800 13px/1.2 system-ui,sans-serif;color:${uiConfig.titleColor};letter-spacing:0.2px;">${uiConfig.title}</div>
-            <div style="all:initial;display:block;font:700 9px/1.2 system-ui,sans-serif;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;margin-top:1px;visibility:hidden;">${uiConfig.engine}</div>
+            <div style="all:initial;display:block;font:800 13px/1.2 system-ui,sans-serif;color:#F8485E;letter-spacing:0.2px;">EbookJapan</div>
+            <div id="ej-engine-sub" style="all:initial;display:block;font:700 9px/1.2 system-ui,sans-serif;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;margin-top:2px;">${engineName}</div>
           `;
         }
       }
@@ -164,11 +93,17 @@
   }
 
   /* =========================================================================
-   * BỘ XỬ LÝ CHUỖI & TÊN FILE [Tên Truyện] - [Tên Chap]
+   * BỘ HỖ TRỢ XỬ LÝ CHUỖI & TÊN FILE CHUẨN
    * ========================================================================= */
   function cleanString(str) {
     if (!str || typeof str !== 'string') return '';
-    return str.replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ').replace(/【[^】]*】/g, '').replace(/[\\/*?:"<>|]/g, '').trim();
+    return str
+      .replace(/[\r\n\t]+/g, ' ')
+      .replace(/\s{2,}/g, ' ')
+      .replace(/【(?:期間限定|無料|試し読み|お試し|特別|デジタル版限定特典|単話).*?】/gi, '')
+      .replace(/\s*\([^)]*(?:漫画|原作|作画|著|イラスト)[^)]*\)/g, '')
+      .replace(/[\\/*?:"<>|]/g, '')
+      .trim();
   }
 
   function getBookCode(validPages = []) {
@@ -189,53 +124,75 @@
   }
 
   function getCleanTitle() {
+    let rawName = "";
     let mangaTitle = "", chapterTitle = "";
+
     try {
       const reader = state.readerData?.reader || findReader();
-      if (reader) {
-        const pd = reader.paperDesign || reader.loader || {};
+      const loader = state.loader || reader?.loader || reader?.Loader || reader?.paperDesign?.loader;
+      // Lấy từ state.publication (Nuxt) hoặc loader.currentBook (BViewer)
+      const pub = state.publication || loader?.currentBook?.publication || loader?.bookInfo?.publication;
+
+      // 1. Trích xuất trực tiếp từ publication.name (Vị trí chuẩn xác của BViewer)
+      if (pub?.name) {
+        rawName = pub.name;
+      } else if (reader?.paperDesign) {
+        const pd = reader.paperDesign;
         mangaTitle = pd.seriesTitle || pd.title || pd.bookTitle || "";
-        chapterTitle = pd.volumeName || pd.name || "";
+        chapterTitle = pd.volumeName || pd.name || pd.storyName || "";
       }
+    } catch (e) {}
 
-      let nuxtEl = null;
-      const docs = [DOC];
-      try { if (WIN.parent?.document) docs.push(WIN.parent.document); } catch {}
-      try { if (WIN.top?.document) docs.push(WIN.top.document); } catch {}
-
-      for (const d of docs) {
-        nuxtEl = d.getElementById("__NUXT_DATA__");
-        if (nuxtEl) break;
+    // 2. Tách tên truyện và tên tập/chap theo Golden Rule 1
+    if (rawName) {
+      rawName = cleanString(rawName);
+      // Tách tự động nếu có chứa mốc số tập/chương: 第...巻, 第...話, #..., Chapter...
+      const splitMatch = rawName.match(/^(.*?)(?:[\s\u3000]+)(第[0-9０-９一二三四五六七八九十]+[巻話回].*|#\d+.*|Chapter\s*\d+.*)$/i);
+      if (splitMatch) {
+        mangaTitle = cleanString(splitMatch[1]);
+        chapterTitle = cleanString(splitMatch[2]);
+      } else {
+        mangaTitle = rawName;
       }
+    }
 
-      if (nuxtEl?.textContent && (!mangaTitle || !chapterTitle)) {
-        const arr = JSON.parse(nuxtEl.textContent);
-        if (Array.isArray(arr)) {
-          const resolve = x => (typeof x === "number" && arr[x] !== undefined) ? arr[x] : x;
-          for (const item of arr) {
-            if (item && typeof item === "object" && (item.publicationCd !== undefined || item.goods !== undefined)) {
-              const nameStr = resolve(item.name);
-              const volStr = resolve(item.volumeName);
-              const titleObj = resolve(item.title);
-              const titleStr = (titleObj && typeof titleObj === "object") ? resolve(titleObj.name) : resolve(titleObj);
-              if (!mangaTitle && typeof titleStr === "string") mangaTitle = titleStr;
-              if (!chapterTitle && typeof volStr === "string") chapterTitle = volStr;
-              if (!chapterTitle && typeof nameStr === "string") chapterTitle = nameStr;
+    // 3. Fallback qua __NUXT_DATA__ nếu có nhúng trong iframe
+    if (!mangaTitle) {
+      try {
+        let nuxtEl = DOC.getElementById("__NUXT_DATA__");
+        if (!nuxtEl) {
+          try { nuxtEl = WIN.parent?.document?.getElementById("__NUXT_DATA__"); } catch {}
+          try { if (!nuxtEl) nuxtEl = WIN.top?.document?.getElementById("__NUXT_DATA__"); } catch {}
+        }
+        if (nuxtEl?.textContent) {
+          const arr = JSON.parse(nuxtEl.textContent);
+          if (Array.isArray(arr)) {
+            const resolve = idx => (typeof idx === "number" && arr[idx] !== undefined) ? arr[idx] : idx;
+            const meta = arr.find(x => x && typeof x === "object" && (x.totalPage !== undefined || x.bookCd !== undefined));
+            if (meta) {
+              const rawTitleObj = resolve(meta.title);
+              let sTitle = "";
+              if (typeof rawTitleObj === "object" && rawTitleObj !== null) {
+                sTitle = resolve(rawTitleObj.name || rawTitleObj.title || "");
+              } else if (typeof rawTitleObj === "string") {
+                sTitle = rawTitleObj;
+              }
+              const epTitle = resolve(meta.name || meta.storyName || meta.volumeName || "");
+              if (sTitle) mangaTitle = sTitle;
+              if (epTitle) chapterTitle = epTitle;
             }
           }
         }
-      }
+      } catch (e) {}
+    }
 
-      mangaTitle = cleanString(mangaTitle);
-      chapterTitle = cleanString(chapterTitle);
+    // Khử trùng lặp tiêu đề
+    if (mangaTitle && chapterTitle && chapterTitle.startsWith(mangaTitle)) {
+      chapterTitle = cleanString(chapterTitle.substring(mangaTitle.length).replace(/^[\s\-_:：]+/, ""));
+    }
 
-      if (mangaTitle && chapterTitle && chapterTitle.startsWith(mangaTitle)) {
-        chapterTitle = cleanString(chapterTitle.substring(mangaTitle.length).replace(/^[\s\-_:：]+/, ''));
-      }
-
-      if (mangaTitle && chapterTitle) return `${mangaTitle} - ${chapterTitle}`;
-      if (mangaTitle) return mangaTitle;
-    } catch {}
+    if (mangaTitle && chapterTitle) return `${mangaTitle} - ${chapterTitle}`;
+    if (mangaTitle) return mangaTitle;
     return `EbookJapan_${getBookCode()}`;
   }
 
@@ -302,70 +259,67 @@
   }
 
   /* =========================================================================
-   * BỘ TẢI ẢNH & PRELOAD NGẦM (BACKGROUND LAZY-LOAD)
+   * BỘ XUẤT CANVAS CHỐNG TAINTED & BYPASS PROTOTYPE STRIPPING
    * ========================================================================= */
-  function ensurePageImageLoaded(pageObj, timeoutMs = 20000) {
-    if (!pageObj) return Promise.reject(new Error("Thiếu trang Viewer."));
-    let loadPromise = state.pageLoads.get(pageObj);
+  const OffscreenClass = WIN.OffscreenCanvas || window.OffscreenCanvas || globalThis.OffscreenCanvas;
 
-    if (!loadPromise) {
-      loadPromise = (async () => {
+  function getPristineCanvasMethods() {
+    try {
+      const ifr = DOC.createElement('iframe');
+      ifr.style.display = 'none';
+      DOC.body.appendChild(ifr);
+      const pToBlob = ifr.contentWindow?.HTMLCanvasElement?.prototype?.toBlob;
+      const pToDataURL = ifr.contentWindow?.HTMLCanvasElement?.prototype?.toDataURL;
+      ifr.remove();
+      return { toBlob: pToBlob, toDataURL: pToDataURL };
+    } catch (e) {
+      return {};
+    }
+  }
+
+  let pristine = null;
+
+  async function canvasToArrayBuffer(canvas, isJpg, quality = 0.95) {
+    const mimeType = isJpg ? 'image/jpeg' : 'image/png';
+
+    // 1. Ưu tiên cao nhất: OffscreenCanvas native (Bypass 100% DOM prototype)
+    if (typeof canvas.convertToBlob === 'function') {
+      const opts = { type: mimeType };
+      if (isJpg) opts.quality = quality;
+      const blob = await canvas.convertToBlob(opts);
+      return await blob.arrayBuffer();
+    }
+
+    if (!pristine) pristine = getPristineCanvasMethods();
+
+    // 2. Fallback: Pristine toBlob từ iframe ẩn
+    const toBlobFn = pristine.toBlob || canvas.toBlob;
+    if (typeof toBlobFn === 'function') {
+      const blob = await new Promise((resolve, reject) => {
         try {
-          if ((!pageObj.done || (!pageObj.data && !pageObj.bmp)) && typeof pageObj.getImage === "function") {
-            const p = pageObj.getImage();
-            if (p?.then) await p;
-          }
-
-          const start = Date.now();
-          while (Date.now() - start < timeoutMs) {
-            if (pageObj.data?.currentSrc || pageObj.data?.src) return pageObj;
-            await sleep(50);
-          }
-
-          if (!pageObj.data && !pageObj.bmp) throw new Error(`Không nạp được URL trang ${(Number(pageObj.page) || 0) + 1}`);
-          return pageObj;
-        } catch (err) {
-          state.pageLoads.delete(pageObj);
-          throw err;
-        }
-      })();
-      state.pageLoads.set(pageObj, loadPromise);
-    }
-    return loadPromise;
-  }
-
-  function preloadUpcomingPages(pagesList, startIndex) {
-    const limit = Math.min(pagesList.length, startIndex + 4);
-    for (let i = startIndex; i < limit; i++) ensurePageImageLoaded(pagesList[i]).catch(() => {});
-  }
-
-  function fetchRawImageBuffer(url) {
-    return new Promise((resolve, reject) => {
-      GM_xmlhttpRequest({
-        method: "GET",
-        url: url,
-        responseType: "arraybuffer",
-        timeout: 30000,
-        headers: { 'Referer': WIN.location.href, 'Origin': WIN.location.origin },
-        onload: res => (res.status >= 200 && res.status < 300 && res.response) ? resolve(res.response) : reject(new Error(`HTTP ${res.status}`)),
-        onerror: () => reject(new Error("Lỗi mạng")),
-        ontimeout: () => reject(new Error("Timeout tải ảnh"))
+          toBlobFn.call(canvas, b => b ? resolve(b) : reject(new Error("toBlob null")), mimeType, isJpg ? quality : undefined);
+        } catch(e) { reject(e); }
       });
-    });
-  }
-
-  function arrayBufferToDataUrl(buffer, mimeType = 'image/webp') {
-    const bytes = new Uint8Array(buffer);
-    let binary = '';
-    const len = bytes.byteLength;
-    for (let i = 0; i < len; i += 16384) {
-      binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + 16384, len)));
+      return await blob.arrayBuffer();
     }
-    return `data:${mimeType};base64,${btoa(binary)}`;
+
+    // 3. Fallback: Pristine toDataURL
+    const toDataURLFn = pristine.toDataURL || canvas.toDataURL;
+    if (typeof toDataURLFn === 'function') {
+      const dataUrl = toDataURLFn.call(canvas, mimeType, isJpg ? quality : undefined);
+      const base64 = dataUrl.split(',')[1];
+      const binStr = atob(base64);
+      const len = binStr.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) bytes[i] = binStr.charCodeAt(i);
+      return bytes.buffer;
+    }
+
+    throw new Error("Không thể xuất ảnh từ Canvas.");
   }
 
   /* =========================================================================
-   * THUẬT TOÁN ĐÀM PHÁN KÍCH THƯỚC & GIẢI MÃ WASM
+   * THUẬT TOÁN LẤY KÍCH THƯỚC SHARP & TỌA ĐỘ
    * ========================================================================= */
   function buildOpenParamArgs(loader, overrides = {}) {
     const dpr = Number(WIN.devicePixelRatio) || 1;
@@ -394,44 +348,138 @@
         const w = Math.floor(Number(pInfo?.width) || 0);
         const h = Math.floor(Number(pInfo?.height) || 0);
         loader.funcs.openParam(baseArgs);
-        if (w > 0 && h > 0) return { url: fullSrc, width: w, height: h, args: fullArgs };
+        if (w > 0 && h > 0) return { rawSrc: fullSrc, width: w, height: h, args: fullArgs };
       } catch {}
     }
 
     const w = Number(pageObj.width) || Number(pageObj.bmp?.width) || Number(pageObj.data?.width) || 1200;
     const h = Number(pageObj.height) || Number(pageObj.bmp?.height) || Number(pageObj.data?.height) || 1800;
     return {
-      url: curSrc,
+      rawSrc: fullSrc || curSrc,
       width: Math.floor(w),
       height: Math.floor(h),
       args: typeof loader?.funcs?.openParam === "function" ? buildOpenParamArgs(loader) : null
     };
   }
 
-  async function descramblePage(pageObj, targetFormat) {
-    ensureMainWorldBridge();
-    const prof = getTargetProfile(pageObj);
-    const pIdx = Number(pageObj.page) || 0;
+  /* =========================================================================
+   * BỘ DÒ MODULE WASM ĐỘNG (CHỐNG LỖI KHI YAHOO ĐỔI TÊN FILE BUILD)
+   * ========================================================================= */
+  async function resolveWasmFactoryModule() {
+    if (state.cachedModule) return state.cachedModule;
 
-    const buffer = await fetchRawImageBuffer(prof.url);
-    const dataUrl = arrayBufferToDataUrl(buffer, 'image/webp');
+    // Nấc 1: Fast-Path 0ms với hash hiện tại
+    const currentChunkUrl = 'https://ebookjapan.yahoo.co.jp/_nuxt/C5rFXX3l2.js';
+    try {
+      const mod = await import(currentChunkUrl);
+      if (typeof mod?.n === 'function' && mod.n.toString().includes('LoaderType')) {
+        state.cachedModule = mod;
+        return mod;
+      }
+    } catch (e) {}
 
-    return await WIN.__ej_bridge.render(
-      dataUrl,
-      prof.width,
-      prof.height,
-      pageObj.loader,
-      pageObj,
-      pIdx,
-      targetFormat.type,
-      targetFormat.quality,
-      prof.args
-    );
+    // Nấc 2: Tự hồi phục (Quét động toàn bộ modulepreload khi Yahoo đổi tên file)
+    const links = Array.from(DOC.querySelectorAll('link[rel="modulepreload"][href*="/_nuxt/"], script[src*="/_nuxt/"]'));
+    const urls = links.map(el => el.href || el.src).filter(Boolean);
+
+    for (const url of urls) {
+      try {
+        const candidate = await import(url);
+        // Dấu vân tay: Export hàm createFactory quản lý LoaderType
+        if (typeof candidate?.n === 'function' && candidate.n.toString().includes('LoaderType')) {
+          console.log(`[ej-liber-dl] 🔄 Đã tự động nhận diện module Wasm mới: ${url}`);
+          state.cachedModule = candidate;
+          return candidate;
+        }
+      } catch (err) {}
+    }
+
+    throw new Error("Không tìm thấy module WasmFactory trên trang EbookJapan.");
   }
 
   /* =========================================================================
-   * TIẾN TRÌNH TẢI CHÍNH
+   * KHỞI TẠO BUNCHVIEWER & MỞ SÁCH BẰNG WASM FACTORY (TỰ ĐỘNG HÓA 100%)
    * ========================================================================= */
+  async function ensureBookInitialized() {
+    if (state.loader?.pages?.length) return state.loader;
+
+    // 1. Phân tích URL động (Bắt mọi loại route: /free/, /story/, /sample/, /volume/...)
+    const pathParts = WIN.location.pathname.split('/').filter(Boolean); // ['viewer', 'story', 'B00...']
+    const routeType = pathParts[1] || 'story';
+    const routeCode = pathParts[2] || getBookCode();
+    const urlSsid = new URLSearchParams(WIN.location.search).get('ssid') || '';
+
+    // 2. Trích xuất metadata từ Pinia Store
+    const app = DOC.getElementById('__nuxt')?.__vue_app__;
+    const prov = app?._context?.provides || {};
+    let pinia = null;
+    for (const s of Object.getOwnPropertySymbols(prov)) {
+      if (prov[s]?.state?.value) { pinia = prov[s]; break; }
+    }
+
+    let pub = pinia?.state?.value?.['viewer-liber']?.bookInfo?.publication;
+
+    // Fallback qua NUXT_DATA nếu Pinia chưa hydrate
+    if (!pub) {
+      const nuxtEl = DOC.getElementById('__NUXT_DATA__');
+      if (nuxtEl?.textContent) {
+        try {
+          const arr = JSON.parse(nuxtEl.textContent);
+          const meta = arr.find(x => x && typeof x === 'object' && x.totalPage !== undefined);
+          if (meta) {
+            const resolve = idx => (typeof idx === 'number' && arr[idx] !== undefined) ? arr[idx] : idx;
+            pub = {
+              type: routeType,
+              code: resolve(meta.bookCd || meta.storyCd || routeCode),
+              ssid: urlSsid,
+              name: resolve(meta.name || '')
+            };
+          }
+        } catch(e) {}
+      }
+    }
+
+    if (!pub?.code) {
+      pub = { type: routeType, code: routeCode, ssid: urlSsid };
+    }
+
+    state.publication = pub;
+
+    // 3. Nạp WasmFactory động và tự dò enum Factory
+    const mod = await resolveWasmFactoryModule();
+    let factory = null;
+    for (const type of [2, 0, 1, 3]) {
+      try {
+        const f = mod.n(type);
+        if (f?.constructor?.name === 'WasmFactory' || f?.create?.toString().includes('BunchVIEWER')) {
+          factory = f;
+          break;
+        }
+      } catch (e) {}
+    }
+    if (!factory) factory = mod.n(2);
+
+    // 4. Khởi tạo BunchVIEWER và mở sách Sharp Master
+    const loader = await factory.createLoader("", void 0, undefined, false);
+    await loader.open({
+      type: pub.type || routeType,
+      code: pub.code || routeCode,
+      ssid: pub.ssid || urlSsid,
+      forceResize: 1 // CHẾ ĐỘ SHARP
+    });
+
+    if (!loader.pages?.length) {
+      throw new Error("Không thể khởi tạo danh sách trang từ máy chủ.");
+    }
+
+    state.loader = loader;
+    state.totalPages = loader.pages.length;
+    return loader;
+  }
+
+  /* ==========================================================================================
+   * TIẾN TRÌNH TẢI CHÍNH TỰ ĐỘNG NUXT HOẶC BVIEWER (PRELOAD PIPELINE, SHARP MASTER JPG, ZERO TAINT)
+   * ========================================================================================== */
   async function startDownload() {
     if (state.running) return;
     const ui = getUI();
@@ -440,39 +488,146 @@
     if (ui) ui.setBusy(true);
 
     try {
-      if (ui) ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
+      if (ui) ui.updateProgress({ completed: 0, total: 0, status: "Đang tải..." });
 
-      const { pages } = await waitForReaderAndPages();
-      const totalPages = pages.length;
-      if (!totalPages) throw new Error("Không có trang hợp lệ.");
+      const isNuxt = (state.engineMode === 'LIBER NUXT');
+
+      if (isNuxt) { if (!state.loader) await ensureBookInitialized(); }
+      else { if (!state.readerData) await waitForReaderAndPages(15000); }
+
+      const totalPages = isNuxt ? state.loader.pages.length : state.readerData.pages.length;
+      const pages = isNuxt ? state.loader.pages : state.readerData.pages;
 
       const useJpeg = Boolean(state.convertJpeg);
-      const targetFormat = useJpeg ? FORMATS.jpg : FORMATS.png;
-      const fileExt = targetFormat.extension;
+      const fileExt = useJpeg ? 'jpg' : 'png';
 
       const ZipClass = window.PureZipWriter || globalThis.PureZipWriter;
+      const Utils = window.MangaUtils || globalThis.MangaUtils;
       const zip = new ZipClass();
 
-      // File TXT rỗng định danh mã sách tại root ZIP
       const bookCode = getBookCode(pages);
       zip.addFile(`${bookCode}.txt`, new Uint8Array(0));
 
       const mangaTitle = getCleanTitle();
-      preloadUpcomingPages(pages, 0);
-
       if (ui) ui.updateProgress({ completed: 0, total: totalPages, status: "Đang tải..." });
 
-      let savedCount = 0;
+      // BỘ ĐỆM PRELOAD DÙNG CHUNG CHO CẢ 2 BÊN
+      const bufferCache = new Map();
+
+      async function fetchCleanPage(pageObj, idx) {
+        if (bufferCache.has(idx)) return bufferCache.get(idx);
+
+        const task = (async () => {
+          let fullUrl = "";
+          let prof = null;
+
+          if (isNuxt) {
+            // Nhánh 1: Nuxt lấy qua getDDD
+            const rawImg = await state.loader.getDDD(idx);
+            const rawUrl = rawImg?.currentSrc || rawImg?.src || '';
+            const baseNoExt = rawUrl.replace(/_s(\.[a-z0-9]+)(?=([?#]|$))/i, '$1');
+            fullUrl = baseNoExt.replace(/\.(webp|avif)(?=([?#]|$))/i, '.jpg');
+          } else {
+            // Nhánh 2 & 3: BViewer lấy qua getTargetProfile
+            if (!pageObj.data?.currentSrc && !pageObj.data?.src && typeof pageObj.getImage === "function") {
+              const p = pageObj.getImage();
+              if (p?.then) await p;
+            }
+            prof = getTargetProfile(pageObj);
+            const baseNoExt = prof.rawSrc.replace(/_s(\.[a-z0-9]+)(?=([?#]|$))/i, '$1');
+            fullUrl = baseNoExt.replace(/\.(webp|avif)(?=([?#]|$))/i, '.jpg');
+          }
+
+          let buffer = null;
+          try {
+            buffer = await Utils.fetchBuffer(fullUrl);
+          } catch (e) {
+            // Fallback WebP nếu cuốn đó không có file JPG
+            const webpUrl = fullUrl.replace(/\.jpg(?=([?#]|$))/i, '.webp');
+            buffer = await Utils.fetchBuffer(webpUrl);
+          }
+
+          const mime = Utils.detectMimeType(buffer);
+          const cleanBlob = new Blob([buffer], { type: mime });
+
+          const cleanBitmap = await createImageBitmap(cleanBlob, {
+            colorSpaceConversion: 'none',
+            premultiplyAlpha: 'none'
+          });
+
+          return { cleanBitmap, prof };
+        })();
+
+        bufferCache.set(idx, task);
+        return task;
+      }
+
+      function preloadUpcoming(currentIdx) {
+        const limit = Math.min(totalPages, currentIdx + CONFIG.PRELOAD_COUNT);
+        for (let j = currentIdx + 1; j < limit; j++) {
+          fetchCleanPage(pages[j], j).catch(() => {});
+        }
+      }
+
+      preloadUpcoming(0);
 
       for (let i = 0; i < totalPages; i++) {
         const pageObj = pages[i];
-        preloadUpcomingPages(pages, i + 1);
+        const pIdx = isNuxt ? i : (Number(pageObj.page) || 0);
 
-        await ensurePageImageLoaded(pageObj);
+        preloadUpcoming(i);
 
-        const arrayBuffer = await descramblePage(pageObj, targetFormat);
+        const { cleanBitmap, prof } = await fetchCleanPage(pageObj, i);
+        bufferCache.delete(i);
+
+        // Kích thước chuẩn: BViewer lấy prof.width, Nuxt lấy pageObj.width
+        const targetW = isNuxt ? (pageObj.width || 1440) : (prof?.width || pageObj.width || 1350);
+        const targetH = isNuxt ? (pageObj.height || 2048) : (prof?.height || pageObj.height || 1920);
+
+        const canvas = (OffscreenClass && typeof OffscreenClass.prototype.convertToBlob === 'function')
+          ? new OffscreenClass(targetW, targetH)
+          : DOC.createElement('canvas');
+
+        if (!('convertToBlob' in canvas)) {
+          canvas.width = targetW;
+          canvas.height = targetH;
+        }
+
+        const ctx = canvas.getContext('2d', { alpha: false });
+        ctx.imageSmoothingEnabled = false;
+        ctx.mozImageSmoothingEnabled = false;
+        ctx.webkitImageSmoothingEnabled = false;
+        ctx.msImageSmoothingEnabled = false;
+
+        const loaderInstance = isNuxt ? state.loader : pageObj.loader;
+
+        // BViewer nạp tham số Sharp vào Wasm trước khi shuffle
+        if (!isNuxt && prof?.args && loaderInstance?.funcs?.openParam) {
+          try { loaderInstance.funcs.openParam(prof.args); } catch (e) {}
+        }
+
+        const autographed = isNuxt
+          ? (typeof loaderInstance.getAutographed === 'function' ? await loaderInstance.getAutographed(i) : false)
+          : pageObj.autographed;
+
+        loaderInstance.shuffle({
+          ctx: ctx,
+          x: 0,
+          y: 0,
+          data: { image: cleanBitmap },
+          autographed: autographed,
+          page: pIdx
+        });
+
+        const arrayBuffer = await canvasToArrayBuffer(canvas, useJpeg, CONFIG.JPEG_QUALITY);
         zip.addFile(`${i + 1}.${fileExt}`, new Uint8Array(arrayBuffer));
-        savedCount++;
+
+        if (cleanBitmap && typeof cleanBitmap.close === 'function') {
+          try { cleanBitmap.close(); } catch(e) {}
+        }
+        if (typeof pageObj.release === 'function') {
+          try { pageObj.release(); } catch(e) {}
+        }
 
         if (ui) {
           ui.updateProgress({
@@ -482,10 +637,8 @@
           });
         }
 
-        await sleep(30);
+        await sleep(CONFIG.DECODE_DELAY);
       }
-
-      if (savedCount === 0) throw new Error("Lỗi nén ảnh vào ZIP.");
 
       if (ui) ui.updateProgress({ completed: totalPages, total: totalPages, status: "Đang đóng gói file ZIP..." });
       await sleep(50);
@@ -495,7 +648,7 @@
       if (ui) ui.updateProgress({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
     } catch (err) {
       if (ui) ui.updateProgress({ status: "Lỗi: " + (err?.message || String(err)) });
-      console.error("[ej-dl] Download failed:", err);
+      console.error("[ej-dl] Lỗi tải truyện:", err);
     } finally {
       state.running = false;
       if (ui) ui.setBusy(false);
@@ -506,19 +659,76 @@
    * KHỞI TẠO VÀ BOOT
    * ========================================================================= */
   async function boot() {
-    while (!DOC.body) await sleep(30);
-    ensureSinglePageVerticalMode();
-    const ui = getUI();
-
-    if (ui?.panel) ui.panel.style.display = "block";
-    if (ui) ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
+    if (state.booting) return;
+    state.booting = true;
 
     try {
-      const { pages } = await waitForReaderAndPages();
-      if (ui) ui.updateProgress({ completed: 0, total: pages.length, status: "Sẵn sàng." });
-    } catch {
+      while (!DOC.body) await sleep(30);
+      ensureSinglePageVerticalMode();
+
+      const ui = getUI();
+      if (ui?.panel) ui.panel.style.display = "block";
+      if (ui) ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
+
+      const isViewerPath = WIN.location.pathname.startsWith('/viewer');
+      let foundBViewer = false;
+
+      // Nếu ở /bviewer: Quét tối đa 4 giây (20 nhịp)
+      // Nếu ở /viewer: Chỉ quét nhanh 2 nhịp (300ms) để bắt Trường hợp 3 (vỏ viewer ruột bviewer)
+      const maxChecks = isViewerPath ? 2 : 20;
+      let checkCount = 0;
+
+      while (checkCount < maxChecks) {
+        const reader = findReader();
+        const pages = filterValidPages(reader);
+        if (reader && pages.length > 0) {
+          state.readerData = { reader, pages };
+          state.engineMode = 'BUNCHVIEWER';
+          getUI('BUNCHVIEWER');
+          foundBViewer = true;
+          await sleep(80);
+          if (ui) ui.updateProgress({ completed: 0, total: pages.length, status: "Sẵn sàng." });
+          return;
+        }
+        await sleep(150);
+        checkCount++;
+      }
+
+      // Chạy Liber Nuxt Engine
+      if (!foundBViewer) {
+        state.engineMode = 'LIBER NUXT';
+        getUI('LIBER NUXT');
+        try {
+          const loader = await ensureBookInitialized();
+          if (loader?.pages?.length > 0) {
+            await sleep(80);
+            if (ui) ui.updateProgress({ completed: 0, total: loader.pages.length, status: "Sẵn sàng." });
+            return;
+          }
+        } catch(e) {}
+      }
+
       if (ui) ui.updateProgress({ status: "Sẵn sàng." });
+    } finally {
+      state.booting = false;
     }
+  }
+
+  // Lắng nghe đổi route ngầm (SPA Watcher)
+  const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
+  if (typeof watchRoute === "function") {
+    watchRoute(() => {
+      state.readerData = null;
+      state.loader = null;
+      state.publication = null;
+      state.running = false;
+      const ui = getUI();
+      if (ui) {
+        ui.setBusy(false);
+        ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
+      }
+      boot();
+    });
   }
 
   if (DOC.readyState === "loading") {

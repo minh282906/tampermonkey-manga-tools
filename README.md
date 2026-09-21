@@ -28,6 +28,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 | **SpeedBinb Downloader**   | Bao gồm các nền tảng sử dụng SpeedBinb (Booklive, Comic C'moA, Yanmaga, Gaugau Futabanet, Kirapo, ...)                                                             | 🟢 Hoạt động |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/SpeedBinbDownloader.user.js)  |
 | **Bambi Downloader**       | Bao gồm các bên sử dụng Bambi Engine (MagaPoke, Ciao Plus, K MANGA)                                                                                                 | 🟢 Hoạt động |    [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/BambiDownloader.user.js)    |
 | **Square Enix Downloader** | Bao gồm các bên thuộc Square Enix (Gangan Online, Manga Up, Shounen Gangan, GFantasy, Gangan Joker, Young Gangan, Big Gangan, ...)                                   | 🟢 Hoạt động | [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/SquareEnixDownloader.user.js) |
+| **Comico Downloader**      | Comico (`comico.jp`)                                                                                                                                                       | 🟢 Hoạt động |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/ComicoDownloader.user.js)   |
 | **YanJan Downloader**      | YanJan! (`ynjn.jp`)                                                                                                                                                    | 🟢 Hoạt động |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/YanJanDownloader.user.js)   |
 | **Kadokawa Downloader**    | Bao gồm Kadokawa và Dwango (KadoComi (ComicWalker) và Niconico)                                                                                                      | 🟢 Hoạt động |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/KadokawaDownloader.user.js)  |
 | **PixivComic Downloader**  | (`comic.pixiv.net`)                                                                                                                                                    | 🟢 Hoạt động | [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/PixivComicDownloader.user.js) |
@@ -173,6 +174,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 - DLsite Play (`dlsite.com`)
 - EbookJP (`ebookjapan.yahoo.co.jp`)
 - Piccoma Manga (`piccoma.com`)
+- Comico (`comico.jp`)
 - YanJan! (`ynjn.jp`)
 - Jump Rookie (`rookie.shonenjump.com`)
 - Comici (`comici.jp`)

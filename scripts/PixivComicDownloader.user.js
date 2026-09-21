@@ -33,7 +33,7 @@
    * ========================================================================= */
   const CONFIG = {
     MAX_CONCURRENT: 6,   // 6 luồng tải và giải mã song song trong RAM
-    JPEG_QUALITY: 0.95   // Chất lượng xuất JPG nếu người dùng chọn
+    JPEG_QUALITY: 1.0   // Chất lượng xuất JPG nếu người dùng chọn
   };
 
   const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;

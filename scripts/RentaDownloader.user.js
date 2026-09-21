@@ -38,7 +38,7 @@
   const CONFIG = {
     PAGE_WAIT_TIMEOUT_MS: 45000,
     POLL_INTERVAL_MS: 100,
-    JPEG_QUALITY: 0.95 // Chất lượng nếu xuất ảnh JPG
+    JPEG_QUALITY: 1.0 // Chất lượng nếu xuất ảnh JPG
   };
 
   const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;

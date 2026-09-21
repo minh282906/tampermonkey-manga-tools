@@ -30,7 +30,7 @@
    * ========================================================================= */
   const CONFIG = {
     MAX_CONCURRENT: 6,   // 6 luồng kịch trần TCP Socket
-    JPEG_QUALITY: 0.95   // Chất lượng khi tick chọn JPG
+    JPEG_QUALITY: 1.0    // Chất lượng khi tick chọn JPG
   };
 
   const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;

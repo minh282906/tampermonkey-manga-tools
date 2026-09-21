@@ -32,7 +32,7 @@
    * ========================================================================= */
   const CONFIG = {
     MAX_CONCURRENT: 6,   // 6 luồng tải song song
-    JPEG_QUALITY: 0.95   // Chất lượng xuất JPG nếu chuyển đổi
+    JPEG_QUALITY: 1.0    // Chất lượng xuất JPG nếu chuyển đổi
   };
 
   const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;

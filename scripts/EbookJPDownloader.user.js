@@ -28,7 +28,7 @@
 
   const CONFIG = {
     PRELOAD_COUNT: 4,      // Số trang mạng kéo trước vào RAM (Pipeline đa luồng)
-    JPEG_QUALITY: 0.95,    // Chất lượng nén khi người dùng chọn xuất JPG
+    JPEG_QUALITY: 1.0,     // Chất lượng nén khi người dùng chọn xuất JPG
     DECODE_DELAY: 15       // Micro-delay nhường nhịp Event Loop sau mỗi trang (ms)
   };
 

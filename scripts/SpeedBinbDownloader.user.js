@@ -64,7 +64,7 @@
    * ========================================================================= */
   const CONFIG = {
     MAX_CONCURRENT: 6,   // 6 luồng tải & giải mã song song qua API
-    JPEG_QUALITY: 0.95   // Chất lượng xuất JPG nếu tick chọn
+    JPEG_QUALITY: 1.0    // Chất lượng xuất JPG nếu tick chọn
   };
 
   const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;

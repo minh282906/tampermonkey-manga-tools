@@ -40,7 +40,7 @@
 
   const CONFIG = {
     MAX_CONCURRENT: 4,   // 4 luồng an toàn (tối ưu CPU & tránh WAF Kodansha)
-    JPEG_QUALITY: 0.95   // Chất lượng nếu xuất file JPG
+    JPEG_QUALITY: 1.0    // Chất lượng nếu xuất file JPG
   };
 
   const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;

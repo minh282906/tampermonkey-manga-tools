@@ -33,7 +33,7 @@
   const CONFIG = {
     RENDER_WAIT_MS: 480, // Thời gian chờ Kindle vẽ xong trang ảnh (ms)
     MIN_IMAGE_DIM: 300,  // Kích thước tối thiểu (px) để lọc bỏ icon UI
-    JPEG_QUALITY: 0.95   // Chất lượng xuất JPG nếu chọn
+    JPEG_QUALITY: 1.0    // Chất lượng xuất JPG nếu chọn
   };
 
   const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;

@@ -34,7 +34,7 @@
    * ========================================================================= */
   const CONFIG = {
     MAX_CONCURRENT: 6,
-    JPEG_QUALITY: 0.95
+    JPEG_QUALITY: 1.0
   };
 
   const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;

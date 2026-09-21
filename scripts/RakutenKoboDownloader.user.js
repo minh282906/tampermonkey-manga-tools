@@ -35,7 +35,7 @@
   const CONFIG = {
     CHUNK_SIZE: 5 * 1024 * 1024, // Dải chunk 5MB tối ưu I/O mạng
     CHUNK_DELAY_MS: 250,         // Delay 250ms chống Cloudflare rate-limit
-    JPEG_QUALITY: 0.95
+    JPEG_QUALITY: 1.0
   };
 
   const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;

@@ -41,7 +41,7 @@
   const state = {
     running: false,
     booting: false,
-    engineMode: 'BUNCHVIEWER', // 'BUNCHVIEWER' hoặc 'LIBER NUXT'
+    engineMode: WIN.location.pathname.startsWith('/viewer') ? 'LIBER NUXT' : 'BUNCHVIEWER',
     convertJpeg: localStorage.getItem("ej-dl:convert-jpeg") === '1',
     readerData: null,          // Cho BViewer (React Fiber)
     loader: null,              // Cho Liber Nuxt (WasmFactory)

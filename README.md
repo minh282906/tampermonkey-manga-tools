@@ -163,40 +163,38 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 <details>
 <summary><b>Click để xem chi tiết các bên thuộc Kadokawa (và Dwango)<b></summary>
 
-- ****ComiWalker (`comic-walker.com`)****
-- ****Niconico Manga (`manga.nicovideo.jp`)****
+- ComiWalker (`comic-walker.com`)
+- Niconico Manga (`manga.nicovideo.jp`)
 
 </details>
 
-- ****pixiv (`pixiv.net`)****
-- ****Alphapolis (`alphapolis.co.jp`)****
-- ****DLsite Play (`dlsite.com`)****
-- ****EbookJP (`ebookjapan.yahoo.co.jp`)****
-- ****Piccoma Manga (`piccoma.com`)****
-- ****YanJan! (`ynjn.jp`)****
-- ****Jump Rookie (`rookie.shonenjump.com`)****
-- ****Comici (`comici.jp`)****
-- ****Amazon Kindle Manga (`amazon.co.jp`)****
-- ****Mecha Comic (`mechacomic.jp`)****
-- ****MangaONE và Ura Sunday (`manga-one.com`, `urasunday.com`)****
+- pixiv (`pixiv.net`)
+- Alphapolis (`alphapolis.co.jp`)
+- DLsite Play (`dlsite.com`)
+- EbookJP (`ebookjapan.yahoo.co.jp`)
+- Piccoma Manga (`piccoma.com`)
+- YanJan! (`ynjn.jp`)
+- Jump Rookie (`rookie.shonenjump.com`)
+- Comici (`comici.jp`)
+- Amazon Kindle Manga (`amazon.co.jp`)
+- Mecha Comic (`mechacomic.jp`)
+- MangaONE và Ura Sunday (`manga-one.com`, `urasunday.com`)
 
 </details>
 
 ---
 
-## ****🛠️ Dành Cho Lập Trình Viên & Đóng Góp (Contribution)****
+## 🛠️ Dành Cho Lập Trình Viên & Đóng Góp (Contribution)
 
 ****Rất hoan nghênh sự đóng góp (Pull Request) cải tiến code từ cộng đồng!****
 
 ### ****Quy trình phát triển:****
 
-1. ****Clone dự án về máy:
+1. ****Clone dự án về máy:****
    ```bash
    git clone https://github.com/minh282906/tampermonkey-manga-tools.git
    cd manga-downloaders
    ```
-
-   ****
 2. ****Chỉnh sửa code trực tiếp trong thư mục****
 3. ****Kiểm tra script chạy thử trên Tampermonkey.****
 4. ****Tạo **Pull Request** lên nhánh `main`.****
@@ -205,19 +203,19 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 
 ## ************🐛 Báo Lỗi & Yêu Cầu Tính Năng************
 
-************Nếu bạn gặp trang web bị lỗi, không tải được ảnh hoặc muốn đóng góp ý tưởng mới, vui lòng gửi báo lỗi tại:************
+************Nếu bạn gặp trang web bị lỗi, không tải được ảnh hoặc muốn đóng góp ý tưởng mới, vui lòng gửi báo lỗi tại:
 
-**************[Tạo Issue Báo Lỗi Mới](https://github.com/minh282906/tampermonkey-manga-tools/issues/new)******
+**************[Tạo Issue Báo Lỗi Mới](https://github.com/minh282906/tampermonkey-manga-tools/issues/new)**
 
 ---
 
-## ************⚠️ Tuyên Bố Miễn Trừ Trách Nhiệm (Disclaimer)****
+## ⚠️ Tuyên Bố Miễn Trừ Trách Nhiệm (Disclaimer)
 
 ************Bộ script này được phát triển phục vụ cho mục đích học tập, nghiên cứu cá nhân và lưu trữ cá nhân.
 Tác giả không chịu trách nhiệm cho bất kỳ hành vi phát tán thương mại hay vi phạm bản quyền tác phẩm nào của người sử dụng. Hãy ủng hộ tác giả bằng cách mua truyện bản quyền trên trang web chính thức!************
 
 ---
 
-## ************📜 Giấy Phép (License)****
+## 📜 Giấy Phép (License)
 
 ************Dự án được phân phối dưới giấy phép **[MIT License](LICENSE)**.************

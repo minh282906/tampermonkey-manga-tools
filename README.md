@@ -89,6 +89,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 - booklistaSTUDIOweb (`studio.booklista.co.jp`)
 - Manga Zegra (`manga-zegra.com`)
 - MANGABU (`mangabu.jp`)
+- Comic Ryu Live (`comic-ryu.jp`)
 
 </details>
 

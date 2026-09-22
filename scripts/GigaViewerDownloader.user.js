@@ -425,6 +425,10 @@
       ctx.drawImage(img, sx, sy, cellWidth, cellHeight, dx, dy, cellWidth, cellHeight);
     }
 
+    const gw = cellWidth * 4, gh = cellHeight * 4;
+    if (width > gw) ctx.drawImage(img, gw, 0, width - gw, height, gw, 0, width - gw, height);
+    if (height > gh) ctx.drawImage(img, 0, gh, width, height - gh, 0, gh, width, height - gh);
+
     const mimeType = isJpg ? 'image/jpeg' : 'image/png';
     const outExt = isJpg ? 'jpg' : 'png';
     const blob = await new Promise(r => canvas.toBlob(r, mimeType, CONFIG.JPEG_QUALITY));

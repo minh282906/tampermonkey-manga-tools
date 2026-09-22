@@ -3,7 +3,7 @@
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
 // @version      3.0.0
 // @icon         https://www.voyager.co.jp/products/pt/images/service_logo_01.jpg
-// @description  Tải manga trên các nền tảng SpeedBinb (Booklive, Comic Cmoa, Yanmaga, Gaugau Futabanet, ...).
+// @description  Tải manga trên các nền tảng SpeedBinb (Booklive, Comic Cmoa, Yanmaga, GauGau Monster+, ...).
 // @author       anonymous & AI
 // @match        https://kirapo.jp/pt/*
 // @match        https://www.123hon.com/vw/*
@@ -332,10 +332,10 @@
     }
   };
 
-  // 3. GAUGAU FUTABANET (gaugau.futabanet.jp)
+  // 3. GauGau Monster Plus (gaugau.futabanet.jp)
   const GaugauAdapter = {
     id: "gaugau",
-    name: "Gaugau Futabanet",
+    name: "GauGau Monster+",
     theme: { color: "#06b6d4", bg: "#083344", text: "#67e8f9", top: "100px" },
 
     isMatch: (url) => url.includes("futabanet.jp") && (

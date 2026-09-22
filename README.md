@@ -25,7 +25,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 | **Renta Downloader**       | (`renta.papy.co.jp`)                                                                                                                                                   | 🟢 Hoạt động |    [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/RentaDownloader.user.js)    |
 | **Comici+ Downloader**     | Champion Cross, Comic Growl, Young Champion, Young Animal, Rimacomi+, HERO'S Web..._(~30 sites)_                                                                       | 🟢 Hoạt động |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/Comici+Downloader.user.js)   |
 | **GigaViewer Downloader**  | ShonenJump+, Sunday Webry, Comic Days, Kurage Bunch, MAGCOMI, Comic Gardo, Comic Zenon..._(20+ sites)_                                                                 | 🟢 Hoạt động | [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/GigaViewerDownloader.user.js) |
-| **SpeedBinb Downloader**   | Bao gồm các nền tảng sử dụng SpeedBinb (Booklive, Comic C'moA, Yanmaga, Gaugau Futabanet, Kirapo, ...)                                                             | 🟢 Hoạt động |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/SpeedBinbDownloader.user.js)  |
+| **SpeedBinb Downloader**   | Bao gồm các nền tảng sử dụng SpeedBinb (Booklive, Comic C'moA, Yanmaga, GauGau Monster+, Kirapo, ...)                                                             | 🟢 Hoạt động |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/SpeedBinbDownloader.user.js)  |
 | **Bambi Downloader**       | Bao gồm các bên sử dụng Bambi Engine (MagaPoke, Ciao Plus, K MANGA)                                                                                                 | 🟢 Hoạt động |    [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/BambiDownloader.user.js)    |
 | **Square Enix Downloader** | Bao gồm các bên thuộc Square Enix (Gangan Online, Manga Up, Shounen Gangan, GFantasy, Gangan Joker, Young Gangan, Big Gangan, ...)                                   | 🟢 Hoạt động | [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/SquareEnixDownloader.user.js) |
 | **Comico Downloader**      | Comico (`comico.jp`)                                                                                                                                                       | 🟢 Hoạt động |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/ComicoDownloader.user.js)   |
@@ -142,7 +142,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 
 - Yanmaga Web (`yanmaga.jp`)
 - Comic C'moA (`cmoa.jp`)
-- Gaugau Futabanet Manga (`gaugau.futabanet.jp`)
+- GauGau Monster+ (`gaugau.futabanet.jp`)
 - BookLive (`booklive.jp`)
 - Voltage Comics (`voltage-comics.com`)
 - Manga Yomonga (`yomonga.com`)

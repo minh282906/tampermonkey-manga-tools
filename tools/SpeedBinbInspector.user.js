@@ -2,7 +2,7 @@
 // @name         SpeedBinb Inspector
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
 // @version      2.3.0
-// @description  Inspector soi ma trận, rãnh đệm Gutter và tải đối chiếu 2 bản ảnh cho BookLive, Cmoa, Yanmaga, Gaugau.
+// @description  Inspector soi ma trận, rãnh đệm Gutter và tải đối chiếu 2 bản ảnh cho BookLive, Cmoa, Yanmaga, GauGau Monster+, ...
 // @author       anonymous & AI
 // @match        https://booklive.jp/*
 // @match        https://*.booklive.jp/*
@@ -126,7 +126,7 @@
       return { site: "Yanmaga Web", cid, ctbl, ptbl, files };
     }
 
-    // D. GAUGAU FUTABANET (Hỗ trợ URL dạng work/.../episodes/... và chuẩn M_H.jpg)
+    // D. GauGau Monster+ (Hỗ trợ URL dạng work/.../episodes/... và chuẩn M_H.jpg)
     if (url.includes('futabanet.jp')) {
       let contentEl = DOC.getElementById('content');
       let cid = contentEl?.dataset?.ptbinbCid || contentEl?.getAttribute('data-ptbinb-cid');
@@ -157,7 +157,7 @@
           files.push({ filename: m[1], src: `${server}/${m[1]}/M_H.jpg` });
         }
       }
-      return { site: "Gaugau Futabanet", cid, ctbl, ptbl, files };
+      return { site: "GauGau Monster+", cid, ctbl, ptbl, files };
     }
 
     // E. PTIMG SITES (Comic Polca, Kirapo, Comic Porta, Super Hero Comics)

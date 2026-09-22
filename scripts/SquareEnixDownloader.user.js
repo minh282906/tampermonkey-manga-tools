@@ -327,7 +327,7 @@
     if (host.includes('square-enix.com')) {
       const cleanPath = path.replace(/\/index\.html?$/i, '').replace(/\/$/, '');
       if (cleanPath.startsWith('/yg/')) return /\/yg\/introduction\/[a-zA-Z0-9_-]+$/i.test(cleanPath);
-      return /\/(?:tcym|tachiyomi|viewer|browse|series|introduction)\/[a-zA-Z0-9_-]+/i.test(cleanPath);
+      return /\/(?:tcym|tachiyomi|viewer|browse|series|introduction)\/(?!finished$)[a-zA-Z0-9_-]+$/i.test(cleanPath); // loại bỏ finished.html trên Joker
     }
     return false;
   }

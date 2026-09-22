@@ -34,6 +34,8 @@
 // @match        https://studio.booklista.co.jp/*
 // @match        https://manga-zegra.com/*
 // @match        https://mangabu.jp/*
+// @match        https://*.comic-ryu.jp/*
+// @match        https://comic-ryu.jp/*
 // @run-at       document-start
 // @grant        unsafeWindow
 // @grant        GM_xmlhttpRequest
@@ -68,6 +70,9 @@
 // @connect      *.booklista.co.jp
 // @connect      *.manga-zegra.com
 // @connect      *.mangabu.jp
+// @connect      *.comic-ryu.jp
+// @connect      viewer.comic-ryu.jp
+// @connect      api-ai.comici.jp
 //
 // --- TỰ ĐỘNG TẢI VÀ UPDATE PHIÊN BẢN
 // @updateURL    https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/Comici+Downloader.user.js
@@ -136,6 +141,7 @@
     "booklista.co.jp":        { name: "booklista STUDIO web", top: "60px", color: "#B10000", bg: "#ffffff", text: "#F8606F" },
     "manga-zegra.com":        { name: "Manga Zegra",          top: "60px", color: "#1A63FF", bg: "#ffffff", text: "#F50100" },
     "mangabu.jp":             { name: "Manga Bu",             top: "60px", color: "#E60027", bg: "#ffffff", text: "#187FC5" },
+    "comic-ryu.jp":           { name: "Comic Ryu Live",       top: "60px", color: "#17CAD5", bg: "#ffffff", text: "#17CAD5" },
     // Nhóm đặc thù
     "rimacomiplus.jp":        { name: "Rimacomi+",            top: "60px", color: "#F389CF", bg: "#ffffff", text: "#FF4486" },
     "comics.comici.jp":       { name: "comic Bro",            top: "60px", color: "#D80C25", bg: "#ffffff", text: "#D80C25" },

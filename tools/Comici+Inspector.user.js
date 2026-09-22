@@ -32,6 +32,9 @@
 // @match        https://comic.j-nbooks.jp/*
 // @match        https://studio.booklista.co.jp/*
 // @match        https://manga-zegra.com/*
+// @match        https://mangabu.jp/*
+// @match        https://*.comic-ryu.jp/*
+// @match        https://comic-ryu.jp/*
 // @grant        unsafeWindow
 // @grant        GM_xmlhttpRequest
 // @connect      *

@@ -64,7 +64,7 @@
         titleColor: "#F8B500",     
         btnBg: "#F8B500",          
         btnColor: "#ffffff",     
-        topOffset: "60px",
+        topOffset: "44px",
 
         defaultJpgText: "Xuất file JPG (ảnh gốc là JPG)",
         onDownload: startDownload,

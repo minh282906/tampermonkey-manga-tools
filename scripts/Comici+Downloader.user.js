@@ -516,6 +516,15 @@
           f++;
         }
       }
+
+      const gridW = cellWidth * 4;
+      const gridH = cellHeight * 4;
+      const dummyW = width - gridW;
+      const dummyH = height - gridH;
+
+      if (dummyW > 0) ctx.drawImage(img, gridW, 0, dummyW, height, gridW, 0, dummyW, height);
+      if (dummyH > 0) ctx.drawImage(img, 0, gridH, width, dummyH, 0, gridH, width, dummyH);
+      
     }
 
     const mimeType = isJpg ? 'image/jpeg' : 'image/png';

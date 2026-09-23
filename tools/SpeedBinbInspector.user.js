@@ -19,6 +19,7 @@
 // @match        https://televikun-super-hero-comics.com/rensai/*/*/
 // @match        https://binb.bricks.pub/contents/*
 // @match        https://*.bookhodai.jp/speedreader/*
+// @match        https://e-comi.shogakukan.co.jp/*
 // @grant        unsafeWindow
 // @grant        GM_xmlhttpRequest
 // @connect      *
@@ -305,7 +306,56 @@
       return { site: "Bookhodai", cid, ctbl, ptbl, files };
     }
 
-    // I. PTIMG SITES (Comic Polca, Kirapo, Comic Porta, Super Hero Comics)
+    // I. SHOGAKUKAN E-COMI
+    if (url.includes('e-comi.shogakukan.co.jp')) {
+      const params = new URL(url).searchParams;
+      const cid = params.get('cid') || DOC.getElementById('content')?.dataset?.ptbinbCid;
+      if (!cid) return null;
+
+      const ptbinbRel = DOC.getElementById('content')?.dataset?.ptbinb || "/sws/apis/bibGetCntntInfo";
+      const k = Tools.generateRandomString32(cid);
+      const apiUrl = new URL(ptbinbRel, location.href);
+      apiUrl.searchParams.set("cid", cid);
+      apiUrl.searchParams.set("k", k);
+      apiUrl.searchParams.set("dmytime", Date.now());
+
+      // Kế thừa toàn bộ tham số phân quyền u0..u9 từ URL
+      const uParams = Array.from({ length: 10 }, (_, i) => {
+        const val = params.get(`u${i}`);
+        return val ? `&u${i}=${encodeURIComponent(val)}` : '';
+      }).join('');
+
+      // 1. Kéo API lấy khóa giải mã và ContentsServer
+      const infoBuf = await Utils.fetchBuffer(apiUrl.href);
+      const info = JSON.parse(new TextDecoder().decode(infoBuf));
+      const item = info.items?.[0];
+      if (!item?.ContentsServer || !item?.p) return null;
+
+      const serverBase = item.ContentsServer.replace(/\/?$/, '/');
+      const p = item.p;
+      const ctbl = Tools.getDecryptedTable(cid, k, item.ctbl);
+      const ptbl = Tools.getDecryptedTable(cid, k, item.ptbl);
+
+      // 2. Kéo cấu hình TTX chuẩn sbcGetCntnt.php với cờ vm=2
+      const cntntUrl = `${serverBase}sbcGetCntnt.php?cid=${cid}&p=${p}&vm=2&dmytime=${Date.now()}${uParams}`;
+      const cntntBuf = await Utils.fetchBuffer(cntntUrl);
+      const { ttx } = JSON.parse(new TextDecoder().decode(cntntBuf));
+
+      // 3. Tạo link ảnh chuẩn sbcGetImg.php với cờ vm=2
+      const files = [], seen = new Set();
+      for (const m of ttx.matchAll(/<(?:t-img|img)[^>]+src=["']?([^"'\s>]+)["']?[^>]*>/gi)) {
+        const filename = m[1];
+        if (filename && !seen.has(filename)) {
+          seen.add(filename);
+          const imgSrc = `${serverBase}sbcGetImg.php?cid=${cid}&src=${encodeURIComponent(filename)}&p=${p}&vm=2${uParams}`;
+          files.push({ filename, src: imgSrc });
+        }
+      }
+
+      return { site: "e-Comi", cid, ctbl, ptbl, files };
+    }
+
+    // J. PTIMG SITES (Comic Polca, Kirapo, Comic Porta, Super Hero Comics)
     const u = new URL(url, origin);
     const p = u.pathname;
     let isPTImg = false;

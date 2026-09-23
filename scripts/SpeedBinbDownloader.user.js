@@ -20,6 +20,7 @@
 // @match        https://yomonga.com/*
 // @match        https://binb.bricks.pub/contents/*
 // @match        https://*.bookhodai.jp/speedreader/*
+// @match        https://e-comi.shogakukan.co.jp/*
 // @run-at       document-start
 // @grant        unsafeWindow
 // @grant        GM_xmlhttpRequest
@@ -49,6 +50,9 @@
 // @connect      *.bricks.pub
 // @connect      bookhodai.jp
 // @connect      *.bookhodai.jp
+// @connect      e-comi.shogakukan.co.jp
+// @connect      *.e-comi.shogakukan.co.jp
+// @connect      sbc.e-comi.shogakukan.co.jp
 //
 // --- TỰ ĐỘNG TẢI VÀ UPDATE PHIÊN BẢN
 // @updateURL    https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/SpeedBinbDownloader.user.js
@@ -977,7 +981,109 @@
     }
   };
 
-  // 9. SPEEDBINB PTIMG PACKAGE (Comic Polca, Kirapo, Comic Porta, Super Hero Comics)
+  // 9. SHOGAKUKAN E-COMI (e-comi.shogakukan.co.jp)
+  const EcomiAdapter = {
+    id: "ecomi",
+    name: "e-Comic Store",
+    theme: { color: "#E6004B", bg: "#ffffff", text: "#E6004B", top: "43px" },
+
+    isMatch: (url) => url.includes("e-comi.shogakukan.co.jp") && (
+      url.includes("/speedreader") ||
+      Boolean(new URL(url, WIN.location.origin).searchParams.get('cid')) ||
+      Boolean(DOC.getElementById('content')?.getAttribute('data-ptbinb-cid'))
+    ),
+
+    getCid: () => {
+      try {
+        const cid = new URL(WIN.location.href).searchParams.get('cid');
+        if (cid && cid.trim()) return cid.trim();
+      } catch (e) {}
+      const attr = DOC.getElementById('content')?.getAttribute('data-ptbinb-cid') || DOC.getElementById('content')?.dataset?.ptbinbCid;
+      return (attr && attr.trim()) ? attr.trim() : "Ecomi_Episode";
+    },
+
+    fetchManifest: async function(cid, Tools, Utils) {
+      const contentEl = DOC.getElementById('content');
+      const ptbinb = contentEl?.dataset?.ptbinb || contentEl?.getAttribute('data-ptbinb') || "/sws/apis/bibGetCntntInfo";
+      const randomString = Tools.generateRandomString32(cid);
+
+      const apiUrl = new URL(ptbinb, WIN.location.href);
+      apiUrl.searchParams.set("cid", cid);
+      apiUrl.searchParams.set("k", randomString);
+      apiUrl.searchParams.set("dmytime", Date.now());
+
+      // Kế thừa toàn bộ tham số phân quyền u0..u9 từ URL
+      const uParams = Array.from({ length: 10 }, (_, i) => {
+        const val = new URL(WIN.location.href).searchParams.get(`u${i}`);
+        return val ? `&u${i}=${encodeURIComponent(val)}` : '';
+      }).join('');
+
+      // 1. Kéo API lấy khóa và máy chủ tài nguyên sbc.e-comi.shogakukan.co.jp
+      const infoBuf = await Utils.fetchBuffer(apiUrl.href);
+      const infoJson = JSON.parse(new TextDecoder().decode(infoBuf));
+      const data = infoJson.items?.[0];
+      if (!data?.ContentsServer || !data?.p) throw new Error("Không lấy được phiên đọc từ e-comi.");
+
+      const serverBase = data.ContentsServer.replace(/\/?$/, '/');
+      const config = {
+        title: data.Title || data.title || "",
+        subTitle: data.SubTitle || data.subtitle || "",
+        contentServer: serverBase,
+        p: data.p,
+        ctbl: Tools.getDecryptedTable(cid, randomString, data.ctbl),
+        ptbl: Tools.getDecryptedTable(cid, randomString, data.ptbl)
+      };
+
+      // 2. Kéo cấu hình TTX chuẩn sbcGetCntnt.php với cờ vm=2
+      const cntntUrl = `${serverBase}sbcGetCntnt.php?cid=${cid}&p=${config.p}&vm=2&dmytime=${Date.now()}${uParams}`;
+      const cntntBuf = await Utils.fetchBuffer(cntntUrl);
+      const { ttx } = JSON.parse(new TextDecoder().decode(cntntBuf));
+
+      // 3. Bóc tách ảnh qua sbcGetImg.php với cờ vm=2 và bọc encodeURIComponent(filename)
+      const seen = new Set();
+      const files = [];
+      for (const match of ttx.matchAll(/<(?:t-img|img)[^>]+src=["']?([^"'\s>]+)["']?[^>]*>/gi)) {
+        const filename = match[1];
+        if (filename && !seen.has(filename)) {
+          seen.add(filename);
+          const wMatch = match[0].match(/orgwidth=["']?(\d+)["']?/i);
+          const hMatch = match[0].match(/orgheight=["']?(\d+)["']?/i);
+
+          const imgSrc = `${serverBase}sbcGetImg.php?cid=${cid}&src=${encodeURIComponent(filename)}&p=${config.p}&vm=2${uParams}`;
+
+          files.push({
+            pageNo: files.length + 1,
+            filename: filename,
+            width: wMatch ? parseInt(wMatch[1], 10) : 0,
+            height: hMatch ? parseInt(hMatch[1], 10) : 0,
+            src: imgSrc
+          });
+        }
+      }
+
+      return { config, files };
+    },
+
+    getTitle: function(config, cid) {
+      let raw = config.title || DOC.title || "";
+      raw = raw.split(/[|｜]/)[0].trim();
+      raw = raw.replace(/【[^】]*】/g, '').trim();
+      raw = raw.replace(/[-－–—\s]*(?:小学館eコミックストア|小学館|eコミ|e-Comix).*$/gi, '').trim();
+
+      let series = raw;
+      let episode = cleanString(config.subTitle || "");
+
+      const match = raw.match(/^(.*?)(?:\s+[-－–—/]\s+|\s+)(第?\s*\d+\s*(?:話|巻|章|節|部|エピソード).*)$/i);
+      if (match) {
+        series = match[1];
+        if (!episode) episode = match[2];
+      }
+
+      return resolveCleanFileName(series, episode, cid);
+    }
+  };
+
+  // 10. SPEEDBINB PTIMG PACKAGE (Comic Polca, Kirapo, Comic Porta, Super Hero Comics)
   const PTImgAdapter = {
     id: "ptimg",
 
@@ -1106,7 +1212,7 @@
     }
   };
 
-  const ADAPTERS = [CmoaAdapter, YanmagaAdapter, GaugauAdapter, BookliveAdapter, VoltageAdapter, YomongaAdapter, BricksAdapter, BookhodaiAdapter, PTImgAdapter];
+  const ADAPTERS = [CmoaAdapter, YanmagaAdapter, GaugauAdapter, BookliveAdapter, VoltageAdapter, YomongaAdapter, BricksAdapter, BookhodaiAdapter, PTImgAdapter, EcomiAdapter];
 
   function resolveSiteAdapter() {
     const currentUrl = WIN.location.href;

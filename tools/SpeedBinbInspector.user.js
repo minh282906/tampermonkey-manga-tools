@@ -17,6 +17,8 @@
 // @match        https://www.123hon.com/vw/*
 // @match        https://comic-porta.com/p_data/*
 // @match        https://televikun-super-hero-comics.com/rensai/*/*/
+// @match        https://binb.bricks.pub/contents/*
+// @match        https://*.bookhodai.jp/speedreader/*
 // @grant        unsafeWindow
 // @grant        GM_xmlhttpRequest
 // @connect      *
@@ -160,7 +162,150 @@
       return { site: "GauGau Monster+", cid, ctbl, ptbl, files };
     }
 
-    // E. PTIMG SITES (Comic Polca, Kirapo, Comic Porta, Super Hero Comics)
+    // E. VOLTAGE COMICS
+    if (url.includes('voltage-comics.com')) {
+      let cid = new URL(url).searchParams.get('cid') || DOC.getElementById('content')?.dataset?.ptbinbCid || DOC.getElementById('content')?.getAttribute('data-ptbinb-cid');
+      if (!cid) return null;
+
+      const k = Tools.generateRandomString32(cid);
+      const infoBuf = await Utils.fetchBuffer(`https://voltage-comics.com/sws/bibGetCntntInfo?cid=${cid}&dmytime=${Date.now()}&k=${k}`);
+      const info = JSON.parse(new TextDecoder().decode(infoBuf));
+      const item = info.items?.[0]; if (!item?.ContentsServer) return null;
+
+      const server = item.ContentsServer;
+      const ctbl = Tools.getDecryptedTable(cid, k, item.ctbl), ptbl = Tools.getDecryptedTable(cid, k, item.ptbl);
+      const cntntBuf = await Utils.fetchBuffer(`${server}content`);
+      const { ttx } = JSON.parse(new TextDecoder().decode(cntntBuf));
+
+      const files = [], seen = new Set();
+      for (const m of ttx.matchAll(/(pages\/[a-zA-Z0-9_]*.jpg)[^A-Z]*orgwidth="(\d*)" orgheight="(\d*)"/gm)) {
+        if (m[1] && !seen.has(m[1])) {
+          seen.add(m[1]);
+          files.push({ filename: m[1], src: `${server}img/${m[1]}?q=1` });
+        }
+      }
+      return { site: "Voltage Comics", cid, ctbl, ptbl, files };
+    }
+
+    // F. YOMONGA
+    if (url.includes('yomonga.com')) {
+      let cid = new URL(url).searchParams.get('cid') || DOC.getElementById('content')?.dataset?.ptbinbCid || DOC.getElementById('content')?.getAttribute('data-ptbinb-cid');
+      if (!cid) return null;
+
+      const k = Tools.generateRandomString32(cid);
+      const infoBuf = await Utils.fetchBuffer(`https://www.yomonga.com/binb/sws/apis/bibGetCntntInfo.php?cid=${cid}&dmytime=${Date.now()}&k=${k}`);
+      const info = JSON.parse(new TextDecoder().decode(infoBuf));
+      const item = info.items?.[0]; if (!item?.ContentsServer) return null;
+
+      const server = item.ContentsServer;
+      const ctbl = Tools.getDecryptedTable(cid, k, item.ctbl), ptbl = Tools.getDecryptedTable(cid, k, item.ptbl);
+      const cntntBuf = await Utils.fetchBuffer(`${server}content`);
+      const { ttx } = JSON.parse(new TextDecoder().decode(cntntBuf));
+
+      const files = [], seen = new Set();
+      for (const m of ttx.matchAll(/(images\/[a-zA-Z0-9_]*.jpg)[^A-Z]*orgwidth="(\d*)" orgheight="(\d*)"/gm)) {
+        if (m[1] && !seen.has(m[1])) {
+          seen.add(m[1]);
+          files.push({ filename: m[1], src: `${server}img/${m[1]}?q=1` });
+        }
+      }
+      return { site: "Yomonga", cid, ctbl, ptbl, files };
+    }
+
+    // G. OHTA WEB COMIC / BRICKS
+    if (url.includes('bricks.pub')) {
+      const mCid = location.pathname.match(/\/contents\/([^\/?#]+)/);
+      const cid = mCid?.[1] || DOC.getElementById('content')?.dataset?.ptbinbCid;
+      if (!cid) return null;
+
+      const ptbinb = DOC.getElementById('content')?.dataset?.ptbinb || "https://console.binb.bricks.pub/bibGetCntntInfo";
+      const k = Tools.generateRandomString32(cid);
+      const apiUrl = new URL(ptbinb, location.href);
+      apiUrl.searchParams.set("cid", cid);
+      apiUrl.searchParams.set("k", k);
+      apiUrl.searchParams.set("dmytime", Date.now());
+
+      const infoBuf = await Utils.fetchBuffer(apiUrl.href);
+      const info = JSON.parse(new TextDecoder().decode(infoBuf));
+      const item = info.items?.[0]; if (!item?.ContentsServer) return null;
+
+      const serverBase = item.ContentsServer.replace(/\/?$/, '/');
+      const ctbl = item.ctbl ? Tools.getDecryptedTable(cid, k, item.ctbl) : null;
+      const ptbl = item.ptbl ? Tools.getDecryptedTable(cid, k, item.ptbl) : null;
+
+      let ttx = "";
+      try {
+        const cntntBuf = await Utils.fetchBuffer(`${serverBase}content.js?dmytime=${Date.now()}`);
+        const rawText = new TextDecoder().decode(cntntBuf);
+        ttx = JSON.parse(rawText.replace(/^DataGet_Content\(/, '').replace(/\);?\s*$/, '')).ttx || "";
+      } catch (e) {
+        const cntntBuf = await Utils.fetchBuffer(`${serverBase}content`);
+        ttx = JSON.parse(new TextDecoder().decode(cntntBuf)).ttx || "";
+      }
+
+      const files = [], seen = new Set();
+      for (const m of ttx.matchAll(/<(?:t-img|img)[^>]+src=["']?([^"'\s>]+)["']?[^>]*>/gi)) {
+        if (m[1] && !seen.has(m[1])) {
+          seen.add(m[1]);
+          // Nạp chuẩn file M_H.jpg trên S3 để vượt rào HTTP 403
+          const src = m[1].includes('M_H.jpg')
+            ? `${serverBase}${m[1]}`
+            : `${serverBase}${m[1]}/M_H.jpg`;
+          files.push({ filename: m[1], src });
+        }
+      }
+      return { site: "Ohta Web Comic", cid, ctbl, ptbl, files };
+    }
+
+    // H. BOOKHODAI
+    if (url.includes('bookhodai.jp')) {
+      const params = new URL(url).searchParams;
+      const cid = params.get('cid') || DOC.getElementById('content')?.dataset?.ptbinbCid;
+      if (!cid) return null;
+
+      const ptbinbRel = DOC.getElementById('content')?.dataset?.ptbinb || "https://viewer.bookhodai.jp/sws/apis/bibGetCntntInfo.php";
+      const k = Tools.generateRandomString32(cid);
+      const apiUrl = new URL(ptbinbRel, location.href);
+      apiUrl.searchParams.set("cid", cid);
+      apiUrl.searchParams.set("k", k);
+      apiUrl.searchParams.set("dmytime", Date.now());
+
+      for (const [key, val] of new URL(location.href).searchParams.entries()) {
+        if (!apiUrl.searchParams.has(key)) apiUrl.searchParams.set(key, val);
+      }
+
+      const infoBuf = await Utils.fetchBuffer(apiUrl.href);
+      const info = JSON.parse(new TextDecoder().decode(infoBuf));
+      const item = info.items?.[0]; if (!item?.ContentsServer) return null;
+
+      const serverBase = item.ContentsServer.replace(/\/?$/, '/');
+      const ctbl = item.ctbl ? Tools.getDecryptedTable(cid, k, item.ctbl) : null;
+      const ptbl = item.ptbl ? Tools.getDecryptedTable(cid, k, item.ptbl) : null;
+
+      let ttx = "";
+      try {
+        const cntntBuf = await Utils.fetchBuffer(`${serverBase}content.js?dmytime=${Date.now()}`);
+        const rawText = new TextDecoder().decode(cntntBuf);
+        ttx = JSON.parse(rawText.replace(/^DataGet_Content\(/, '').replace(/\);?\s*$/, '')).ttx || "";
+      } catch (e) {
+        const cntntBuf = await Utils.fetchBuffer(`${serverBase}content`);
+        ttx = JSON.parse(new TextDecoder().decode(cntntBuf)).ttx || "";
+      }
+
+      const files = [], seen = new Set();
+      for (const m of ttx.matchAll(/<(?:t-img|img)[^>]+src=["']?([^"'\s>]+)["']?[^>]*>/gi)) {
+        if (m[1] && !seen.has(m[1])) {
+          seen.add(m[1]);
+          const src = m[1].includes('M_H.jpg')
+            ? `${serverBase}${m[1]}`
+            : `${serverBase}${m[1]}/M_H.jpg`;
+          files.push({ filename: m[1], src });
+        }
+      }
+      return { site: "Bookhodai", cid, ctbl, ptbl, files };
+    }
+
+    // I. PTIMG SITES (Comic Polca, Kirapo, Comic Porta, Super Hero Comics)
     const u = new URL(url, origin);
     const p = u.pathname;
     let isPTImg = false;
@@ -212,56 +357,6 @@
       return { site: siteName, isPTImg: true, files };
     }
 
-    // E. VOLTAGE COMICS
-    if (url.includes('voltage-comics.com')) {
-      let cid = new URL(url).searchParams.get('cid') || DOC.getElementById('content')?.dataset?.ptbinbCid || DOC.getElementById('content')?.getAttribute('data-ptbinb-cid');
-      if (!cid) return null;
-
-      const k = Tools.generateRandomString32(cid);
-      const infoBuf = await Utils.fetchBuffer(`https://voltage-comics.com/sws/bibGetCntntInfo?cid=${cid}&dmytime=${Date.now()}&k=${k}`);
-      const info = JSON.parse(new TextDecoder().decode(infoBuf));
-      const item = info.items?.[0]; if (!item?.ContentsServer) return null;
-
-      const server = item.ContentsServer;
-      const ctbl = Tools.getDecryptedTable(cid, k, item.ctbl), ptbl = Tools.getDecryptedTable(cid, k, item.ptbl);
-      const cntntBuf = await Utils.fetchBuffer(`${server}content`);
-      const { ttx } = JSON.parse(new TextDecoder().decode(cntntBuf));
-
-      const files = [], seen = new Set();
-      for (const m of ttx.matchAll(/(pages\/[a-zA-Z0-9_]*.jpg)[^A-Z]*orgwidth="(\d*)" orgheight="(\d*)"/gm)) {
-        if (m[1] && !seen.has(m[1])) {
-          seen.add(m[1]);
-          files.push({ filename: m[1], src: `${server}img/${m[1]}?q=1` });
-        }
-      }
-      return { site: "Voltage Comics", cid, ctbl, ptbl, files };
-    }
-
-    // F. YOMONGA
-    if (url.includes('yomonga.com')) {
-      let cid = new URL(url).searchParams.get('cid') || DOC.getElementById('content')?.dataset?.ptbinbCid || DOC.getElementById('content')?.getAttribute('data-ptbinb-cid');
-      if (!cid) return null;
-
-      const k = Tools.generateRandomString32(cid);
-      const infoBuf = await Utils.fetchBuffer(`https://www.yomonga.com/binb/sws/apis/bibGetCntntInfo.php?cid=${cid}&dmytime=${Date.now()}&k=${k}`);
-      const info = JSON.parse(new TextDecoder().decode(infoBuf));
-      const item = info.items?.[0]; if (!item?.ContentsServer) return null;
-
-      const server = item.ContentsServer;
-      const ctbl = Tools.getDecryptedTable(cid, k, item.ctbl), ptbl = Tools.getDecryptedTable(cid, k, item.ptbl);
-      const cntntBuf = await Utils.fetchBuffer(`${server}content`);
-      const { ttx } = JSON.parse(new TextDecoder().decode(cntntBuf));
-
-      const files = [], seen = new Set();
-      for (const m of ttx.matchAll(/(images\/[a-zA-Z0-9_]*.jpg)[^A-Z]*orgwidth="(\d*)" orgheight="(\d*)"/gm)) {
-        if (m[1] && !seen.has(m[1])) {
-          seen.add(m[1]);
-          files.push({ filename: m[1], src: `${server}img/${m[1]}?q=1` });
-        }
-      }
-      return { site: "Yomonga", cid, ctbl, ptbl, files };
-    }
-
     return null;
   }
 
@@ -284,7 +379,7 @@
     const rawExt = Utils.detectExt(rawBuffer);
     const img = await Utils.loadImage(rawBuffer);
 
-    // 2. NHÁNH SPEEDBINB ĐỘNG (BookLive, Cmoa, Yanmaga, Gaugau)
+    // 2. NHÁNH SPEEDBINB ĐỘNG (BookLive, Cmoa, Yanmaga, Gaugau, ...)
     if (!fileObj.isPTImg) {
       const key = Tools.getDecryptionKey(fileObj.filename, ctbl, ptbl);
       const decoder = new Tools.CoordDecoder(key[0], key[1]);

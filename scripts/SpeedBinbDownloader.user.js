@@ -18,6 +18,8 @@
 // @match        https://*.voltage-comics.com/*
 // @match        https://www.yomonga.com/*
 // @match        https://yomonga.com/*
+// @match        https://binb.bricks.pub/contents/*
+// @match        https://*.bookhodai.jp/speedreader/*
 // @run-at       document-start
 // @grant        unsafeWindow
 // @grant        GM_xmlhttpRequest
@@ -43,6 +45,10 @@
 // @connect      *.voltage-comics.com
 // @connect      yomonga.com
 // @connect      *.yomonga.com
+// @connect      binb.bricks.pub
+// @connect      *.bricks.pub
+// @connect      bookhodai.jp
+// @connect      *.bookhodai.jp
 //
 // --- TỰ ĐỘNG TẢI VÀ UPDATE PHIÊN BẢN
 // @updateURL    https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/SpeedBinbDownloader.user.js
@@ -754,7 +760,224 @@
     }
   };
 
-  // 7. SPEEDBINB PTIMG PACKAGE (Comic Polca, Kirapo, Comic Porta, Super Hero Comics)
+  // 7. OHTA WEB COMIC / BRICKS (binb.bricks.pub)
+  const BricksAdapter = {
+    id: "bricks",
+    name: "Ohta Web Comic",
+    theme: { color: "#EA4736", bg: "#ffffff", text: "#EA4736", top: "43px" },
+
+    isMatch: (url) => (url.includes("bricks.pub") || url.includes("ohtawebcomic.com")) && (url.includes("/speed_reader") || url.includes("/contents/")),
+
+    getCid: () => {
+      const match = WIN.location.pathname.match(/\/contents\/([^\/?#]+)/);
+      if (match && match[1]) return match[1];
+      const attr = DOC.getElementById('content')?.getAttribute('data-ptbinb-cid') || DOC.getElementById('content')?.dataset?.ptbinbCid;
+      return (attr && attr.trim()) ? attr.trim() : "Ohta_Episode";
+    },
+
+    fetchManifest: async function(cid, Tools, Utils) {
+      const contentEl = DOC.getElementById('content');
+      const ptbinb = contentEl?.dataset?.ptbinb || "https://console.binb.bricks.pub/bibGetCntntInfo";
+      const randomString = Tools.generateRandomString32(cid);
+
+      // Giữ nguyên toàn bộ query (u0, ...) của console.binb.bricks.pub
+      const apiUrlObj = new URL(ptbinb, WIN.location.href);
+      apiUrlObj.searchParams.set("cid", cid);
+      apiUrlObj.searchParams.set("k", randomString);
+      apiUrlObj.searchParams.set("dmytime", Date.now());
+
+      const infoBuf = await Utils.fetchBuffer(apiUrlObj.href);
+      const infoJson = JSON.parse(new TextDecoder().decode(infoBuf));
+      const data = infoJson.items?.[0];
+      if (!data?.ContentsServer) throw new Error("Không lấy được ContentsServer từ Bricks Pub.");
+
+      const serverBase = data.ContentsServer.replace(/\/?$/, '/');
+
+      const config = {
+        title: data.Title || "",
+        contentServer: serverBase,
+        ctbl: data.ctbl ? Tools.getDecryptedTable(cid, randomString, data.ctbl) : null,
+        ptbl: data.ptbl ? Tools.getDecryptedTable(cid, randomString, data.ptbl) : null
+      };
+
+      // CHUẨN S3: Kéo content.js (có fallback sang content nếu server đổi dạng)
+      let ttx = "";
+      try {
+        const contentUrl = `${serverBase}content.js?dmytime=${Date.now()}`;
+        const contentBuffer = await Utils.fetchBuffer(contentUrl);
+        const rawText = new TextDecoder().decode(contentBuffer);
+        const cleanJson = rawText.replace(/^DataGet_Content\(/, '').replace(/\);?\s*$/, '');
+        ttx = JSON.parse(cleanJson).ttx || "";
+      } catch (e) {
+        const contentUrl = `${serverBase}content`;
+        const contentBuffer = await Utils.fetchBuffer(contentUrl);
+        ttx = JSON.parse(new TextDecoder().decode(contentBuffer)).ttx || "";
+      }
+
+      const seen = new Set();
+      const files = [];
+      for (const match of ttx.matchAll(/<(?:t-img|img)[^>]+src=["']?([^"'\s>]+)["']?[^>]*>/gi)) {
+        const filename = match[1];
+        if (filename && !seen.has(filename)) {
+          seen.add(filename);
+          const wMatch = match[0].match(/orgwidth=["']?(\d+)["']?/i);
+          const hMatch = match[0].match(/orgheight=["']?(\d+)["']?/i);
+
+          const imgSrc = filename.includes('M_H.jpg') 
+            ? `${serverBase}${filename}` 
+            : `${serverBase}${filename}/M_H.jpg`;
+
+          files.push({
+            pageNo: files.length + 1,
+            filename: filename,
+            width: wMatch ? parseInt(wMatch[1], 10) : 0,
+            height: hMatch ? parseInt(hMatch[1], 10) : 0,
+            src: imgSrc
+          });
+        }
+      }
+
+      return { config, files };
+    },
+
+    getTitle: function(config, cid) {
+      let raw = config.title || DOC.title || "";
+      raw = raw.split(/[|｜]/)[0].trim();
+      raw = raw.replace(/[-－–—\s]*(?:Ohta Web Comic|太田出版|FLB BinB).*$/gi, '').trim();
+
+      const match = raw.match(/^(.*?)(?:\s+[-－–—/]\s+|\s+)(第?\s*\d+\s*話?.*)$/i);
+      if (match) {
+        return resolveCleanFileName(match[1], match[2], cid);
+      }
+      return resolveCleanFileName(raw, "", cid);
+    }
+  };
+
+  // 8. BOOKHODAI (viewer.bookhodai.jp)
+  const BookhodaiAdapter = {
+    id: "bookhodai",
+    name: "Bookhodai",
+    theme: { color: "#3F9339", bg: "#ffffff", text: "#3F9339", top: "43px" },
+
+    isMatch: (url) => url.includes("bookhodai.jp") && (
+      url.includes("/speedreader/") ||
+      Boolean(new URL(url, WIN.location.origin).searchParams.get('cid')) ||
+      Boolean(DOC.getElementById('content')?.getAttribute('data-ptbinb-cid'))
+    ),
+
+    getCid: () => {
+      try {
+        const cid = new URL(WIN.location.href).searchParams.get('cid');
+        if (cid && cid.trim()) return cid.trim();
+      } catch (e) {}
+      const attr = DOC.getElementById('content')?.getAttribute('data-ptbinb-cid') || DOC.getElementById('content')?.dataset?.ptbinbCid;
+      return (attr && attr.trim()) ? attr.trim() : "Bookhodai_Episode";
+    },
+
+    fetchManifest: async function(cid, Tools, Utils) {
+      const contentEl = DOC.getElementById('content');
+      const ptbinb = contentEl?.dataset?.ptbinb || "https://viewer.bookhodai.jp/sws/apis/bibGetCntntInfo.php";
+      const randomString = Tools.generateRandomString32(cid);
+
+      const apiUrl = new URL(ptbinb, WIN.location.href);
+      apiUrl.searchParams.set("cid", cid);
+      apiUrl.searchParams.set("k", randomString);
+      apiUrl.searchParams.set("dmytime", Date.now());
+
+      for (const [k, v] of new URL(WIN.location.href).searchParams.entries()) {
+        if (!apiUrl.searchParams.has(k)) apiUrl.searchParams.set(k, v);
+      }
+
+      const infoBuf = await Utils.fetchBuffer(apiUrl.href);
+      const infoJson = JSON.parse(new TextDecoder().decode(infoBuf));
+      const data = infoJson.items?.[0];
+      if (!data?.ContentsServer) throw new Error("Không lấy được ContentsServer từ Bookhodai.");
+
+      const serverBase = data.ContentsServer.replace(/\/?$/, '/');
+
+      const config = {
+        title: data.Title || "",
+        subTitle: data.SubTitle || "",
+        contentServer: serverBase,
+        ctbl: data.ctbl ? Tools.getDecryptedTable(cid, randomString, data.ctbl) : null,
+        ptbl: data.ptbl ? Tools.getDecryptedTable(cid, randomString, data.ptbl) : null
+      };
+
+      // Kéo file cấu hình content.js trên máy chủ tĩnh binbcontents
+      let ttx = "";
+      try {
+        const cntntUrl = `${serverBase}content.js?dmytime=${Date.now()}`;
+        const cntntBuf = await Utils.fetchBuffer(cntntUrl);
+        const rawText = new TextDecoder().decode(cntntBuf);
+        ttx = JSON.parse(rawText.replace(/^DataGet_Content\(/, '').replace(/\);?\s*$/, '')).ttx || "";
+      } catch (e) {
+        const cntntUrl = `${serverBase}content`;
+        const cntntBuf = await Utils.fetchBuffer(cntntUrl);
+        ttx = JSON.parse(new TextDecoder().decode(cntntBuf)).ttx || "";
+      }
+
+      const seen = new Set();
+      const files = [];
+      for (const match of ttx.matchAll(/<(?:t-img|img)[^>]+src=["']?([^"'\s>]+)["']?[^>]*>/gi)) {
+        const filename = match[1];
+        if (filename && !seen.has(filename)) {
+          seen.add(filename);
+          const wMatch = match[0].match(/orgwidth=["']?(\d+)["']?/i);
+          const hMatch = match[0].match(/orgheight=["']?(\d+)["']?/i);
+
+          // LINK ẢNH THẬT TRÊN BINBCONTENTS: Trỏ trực tiếp vào file M_H.jpg
+          const src = filename.includes('M_H.jpg')
+            ? `${serverBase}${filename}`
+            : `${serverBase}${filename}/M_H.jpg`;
+
+          files.push({
+            pageNo: files.length + 1,
+            filename: filename,
+            width: wMatch ? parseInt(wMatch[1], 10) : 0,
+            height: hMatch ? parseInt(hMatch[1], 10) : 0,
+            src: src
+          });
+        }
+      }
+
+      return { config, files };
+    },
+
+    getTitle: function(config, cid) {
+      let raw = config.title || DOC.title || "";
+      raw = raw.split(/[|｜]/)[0].trim();
+      raw = raw.replace(/【[^】]*】/g, '').trim(); // Lọc tag rác quảng cáo trong ngoặc vuông
+      raw = raw.replace(/[-－–—\s]*(?:ブック放題|Bookhodai).*$/gi, '').trim();
+
+      let series = "";
+      let episode = cleanString(config.subTitle || "");
+
+      if (!episode) {
+        // 1. Nếu có sẵn chữ 話 / 回 / 章 / 巻 (Ví dụ: "幸せは腹から満たせ 第1話" hoặc "... 1話")
+        const epMatch = raw.match(/^(.*?)\s+((?:第\s*)?[0-9０-９]+(?:\.[0-9]+)?\s*(?:話|回|章|巻|話目|エピソード).*)$/i);
+        if (epMatch) {
+          series = epMatch[1];
+          episode = epMatch[2]; // Giữ nguyên đúng chữ của web (話 hay 巻)
+        } else {
+          // 2. Nếu tên chỉ để số trong ngoặc (Ví dụ: "... コミック版 (1) (1)" hoặc "（１）")
+          const volMatch = raw.match(/[（\(]([0-9０-９]+)[）\)]/);
+          if (volMatch) {
+            episode = `${volMatch[1]}巻`;
+            // Cắt sạch các cụm số (1) lặp lại ở đuôi
+            series = raw.replace(/[（\(\s\u3000]+[0-9０-９]+[）\)]*/g, '').trim();
+          } else {
+            series = raw;
+          }
+        }
+      } else {
+        series = raw;
+      }
+
+      return resolveCleanFileName(series, episode, cid);
+    }
+  };
+
+  // 9. SPEEDBINB PTIMG PACKAGE (Comic Polca, Kirapo, Comic Porta, Super Hero Comics)
   const PTImgAdapter = {
     id: "ptimg",
 
@@ -883,7 +1106,7 @@
     }
   };
 
-  const ADAPTERS = [CmoaAdapter, YanmagaAdapter, GaugauAdapter, BookliveAdapter, VoltageAdapter, YomongaAdapter, PTImgAdapter];
+  const ADAPTERS = [CmoaAdapter, YanmagaAdapter, GaugauAdapter, BookliveAdapter, VoltageAdapter, YomongaAdapter, BricksAdapter, BookhodaiAdapter, PTImgAdapter];
 
   function resolveSiteAdapter() {
     const currentUrl = WIN.location.href;

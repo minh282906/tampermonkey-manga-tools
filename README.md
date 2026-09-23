@@ -17,6 +17,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 | Script                     | Các trang hỗ trợ                                                                                                                                                    | Trạng thái  |                                                      Cài Đặt (1-Click)                                                      |
 | :------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------ | :---------: | :-------------------------------------------------------------------------------------------------------------------------: |
 | **Pixiv Downloader**       | Tải chuẩn arts original trên pixiv (`pixiv.net`)                                                                                                                    | 🟢 Hoạt động |    [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/PixivDownloader.user.js)    |
+| **Ganma Downloader**       | GANMA! (`ganma.jp`)                                                                                                                    | 🟢 Hoạt động |    [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/GanmaDownloader.user.js)    |
 | **EbookJapan Downloader**  | EbookJapan (`ebookjapan.yahoo.co.jp`)                                                                                                                               | 🟢 Hoạt động |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/EbookJPDownloader.user.js)   |
 | **DLsite Downloader**      | Bao gồm tất cả DLsite Play, trong đó có cả Comipo Play (`dlsite.com`)                                                                                               | 🟢 Hoạt động |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/DLsiteDownloader.user.js)    |
 | **PUBLUS Downloader**      | Bao gốm các bên sử dụng engine PUBLUS Reader / NFBR (BookWalker, PixivComic (tankobon), DMM Books, FANZA Books, COMIC nettai, Comic Boost, PASH UP!, d Anime Store) | 🟢 Hoạt động |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/PublusDownloader.user.js)    |
@@ -175,15 +176,16 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 </details>
 
 - pixiv (`pixiv.net`)
-- Alphapolis (`alphapolis.co.jp`)
 - DLsite Play (`dlsite.com`)
 - EbookJP (`ebookjapan.yahoo.co.jp`)
+- GANMA! (`ganma.jp`)
 - Piccoma Manga (`piccoma.com`)
 - Comico (`comico.jp`)
 - COMIC FUZ (`comic-fuz.com`)
 - YanJan! (`ynjn.jp`)
 - Jump Rookie (`rookie.shonenjump.com`)
 - Comici (`comici.jp`)
+- Alphapolis (`alphapolis.co.jp`)
 - Amazon Kindle Manga (`amazon.co.jp`)
 - Mecha Comic (`mechacomic.jp`)
 - MangaONE và Ura Sunday (`manga-one.com`, `urasunday.com`)

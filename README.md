@@ -146,6 +146,8 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 - BookLive (`booklive.jp`)
 - Voltage Comics (`voltage-comics.com`)
 - Manga Yomonga (`yomonga.com`)
+- Bookhodai (`bookhodai.jp`)
+- Ohta Web Comic (`webcomic.ohtabooks.com`)
 - Kirapo (`kirapo.jp`) (Zulet!, Comic Meteor, Comic Polaris, Comic Ambre, Comic Etoile, Comic Astir)
 - Comic Polca (`123hon.com/polca`)
 - Comic Porta (`comic-porta.com`)

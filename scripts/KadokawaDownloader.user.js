@@ -224,22 +224,41 @@
         }
       }
 
-      // 3. Dự phòng cấp 3: Bắt thẳng episodeId mà web viewer vừa gọi trên Performance API
-      if (!targetEpisodeId && typeof WIN.performance?.getEntriesByType === 'function') {
+      // 3. Dự phòng cấp 3: Bắt episodeId & Cảm biến dò nấc phân giải mới (Hoàn toàn im lặng trừ khi có biến)
+      if (typeof WIN.performance?.getEntriesByType === 'function') {
         const vEntries = WIN.performance.getEntriesByType('resource')
-          .filter(r => r.name && r.name.includes('/api/contents/viewer?episodeId='));
+          .filter(r => r.name && r.name.includes('/api/contents/viewer'));
         if (vEntries.length > 0) {
           const lastUrl = vEntries[vEntries.length - 1].name;
-          const m = lastUrl.match(/[?&]episodeId=([a-zA-Z0-9_-]+)/);
-          if (m && m[1]) targetEpisodeId = m[1];
+          const urlObj = new URL(lastUrl, WIN.location.href);
+
+          const ep = urlObj.searchParams.get('episodeId');
+          if (ep && !targetEpisodeId) targetEpisodeId = ep;
+
+          // CẢM BIẾN: Chỉ in cảnh báo DUY NHẤT nếu web gọi nấc mới khác 1284 và 768
+          const sizeParam = urlObj.searchParams.get('imageSizeType');
+          if (sizeParam && sizeParam !== 'width:1284' && sizeParam !== 'width:768') {
+            console.warn(`%c[KadoComi] 🚀 Phát hiện nấc phân giải mới từ web: ${sizeParam}!`, 'color:#eab308;font-weight:bold;');
+          }
         }
       }
 
       if (!targetEpisodeId) throw new Error("Không thể xác định Episode ID của chương truyện.");
 
-      // 4. KÉO API VIEWER LẤY DANH SÁCH ẢNH (Đoạn này vừa rồi bị cắt mất dẫn đến lỗi viewerData is not defined) [1]
-      const viewerApiUrl = `https://comic-walker.com/api/contents/viewer?episodeId=${targetEpisodeId}&imageSizeType=width%3A1284`;
-      const viewerBuf = await Utils.fetchBuffer(viewerApiUrl);
+      // 4. KÉO API VIEWER: Luôn ép nấc Master 1284 (Tự động lùi về 768 nếu gặp truyện cũ bị 400)
+      let viewerBuf = null;
+      try {
+        const primaryUrl = `https://comic-walker.com/api/contents/viewer?episodeId=${targetEpisodeId}&imageSizeType=width%3A1284`;
+        viewerBuf = await Utils.fetchBuffer(primaryUrl);
+      } catch (err) {
+        if (String(err).includes('400')) {
+          const fallbackUrl = `https://comic-walker.com/api/contents/viewer?episodeId=${targetEpisodeId}&imageSizeType=width%3A768`;
+          viewerBuf = await Utils.fetchBuffer(fallbackUrl);
+        } else {
+          throw err;
+        }
+      }
+
       const viewerData = JSON.parse(new TextDecoder().decode(viewerBuf));
 
       if (!viewerData || !Array.isArray(viewerData.manuscripts) || viewerData.manuscripts.length === 0) {

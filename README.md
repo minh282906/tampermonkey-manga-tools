@@ -41,6 +41,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 | **Comici Downloader**      | (`comici.jp`)                                                                                                                                                       | 🟢 Hoạt động |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/ComiciJPDownloader.user.js)   |
 | **MechaComic Downloader**  | (`mechacomic.jp`)                                                                                                                                                   | 🟢 Hoạt động | [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/MechaComicDownloader.user.js)  |
 | **Alphapolis Downloader**  | (`alphapolis.co.jp`)                                                                                                                                                | 🟢 Hoạt động |    [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/PixivDownloader.user.js)    |
+| **MangaMee Downloader**    | マンガMee (`manga-mee.jp`)                                                                                                     | 🟢 Hoạt động |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/MangaMeeDownloader.user.js)   |
 | **Amazon Downloader**      | (`amazon.co.jp`)                                                                                                                                                    | 🟢 Hoạt động |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/AmazonDownloader.user.js)    |
 
 ---
@@ -193,6 +194,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 - MangaONE và Ura Sunday (`manga-one.com`, `urasunday.com`)
 - Zero Sum Online (`zerosumonline.com`)
 - Mangano (`manga-no.com`)
+- マンガMee (`manga-mee.jp`)
 
 </details>
 

@@ -36,6 +36,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 | **PixivComic Downloader**  | (`comic.pixiv.net`)                                                                                                                                                 | 🟢 Hoạt động | [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/PixivComicDownloader.user.js)  |
 | **ZeroSum Online Downloader**       | Zero Sum Online (`zerosumonline.com`)                                                                                                                    | 🟢 Hoạt động |    [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/ZerosumDownloader.user.js)    |
 | **MangaOne Downloader**    | Manga ONE và Ura Sunday<br />(`manga-one.com`, `urasunday.com`)                                                                                                     | 🟢 Hoạt động |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/MangaOneDownloader.user.js)   |
+| **Mangano Downloader**    | Mangano (`manga-no.com`)                                                                                                     | 🟢 Hoạt động |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/MangaNoDownloader.user.js)   |
 | **JumpRookie Downloader**  | (`rookie.shonenjump.com`)                                                                                                                                           | 🟢 Hoạt động | [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/JumpRookieDownloader.user.js)  |
 | **Comici Downloader**      | (`comici.jp`)                                                                                                                                                       | 🟢 Hoạt động |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/ComiciJPDownloader.user.js)   |
 | **MechaComic Downloader**  | (`mechacomic.jp`)                                                                                                                                                   | 🟢 Hoạt động | [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/MechaComicDownloader.user.js)  |
@@ -191,6 +192,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 - Mecha Comic (`mechacomic.jp`)
 - MangaONE và Ura Sunday (`manga-one.com`, `urasunday.com`)
 - Zero Sum Online (`zerosumonline.com`)
+- Mangano (`manga-no.com`)
 
 </details>
 

@@ -29,6 +29,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 | **SpeedBinb Downloader**   | Bao gồm các nền tảng sử dụng SpeedBinb (Booklive, Comic C'moA, Yanmaga, GauGau Monster+, Kirapo, ...)                                                               | 🟢 Hoạt động |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/SpeedBinbDownloader.user.js)  |
 | **Bambi Downloader**       | Bao gồm các bên sử dụng Bambi Engine (MagaPoke, Ciao Plus, K MANGA)                                                                                                 | 🟢 Hoạt động |    [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/BambiDownloader.user.js)    |
 | **Square Enix Downloader** | Bao gồm các bên thuộc Square Enix (Gangan Online, Manga Up, Shounen Gangan, GFantasy, Gangan Joker, Young Gangan, Big Gangan, ...)                                  | 🟢 Hoạt động | [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/SquareEnixDownloader.user.js)  |
+| **Corona EX Downloader**    | Corona EX (`to-corona-ex.com`)                                                                                                                                         | 🟢 Hoạt động |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/CoronaExDownloader.user.js)   |
 | **Comico Downloader**      | Comico (`comico.jp`)                                                                                                                                                | 🟢 Hoạt động |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/ComicoDownloader.user.js)    |
 | **ComicFuz Downloader**    | COMIC FUZ (`comic-fuz.com`)                                                                                                                                         | 🟢 Hoạt động |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/ComicFuzDownloader.user.js)   |
 | **YanJan Downloader**      | YanJan! (`ynjn.jp`)                                                                                                                                                 | 🟢 Hoạt động |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/YanJanDownloader.user.js)    |
@@ -186,6 +187,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 - GANMA! (`ganma.jp`)
 - Piccoma Manga (`piccoma.com`)
 - Comico (`comico.jp`)
+- Corona EX (`to-corona-ex.com`)
 - COMIC FUZ (`comic-fuz.com`)
 - YanJan! (`ynjn.jp`)
 - Jump Rookie (`rookie.shonenjump.com`)

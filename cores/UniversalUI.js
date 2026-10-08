@@ -190,17 +190,14 @@
         btn.style.cursor = isBusy ? "progress" : "pointer";
       },
       updateFormatUI: function(format) {
-        if (format === 'jpg') {
-          jpgInput.checked = true;
-          jpgInput.disabled = true;
-          spanJpg.textContent = "Xuất file JPG (ảnh gốc là JPG)";
-        } else if (format === 'webp') {
-          jpgInput.disabled = false;
-          spanJpg.textContent = "Xuất file JPG (ảnh gốc là WebP)";
-        } else if (format === 'png') {
-          jpgInput.disabled = false;
-          spanJpg.textContent = "Xuất file JPG (ảnh gốc là PNG)";
-        }
+        const extUpper = String(format || 'JPG').toUpperCase();
+
+        // 1. Ẩn ô checkbox đi
+        jpgInput.style.display = "none";
+        jpgInput.disabled = true;
+
+        spanJpg.style.cursor = "default";
+        spanJpg.textContent = `Ảnh gốc là ${extUpper}`;
       }
     };
   }

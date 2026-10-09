@@ -110,19 +110,22 @@
     btn.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); onDownload(); });
 
     const label = DOC.createElement("label");
-    label.style.cssText = `all:initial;display:inline-flex;align-items:center;gap:6px;margin-top:5px;color:${subTextColor};font:700 11px system-ui;cursor:pointer;`;
+    // Giữ min-height: 16px để khung bảng không bị sụt giật chiều cao lúc chưa có chữ
+    label.style.cssText = `all:initial;display:inline-flex;align-items:center;gap:6px;margin-top:5px;min-height:16px;color:${subTextColor};font:700 11px system-ui;cursor:pointer;`;
 
     const jpgInput = DOC.createElement("input");
     jpgInput.type = "checkbox";
     jpgInput.checked = localStorage.getItem(`${storagePrefix}:convert-jpeg`) === '1';
-    jpgInput.style.cssText = `all:initial;appearance:auto;width:13px;height:13px;accent-color:${themeColor};cursor:pointer;`;
+    // KHỞI TẠO ẨN MẶC ĐỊNH LÚC ĐANG KIỂM TRA:
+    jpgInput.style.cssText = `all:initial;display:none;appearance:auto;width:13px;height:13px;accent-color:${themeColor};cursor:pointer;`;
     jpgInput.addEventListener("change", () => {
       localStorage.setItem(`${storagePrefix}:convert-jpeg`, jpgInput.checked ? '1' : '0');
       onJpgChange(jpgInput.checked);
     });
 
     const spanJpg = DOC.createElement("span");
-    spanJpg.textContent = defaultJpgText;
+    // KHỞI TẠO RỖNG HOÀN TOÀN (KHÔNG CHỮ THỪA, KHÔNG TỰ CHẾ CHỮ CHỜ):
+    spanJpg.textContent = "";
     spanJpg.style.cssText = `all:initial;color:${subTextColor};font:700 11px system-ui;`;
     label.append(jpgInput, spanJpg);
 
@@ -166,6 +169,8 @@
     panel.addEventListener("click", () => { if (isCollapsed) setCollapsedState(false); });
     DOC.body.appendChild(panel);
 
+    let isZeroCopy = false;
+
     return {
       panel,
       button: btn,
@@ -175,6 +180,7 @@
       percent: percentText,
       fill,
       status: statusText,
+      
       updateProgress: function(data = {}) {
         const total = Number.isFinite(data.total) ? data.total : 0;
         const completed = Number.isFinite(data.completed) ? data.completed : 0;
@@ -183,6 +189,19 @@
         percentText.textContent = `${pct}%`;
         fill.style.transform = `scaleX(${total > 0 ? pct / 100 : 0})`;
         if (data.status) statusText.textContent = data.status;
+
+        if (data.status && data.status.includes("Đang kiểm tra")) {
+          jpgInput.style.display = "none";
+          spanJpg.textContent = "";
+          isZeroCopy = false;
+        }
+
+        // KHI SẴN SÀNG: NẾU LÀ SCRAMBLE (KHÔNG PHẢI ZERO-COPY) THÌ MỚI HIỆN CHECKBOX
+        if (data.status && data.status.includes("Sẵn sàng") && !isZeroCopy) {
+          jpgInput.style.display = "";
+          spanJpg.style.cursor = "pointer";
+          spanJpg.textContent = "Xuất file JPG (mặc định PNG)";
+        }
       },
       setBusy: function(isBusy) {
         btn.disabled = Boolean(isBusy);
@@ -190,8 +209,8 @@
         btn.style.cursor = isBusy ? "progress" : "pointer";
       },
       updateFormatUI: function(format) {
+        isZeroCopy = true;
         const extUpper = String(format || 'JPG').toUpperCase();
-
         // 1. Ẩn ô checkbox đi
         jpgInput.style.display = "none";
         jpgInput.disabled = true;

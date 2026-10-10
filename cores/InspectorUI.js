@@ -36,6 +36,36 @@
     const DOC = document;
     DOC.getElementById('manga-inspector-root')?.remove();
 
+    if (!DOC.getElementById('manga-inspector-css-shield')) {
+      const shield = DOC.createElement('style');
+      shield.id = 'manga-inspector-css-shield';
+      shield.textContent = `
+        #manga-inspector-root * {
+          box-sizing: border-box !important;
+          margin: 0 !important;
+          line-height: normal !important;
+        }
+        #manga-inspector-root button {
+          box-sizing: border-box !important;
+          display: inline-flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          min-width: 0 !important;
+          min-height: 0 !important;
+          height: 28px !important;
+        }
+        #manga-inspector-root #insp-fmt-group button {
+          height: 24px !important;
+        }
+        #manga-inspector-root input[type="text"] {
+          box-sizing: border-box !important;
+          height: 28px !important;
+          line-height: 28px !important;
+        }
+      `;
+      (DOC.head || DOC.documentElement).appendChild(shield);
+    }
+
     let isDecoded = true, curData = null, previewBox = null;
     let selectedFormat = 'png', selectedQuality = 0.95;
 

@@ -190,14 +190,25 @@
         fill.style.transform = `scaleX(${total > 0 ? pct / 100 : 0})`;
         if (data.status) statusText.textContent = data.status;
 
+        // 1. KHI RESET VỀ "Đang kiểm tra...": XÓA SẠCH DÒNG FORMAT
         if (data.status && data.status.includes("Đang kiểm tra")) {
           jpgInput.style.display = "none";
           spanJpg.textContent = "";
           isZeroCopy = false;
         }
 
-        // KHI SẴN SÀNG: NẾU LÀ SCRAMBLE (KHÔNG PHẢI ZERO-COPY) THÌ MỚI HIỆN CHECKBOX
-        if (data.status && data.status.includes("Sẵn sàng") && !isZeroCopy) {
+        // 2. KHI "Sẵn sàng.": NẾU CÓ TRUYỀN format -> TỰ ĐỘNG CHUYỂN SANG CHẾ ĐỘ ZERO-COPY
+        if (data.format) {
+          isZeroCopy = true;
+          const extUpper = String(data.format).toUpperCase();
+          jpgInput.style.display = "none";
+          jpgInput.disabled = true;
+          spanJpg.style.cursor = "default";
+          spanJpg.textContent = `Ảnh gốc là ${extUpper}`;
+        }
+
+        // KHI SẴN SÀNG: NẾU LÀ SCRAMBLE (KHÔNG CÓ format TRUYỀN VÀO): HIỆN CHECKBOX MẶC ĐỊNH
+        else if (data.status && data.status.includes("Sẵn sàng") && !isZeroCopy) {
           jpgInput.style.display = "";
           spanJpg.style.cursor = "pointer";
           spanJpg.textContent = "Xuất file JPG (mặc định PNG)";

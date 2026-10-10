@@ -235,36 +235,6 @@
       return;
     }
 
-    if (!DOC.getElementById('jumptoon-insp-css-reset')) {
-      const styleReset = DOC.createElement('style');
-      styleReset.id = 'jumptoon-insp-css-reset';
-      styleReset.textContent = `
-        #manga-inspector-root * {
-          box-sizing: border-box !important;
-          margin: 0 !important;
-          line-height: normal !important;
-        }
-        #manga-inspector-root button {
-          box-sizing: border-box !important;
-          display: inline-flex !important;
-          align-items: center !important;
-          justify-content: center !important;
-          min-width: 0 !important;
-          min-height: 0 !important;
-          height: 28px !important;
-        }
-        #manga-inspector-root #insp-fmt-group button {
-          height: 24px !important;
-        }
-        #manga-inspector-root input[type="text"] {
-          box-sizing: border-box !important;
-          height: 28px !important;
-          line-height: 28px !important;
-        }
-      `;
-      DOC.head.appendChild(styleReset);
-    }
-
     const content = capturedContent;
     const pages = content.pageList;
     const Tools = WIN.JumptoonTools || window.JumptoonTools;

@@ -90,7 +90,9 @@
     running: false,
     convertJpeg: localStorage.getItem("giga-dl:convert-jpeg") === '1',
     chapterData: null,
-    ui: null
+    ui: null,
+    lastUrl: "",
+    lastEpisodeId: ""
   };
 
   /* =========================================================================
@@ -145,9 +147,11 @@
     const createUI = window.createMangaDownloaderUI || globalThis.createMangaDownloaderUI;
     if (typeof createUI === "function" && DOC.body) {
       const theme = resolveSiteTheme();
-      state.ui = createUI({
+      
+      const uiConfig = {
         storagePrefix: "giga-dl",
         title: theme.name,
+        engine: "GIGAVIEWER",
         themeColor: theme.color,
         themeBg: theme.bg,
         titleColor: theme.text,
@@ -155,7 +159,9 @@
         defaultJpgText: "Xuất file JPG (mặc định PNG)",
         onDownload: startDownload,
         onJpgChange: (checked) => { state.convertJpeg = checked; }
-      });
+      }
+      state.ui = createUI(uiConfig);
+      state.ui.setBusy(true);
 
       // Áp dụng Tiêu đề 2 tầng (Dòng 1: Tên Tạp chí, Dòng 2: GIGAVIEWER)
       if (state.ui?.panel) {
@@ -163,7 +169,7 @@
         if (titleEl) {
           titleEl.innerHTML = `
             <div style="all:initial;display:block;font:800 13px/1.2 system-ui,sans-serif;color:${theme.text};letter-spacing:0.2px;">${theme.name}</div>
-            <div style="all:initial;display:block;font:700 9px/1.2 system-ui,sans-serif;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;margin-top:2px;">GIGAVIEWER</div>
+            <div style="all:initial;display:block;font:700 9px/1.2 system-ui,sans-serif;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;margin-top:2px;">${uiConfig.engine}</div>
           `;
         }
       }
@@ -523,8 +529,7 @@
    * KHỞI CHẠY VÀ SPA WATCHER
    * ========================================================================= */
   async function boot() {
-    while (!DOC.body) await sleep(30);
-
+    while (!DOC.body) await sleep(20);
     const ui = getUI();
 
     if (!isEpisodeUrl()) {
@@ -532,49 +537,80 @@
       return;
     }
 
-    if (ui?.panel) ui.panel.style.display = "block";
-    if (ui) ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
-
-    let data = null;
-    let retries = 0;
-
-    while (retries < 25) {
-      data = fetchEpisodeData();
-      if (data && data.pages?.length > 0) break;
-      await sleep(150);
-      retries++;
+    if (ui?.panel) {
+      ui.panel.style.display = "block";
+      ui.setBusy(true);
+      ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
     }
 
-    if (data && data.pages?.length > 0) {
-      await sleep(100);
+    try {
+      let data = null;
+      let retries = 0;
+
+      while (retries < 20) {
+        data = fetchEpisodeData();
+        if (data && data.pages?.length > 0) break;
+        const json = getParsedEpisodeJson();
+        if (json && retries > 3 && (!data || data.pages.length === 0)) {
+          break; //
+        }
+
+        await sleep(150);
+        retries++;
+      }
+
+      if (!data || !data.pages?.length) {
+        throw new Error("Chương này chưa mở hoặc cần trả phí.");
+      }
+
       state.chapterData = data;
+      await sleep(80);
+
       if (ui) {
         ui.updateProgress({
           completed: 0,
           total: data.pages.length,
           status: "Sẵn sàng."
         });
+        ui.setBusy(false);
       }
-    } else {
-      if (ui) ui.updateProgress({ status: "Sẵn sàng." });
+    } catch (err) {
+      console.error("[giga-dl] Boot error:", err);
+      if (ui) {
+        ui.updateProgress({ status: "Lỗi: " + (err?.message || "không thể tải trang.") });
+        ui.setBusy(true);
+      }
     }
   }
 
   // Khởi động SPA Route Watcher
   const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
   if (typeof watchRoute === "function") {
-    watchRoute(() => {
+    watchRoute((newUrl) => {
+      
+      if (!isEpisodeUrl()) {
+        const ui = getUI();
+        if (ui?.panel) ui.panel.style.display = "none";
+        state.chapterData = null;
+        state.lastEpisodeId = "";
+        state.lastUrl = "";
+        state.running = false;
+        return;
+      }
+
+      const currentEpId = getEpisodeId();
+      if (state.lastEpisodeId && state.lastEpisodeId === currentEpId) return;
+
+      state.lastUrl = newUrl;
+      state.lastEpisodeId = currentEpId;
       state.chapterData = null;
       state.running = false;
+
       const ui = getUI();
-      if (ui) ui.setBusy(false);
+      if (ui) ui.setBusy(true);
+      ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
       boot();
     });
   }
-
-  if (DOC.readyState === "loading") {
-    DOC.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
-  }
+  boot();
 })();

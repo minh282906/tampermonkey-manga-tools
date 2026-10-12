@@ -44,7 +44,8 @@
     convertJpeg: localStorage.getItem("jumptoon-dl:convert-jpeg") === '1',
     chapterData: null,
     ui: null,
-    lastCleanUrl: null
+    lastCleanUrl: "",
+    lastEpisodeKey: ""
   };
 
   /* =========================================================================
@@ -74,6 +75,7 @@
       };
 
       state.ui = createUI(uiConfig);
+      state.ui.setBusy(true);
 
       if (state.ui?.panel) {
         const titleEl = state.ui.panel.querySelector('[style*="font: 800 13px"], [style*="font:800 13px"]');
@@ -91,10 +93,6 @@
   /* =========================================================================
    * 2. BỘ LỌC ĐỊNH TUYẾN URL THÔNG MINH
    * ========================================================================= */
-  function getCleanUrl() {
-    return WIN.location.origin + WIN.location.pathname + WIN.location.search;
-  }
-
   function getCurrentContext() {
     const p = WIN.location.pathname;
     const s = WIN.location.search;
@@ -218,6 +216,9 @@
           if (content?.pageList && Array.isArray(content.pageList) && content.pageList.length > 0) {
             // Khóa ID truyện
             if (content.seriesId && ctx.seriesId && String(content.seriesId) !== String(ctx.seriesId)) {
+              continue;
+            }
+            if (ctx.episodeId && content.id && String(content.id) !== String(ctx.episodeId)) {
               continue;
             }
             return content;
@@ -425,50 +426,122 @@
    * 6. KHỞI CHẠY (BOOT) - ẨN MẶC ĐỊNH & KHÔNG CHỚP NHÁY
    * ========================================================================= */
   async function boot() {
-    while (!DOC.body) await sleep(30);
+    while (!DOC.body) await sleep(20);
     const ui = getUI();
 
-    // 1. Luôn giấu UI lúc đầu
-    if (ui?.panel) ui.panel.style.display = "none";
-
     const ctx = getCurrentContext();
-    if (!ctx.isReader) return;
 
-    state.chapterData = null;
-    const data = await syncChapterData();
-    state.chapterData = data;
-
-    // 2. CHỈ KHI NÀO CÓ TRANG TRANH THÌ MỚI HIỆN UI!
-    if (!data || !data.pages || !data.pages.length) {
+    if (!ctx.isReader) {
+      if (ui?.panel) ui.panel.style.display = "none";
       return;
     }
 
-    if (ui?.panel) ui.panel.style.display = "block";
-    await sleep(80);
+    // 1. Phân lập giao diện ban đầu:
+    // - Trang đọc chap chính thức (/episodes/ hoặc /trial/): Hiện "Đang kiểm tra..." vì chắc chắn có truyện
+    // - Trang Series tổng quan: Tạm thời giấu panel, chỉ hiện khi ĐÃ XÁC NHẬN có preview thật
+    if (ctx.episodeId || ctx.isTrial) {
+      if (ui?.panel) {
+        ui.panel.style.display = "block";
+        ui.setBusy(true);
+        ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
+      }
+    } else {
+      if (ui?.panel) ui.panel.style.display = "none";
+    }
 
-    if (ui) {
-      ui.updateProgress({
-        completed: 0,
-        total: data.pages.length,
-        status: "Sẵn sàng."
-      });
+    try {
+      state.chapterData = null;
+
+      let data = null;
+      let retries = 0;
+      const maxRetries = (ctx.episodeId || ctx.isTrial) ? 25 : 8; // Trang series chỉ cần đợi tối đa ~800ms
+
+      while (retries < maxRetries) {
+        data = await syncChapterData();
+        if (data && data.pages && data.pages.length > 0) break;
+        await sleep(100);
+        retries++;
+      }
+      
+      // 3. Nếu không có trang truyện nào:
+      if (!data || !data.pages || !data.pages.length) {
+
+        if (ctx.episodeId || ctx.isTrial) {
+          if (ui?.panel) ui.panel.style.display = "block";
+          throw new Error("Không thể trích xuất trang truyện hoặc chưa mở.");
+        }
+
+        if (ui?.panel) ui.panel.style.display = "none";
+        return;
+      }
+
+      state.chapterData = data;
+      if (ui?.panel) ui.panel.style.display = "block";
+
+      if (ui) {
+        ui.updateProgress({
+          completed: 0,
+          total: data.pages.length,
+          status: "Sẵn sàng."
+        });
+        ui.setBusy(false); 
+      }
+    } catch (err) {
+      console.error("[jumptoon-dl] Boot error:", err);
+      if (ui) {
+        ui.updateProgress({ status: "Lỗi: " + (err?.message || "Không thể tải trang.") });
+        ui.setBusy(true); 
+      }
     }
   }
 
-  state.lastCleanUrl = getCleanUrl();
-  setInterval(() => {
-    const cur = getCleanUrl();
-    if (cur !== state.lastCleanUrl) {
-      state.lastCleanUrl = cur;
+  const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
+  if (typeof watchRoute === "function") {
+    watchRoute((newUrl) => {
+      const ctx = getCurrentContext();
+
+      if (!ctx.isReader) {
+        const ui = getUI();
+        if (ui?.panel) ui.panel.style.display = "none";
+        state.chapterData = null;
+        state.lastEpisodeKey = "";
+        state.lastCleanUrl = "";
+        state.running = false;
+        return;
+      }
+
+      const isExitingFromReader = Boolean(state.lastEpisodeKey && state.lastEpisodeKey.includes('_') && !state.lastEpisodeKey.endsWith('_preview') && !ctx.episodeId && !ctx.isTrial);
+      if (isExitingFromReader) {
+        const ui = getUI();
+        if (ui?.panel) ui.panel.style.display = "none";
+        state.chapterData = null;
+        state.lastEpisodeKey = "";
+        state.lastCleanUrl = "";
+        state.running = false;
+        return;
+      }
+
+      const cleanUrl = newUrl.split('#')[0];
+      const currentKey = `${ctx.seriesId}_${ctx.episodeId || (ctx.isTrial ? 'trial' : 'preview')}`;
+
+      if (state.lastEpisodeKey && state.lastEpisodeKey === currentKey && cleanUrl === state.lastCleanUrl) return;
+
+      state.lastCleanUrl = cleanUrl;
+      state.lastEpisodeKey = currentKey;
       state.chapterData = null;
       state.running = false;
-      boot();
-    }
-  }, 350);
 
-  if (DOC.readyState === "loading") {
-    DOC.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
+      const ui = getUI();
+      if (ui) {
+        ui.setBusy(true); 
+        if (!ctx.episodeId && !ctx.isTrial) {
+          if (ui.panel) ui.panel.style.display = "none";
+        } else {
+          ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
+        }
+      }
+      boot();
+    });
   }
+  boot();
 })();

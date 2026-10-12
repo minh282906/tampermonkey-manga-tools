@@ -58,7 +58,10 @@
     running: false,
     convertJpeg: localStorage.getItem("piccoma-dl:convert-jpeg") === '1',
     cachedData: null,
-    ui: null
+    chapterData: null,
+    ui: null,
+    lastUrl: "",
+    lastEpisodeId: ""
   };
 
   function getUI() {
@@ -83,6 +86,7 @@
       };
 
       state.ui = createUI(uiConfig);
+      state.ui.setBusy(true);
 
       // Tiêu đề 2 tầng (ẩn tầng 2 bằng visibility: hidden để cố định khoảng trống)
       if (state.ui?.panel) {
@@ -435,61 +439,88 @@
    * KHỞI CHẠY VÀ THEO DÕI SPA
    * ========================================================================= */
   async function boot() {
-    while (!DOC.body) await sleep(30);
+    while (!DOC.body) await sleep(20);
     const ui = getUI();
 
     if (!isEpisodeUrl()) {
       if (ui?.panel) ui.panel.style.display = "none";
-      if (ui) ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
       return;
     }
 
-    if (ui?.panel) ui.panel.style.display = "block";
-    if (ui) ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
-
-    let pages = [];
-    let retries = 0;
-
-    while (retries < 30) {
-      pages = fetchPiccomaPages();
-      if (pages.length > 0) break;
-      await sleep(150);
-      retries++;
+    if (ui?.panel) {
+      ui.panel.style.display = "block";
+      ui.setBusy(true);
+      ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
     }
 
-    if (pages.length > 0) {
+    try {
+      let pages = [];
+      let retries = 0;
+
+      while (retries < 30) {
+        pages = fetchPiccomaPages();
+        if (pages.length > 0) break;
+        await sleep(150);
+        retries++;
+      }
+
+      if (!pages || pages.length === 0) {
+        throw new Error("Không tìm thấy dữ liệu trang Piccoma.");
+      }
+
       state.chapterData = pages;
+      await sleep(80);
+
       if (ui) {
         ui.updateProgress({
           completed: 0,
           total: pages.length,
           status: "Sẵn sàng."
         });
+        ui.setBusy(false); 
       }
-    } else {
-      if (ui) ui.updateProgress({ status: "Sẵn sàng." });
+    } catch (err) {
+      console.error("[piccoma-dl] Boot error:", err);
+      if (ui) {
+        ui.updateProgress({ status: "Lỗi: " + (err?.message || "Không thể tải trang.") });
+        ui.setBusy(true);
+      }
     }
   }
 
   // Khởi động SPA Route Watcher
   const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
   if (typeof watchRoute === "function") {
-    watchRoute(() => {
+    watchRoute((newUrl) => {
+
+      if (!isEpisodeUrl()) {
+        const ui = getUI();
+        if (ui?.panel) ui.panel.style.display = "none";
+        state.cachedData = null;
+        state.chapterData = null;
+        state.lastEpisodeId = "";
+        state.lastUrl = "";
+        state.running = false;
+        return;
+      }
+
+      const currentEpId = getEpisodeId();
+
+      if (state.lastEpisodeId && state.lastEpisodeId === currentEpId) return;
+
+      state.lastUrl = newUrl;
+      state.lastEpisodeId = currentEpId;
       state.cachedData = null;
       state.chapterData = null;
       state.running = false;
+
       const ui = getUI();
       if (ui) {
-        ui.setBusy(false);
+        ui.setBusy(true);
         ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
       }
       boot();
     });
   }
-
-  if (DOC.readyState === "loading") {
-    DOC.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
-  }
+  boot();
 })();

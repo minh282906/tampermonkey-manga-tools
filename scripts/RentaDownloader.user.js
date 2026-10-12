@@ -51,7 +51,9 @@
     running: false,
     convertJpeg: localStorage.getItem("renta-dl:convert-jpeg") === '1',
     chapterData: null,
-    ui: null
+    ui: null,
+    lastUrl: "",
+    lastWorkId: ""
   };
 
   /* =========================================================================
@@ -84,6 +86,7 @@
       };
 
       state.ui = createUI(uiConfig);
+      state.ui.setBusy(true); 
 
       if (state.ui?.panel) {
         const titleEl = state.ui.panel.querySelector('[style*="font: 800 13px"], [style*="font:800 13px"]');
@@ -387,7 +390,7 @@
    * 6. KHỞI CHẠY VÀ THEO DÕI SPA ROUTE
    * ========================================================================= */
   async function boot() {
-    while (!DOC.body) await sleep(30);
+    while (!DOC.body) await sleep(20);
     const ui = getUI();
 
     if (!isViewerUrl()) {
@@ -397,27 +400,32 @@
 
     if (ui?.panel) {
       ui.panel.style.display = "block";
+      ui.setBusy(true);
       ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
     }
 
-    let runtime = null;
-    let retries = 0;
+    try {
+      let runtime = null;
+      let retries = 0;
 
-    while (retries < 30) {
-      if (isRuntimeReady()) {
-        runtime = {
-          maxPage: Number(WIN.max_page),
-          split: Number(WIN.imageSplit) || 7
-        };
-        break;
+      while (retries < 30) {
+        if (isRuntimeReady()) {
+          runtime = {
+            maxPage: Number(WIN.max_page),
+            split: Number(WIN.imageSplit) || 7
+          };
+          break;
+        }
+        await sleep(150);
+        retries++;
       }
-      await sleep(150);
-      retries++;
-    }
 
-    if (runtime && runtime.maxPage > 0) {
+      if (!runtime || runtime.maxPage <= 0) {
+        throw new Error("Không thể kết nối Runtime Papy DRE.");
+      }
+
       state.chapterData = runtime;
-      await sleep(80);
+      await sleep(120);
 
       if (ui) {
         ui.updateProgress({
@@ -425,29 +433,46 @@
           total: runtime.maxPage,
           status: "Sẵn sàng."
         });
+        ui.setBusy(false);
       }
-    } else {
-      if (ui) ui.updateProgress({ status: "Sẵn sàng." });
+    } catch (err) {
+      console.error("[renta-dl] Boot error:", err);
+      if (ui) {
+        ui.updateProgress({ status: "Lỗi: " + (err?.message || "Không thể tải trang.") });
+        ui.setBusy(true);
+      }
     }
   }
 
   const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
   if (typeof watchRoute === "function") {
-    watchRoute(() => {
+    watchRoute((newUrl) => {
+
+      if (!isViewerUrl()) {
+        const ui = getUI();
+        if (ui?.panel) ui.panel.style.display = "none";
+        state.chapterData = null;
+        state.lastWorkId = "";
+        state.lastUrl = "";
+        state.running = false;
+        return;
+      }
+      const currentWorkId = getWorkId();
+
+      if (state.lastWorkId && state.lastWorkId === currentWorkId) return;
+
+      state.lastUrl = newUrl;
+      state.lastWorkId = currentWorkId;
       state.chapterData = null;
       state.running = false;
+
       const ui = getUI();
       if (ui) {
-        ui.setBusy(false);
+        ui.setBusy(true);
         ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
       }
       boot();
     });
   }
-
-  if (DOC.readyState === "loading") {
-    DOC.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
-  }
+  boot();
 })();

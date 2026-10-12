@@ -47,6 +47,7 @@
     convertJpeg: localStorage.getItem("ynjn-dl:convert-jpeg") === '1',
     chapterData: null,
     ui: null,
+    lastUrl: "",
     lastEpId: null
   };
 
@@ -104,6 +105,7 @@
       };
 
       state.ui = createUI(uiConfig);
+      state.ui.setBusy(true);
 
       if (state.ui?.panel) {
         const titleEl = state.ui.panel.querySelector('[style*="font: 800 13px"], [style*="font:800 13px"]');
@@ -412,71 +414,91 @@
    * KHỞI CHẠY VÀ THEO DÕI SPA
    * ========================================================================= */
   async function boot() {
-    while (!DOC.body) await sleep(30);
+    while (!DOC.body) await sleep(20);
     const ui = getUI();
 
     if (!isEpisodeUrl()) {
       if (ui?.panel) ui.panel.style.display = "none";
-      if (ui) ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
       return;
     }
 
-    if (ui?.panel) ui.panel.style.display = "block";
-    if (ui) ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
-
-    const { episodeId } = getUrlParams();
-    let data = null;
-    let retries = 0;
-
-    while (retries < 25) {
-      try {
-        if (episodeId && episodeId === state.lastEpId && retries < 15) {
-          await sleep(150);
-          retries++;
-          continue;
-        }
-
-        data = await fetchYnjnPages();
-        if (data && data.pages?.length > 0) {
-          state.lastEpId = episodeId;
-          break;
-        }
-      } catch (e) {}
-      await sleep(150);
-      retries++;
+    if (ui?.panel) {
+      ui.panel.style.display = "block";
+      ui.setBusy(true);
+      ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
     }
 
-    if (data && data.pages?.length > 0) {
+    try {
+      let data = null;
+      let retries = 0;
+
+      while (retries < 25) {
+        try {
+          data = await fetchYnjnPages();
+          if (data && data.pages?.length > 0) break;
+        } catch (e) {}
+        await sleep(150);
+        retries++;
+      }
+
+      if (!data || !data.pages?.length) {
+        throw new Error("Không tìm thấy dữ liệu trang YanJan!.");
+      }
+
       state.chapterData = data;
+
       if (ui) {
         ui.updateProgress({
           completed: 0,
           total: data.pages.length,
           status: "Sẵn sàng."
         });
+        ui.setBusy(false);
       }
-    } else {
-      if (ui) ui.updateProgress({ status: "Sẵn sàng." });
+    } catch (err) {
+      console.error("[ynjn-dl] Boot error:", err);
+      if (ui) {
+        ui.updateProgress({ status: "Lỗi: " + (err?.message || "Không thể tải trang.") });
+        ui.setBusy(true);
+      }
     }
   }
 
   const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
   if (typeof watchRoute === "function") {
-    watchRoute(() => {
+    watchRoute((newUrl) => {
+
+      if (!isEpisodeUrl()) {
+        const ui = getUI();
+        if (ui?.panel) ui.panel.style.display = "none";
+        state.chapterData = null;
+        capturedViewerData = null;
+        capturedEpisodeId = null;
+        state.lastEpisodeId = "";
+        state.lastUrl = "";
+        state.running = false;
+        return;
+      }
+
+      const { episodeId, titleId } = getUrlParams();
+      const currentKey = episodeId ? `${titleId}/${episodeId}` : titleId;
+
+      if (state.lastEpisodeId && state.lastEpisodeId === currentKey) return;
+
+      state.lastUrl = newUrl;
+      state.lastEpisodeId = currentKey;
       state.chapterData = null;
+      capturedViewerData = null;
+      capturedEpisodeId = null;
       state.running = false;
+      
       const ui = getUI();
       if (ui) {
-        ui.setBusy(false);
+        ui.setBusy(true);
         ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
       }
       boot();
     });
   }
-
-  if (DOC.readyState === "loading") {
-    DOC.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
-  }
+  boot();
 })();

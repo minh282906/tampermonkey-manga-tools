@@ -56,6 +56,67 @@
   }
 
   /* =========================================================================
+   * BỘ BĂM HASH & FALLBACK ĐỘC LẬP CHO INSPECTOR (TỰ LẤY DATA KHI WEB KHÔNG RENDER)
+   * ========================================================================= */
+  async function sha256Hex(str) {
+    const buf = new TextEncoder().encode(str);
+    const digest = await WIN.crypto.subtle.digest('SHA-256', buf);
+    return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  async function sha512Hex(str) {
+    const buf = new TextEncoder().encode(str);
+    const digest = await WIN.crypto.subtle.digest('SHA-512', buf);
+    return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  async function fetchBambiInspectorFallback(site) {
+    const Utils = WIN.MangaUtils || window.MangaUtils;
+    if (!Utils) return null;
+
+    try {
+      // 1. Ciao Plus Fallback
+      if (site.isCiao) {
+        const params = { version: "6.0.0", platform: "3", episode_id: String(site.epId) };
+        const keys = Object.keys(params).sort();
+        const arr = [];
+        for (const k of keys) {
+          arr.push(`${await sha256Hex(k)}_${await sha512Hex(String(params[k]))}`);
+        }
+        const hash = await sha512Hex(await sha256Hex(arr.join(',')));
+        const apiUrl = `https://api.ciao.shogakukan.co.jp/web/episode/viewer?${new URLSearchParams(params).toString()}`;
+        const buf = await Utils.fetchBuffer(apiUrl, {
+          'Accept': 'application/json',
+          'X-Bambi-Hash': hash,
+          'X-Bambi-Is-Crawler': 'false'
+        });
+        return JSON.parse(new TextDecoder().decode(buf));
+      }
+
+      // 2. MagaPoke Fallback
+      if (!site.isKManga && !site.isCiao) {
+        const kHash = await sha256Hex('episode_id');
+        const vHash = await sha512Hex(String(site.epId));
+        const part1 = await sha256Hex(`${kHash}_${vHash}`);
+        const empty256 = await sha256Hex('');
+        const empty512 = await sha512Hex('');
+        const hash = await sha512Hex(`${part1}${empty256}_${empty512}`);
+        const apiUrl = `https://se-api.pocket.shonenmagazine.com/web/episode/viewer?episode_id=${site.epId}`;
+        const buf = await Utils.fetchBuffer(apiUrl, {
+          'Accept': 'application/json',
+          'X-Manga-Hash': hash,
+          'X-Manga-Is-Crawler': 'false',
+          'X-Manga-Platform': '3'
+        });
+        return JSON.parse(new TextDecoder().decode(buf));
+      }
+    } catch (e) {
+      console.warn("[bambi-insp] Fallback error:", e);
+    }
+    return null;
+  }
+
+  /* =========================================================================
    * 2. BỘ CẤU HÌNH CHO 3 NỀN TẢNG (MAGAPOKE, K MANGA, CIAO PLUS)
    * ========================================================================= */
   function getSiteInfo() {
@@ -120,6 +181,9 @@
   async function boot() {
     while (!DOC.body) await sleep(50);
     const site = getSiteInfo();
+
+    DOC.getElementById('manga-inspector-root')?.remove();
+
     if (!site || !site.epId) return;
 
     let apiData = null;
@@ -143,22 +207,28 @@
       } catch(e) {}
     }
 
-    // 3. Nếu chuyển sang tập mới chưa có cache: Đợi đúng gói tin của tập đó
+    // 3. Nếu chuyển sang tập mới chưa có cache: Đợi gói tin tự nhiên của web trong 1.5s
     if (!apiData) {
       for (let i = 0; i < 30; i++) {
         if (capturedApi && String(capturedApi.episode_id || '') === String(site.epId)) {
           apiData = capturedApi;
           break;
         }
-        await sleep(150);
+        await sleep(100);
+      }
+    }
+
+    // 4. [TỰ CỨU KHI WEB KHÔNG TỰ GỌI]: Kích hoạt Fallback ký chữ ký số
+    if (!apiData || String(apiData.episode_id || '') !== String(site.epId)) {
+      apiData = await fetchBambiInspectorFallback(site);
+      if (apiData) {
+        apiData.episode_id = String(site.epId);
+        capturedApi = apiData;
       }
     }
 
     const rawPages = apiData?.page_list || apiData?.pages || apiData?.data?.page_list || [];
     if (!rawPages.length) return;
-
-    // Xóa UI cũ để cập nhật số trang mới
-    DOC.getElementById('manga-inspector-root')?.remove();
 
     const Tools = WIN.BambiTools || window.BambiTools;
     const mangaId = Number(apiData.title_id || apiData.mangaId || 0);
@@ -174,7 +244,14 @@
       finalSeed = Tools.parseCharsetSeed(rawSeed, charset, mangaId, site.epId);
     }
 
-    const ver = apiData.scramble_ver ?? 2;
+    let ver = 2;
+    if (site.isKManga) {
+      ver = 1; // KManga luôn luôn chạy Ver 1
+    } else if (site.isCiao) {
+      ver = (Number(apiData?.scramble_ver) === 1) ? 1 : 2; // Ciao Plus linh hoạt theo server
+    } else {
+      ver = 2; // MagaPoke luôn luôn chạy Ver 2
+    }
 
     const createUI = window.createInspectorUI || globalThis.createInspectorUI;
     createUI({

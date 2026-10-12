@@ -46,7 +46,9 @@
     readerData: null,          // Cho BViewer (React Fiber)
     loader: null,              // Cho Liber Nuxt (WasmFactory)
     publication: null,         // Cho Liber Nuxt
-    ui: null
+    ui: null,
+    lastUrl: "",
+    lastBookCode: ""
   };
 
   /* =========================================================================
@@ -63,7 +65,8 @@
     const createUI = window.createMangaDownloaderUI || globalThis.createMangaDownloaderUI;
 
     if (typeof createUI === "function" && DOC.body) {
-      state.ui = createUI({
+      
+      const uiConfig = {
         storagePrefix: "ej-dl",
         title: "EbookJapan",
         engine: engineName,
@@ -77,7 +80,10 @@
           state.convertJpeg = checked;
           localStorage.setItem("ej-dl:convert-jpeg", checked ? '1' : '0');
         }
-      });
+      }
+
+      state.ui = createUI(uiConfig);
+      state.ui.setBusy(true);
 
       if (state.ui?.panel) {
         const titleEl = state.ui.panel.querySelector('[style*="font: 800 13px"], [style*="font:800 13px"]');
@@ -663,12 +669,16 @@
     state.booting = true;
 
     try {
-      while (!DOC.body) await sleep(30);
+      while (!DOC.body) await sleep(20);
       ensureSinglePageVerticalMode();
 
       const ui = getUI();
+      
       if (ui?.panel) ui.panel.style.display = "block";
-      if (ui) ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
+      if (ui) {
+        ui.setBusy(true);
+        ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
+      }
 
       const isViewerPath = WIN.location.pathname.startsWith('/viewer');
       let foundBViewer = false;
@@ -686,8 +696,10 @@
           state.engineMode = 'BUNCHVIEWER';
           getUI('BUNCHVIEWER');
           foundBViewer = true;
-          await sleep(80);
-          if (ui) ui.updateProgress({ completed: 0, total: pages.length, status: "Sẵn sàng." });
+          if (ui) {
+            ui.updateProgress({ completed: 0, total: pages.length, status: "Sẵn sàng." });
+            ui.setBusy(false);
+          }
           return;
         }
         await sleep(150);
@@ -701,14 +713,23 @@
         try {
           const loader = await ensureBookInitialized();
           if (loader?.pages?.length > 0) {
-            await sleep(80);
-            if (ui) ui.updateProgress({ completed: 0, total: loader.pages.length, status: "Sẵn sàng." });
+            if (ui) {
+              ui.updateProgress({ completed: 0, total: loader.pages.length, status: "Sẵn sàng." });
+              ui.setBusy(false);
+            }
             return;
           }
         } catch(e) {}
       }
 
-      if (ui) ui.updateProgress({ status: "Sẵn sàng." });
+      throw new Error("Không thể khởi tạo reader EbookJapan.");
+    } catch (err) {
+      console.error("[ej-dl] Boot error:", err);
+      const ui = getUI();
+      if (ui) {
+        ui.updateProgress({ status: "Lỗi: " + (err?.message || "Không thể tải trang.") });
+        ui.setBusy(true);
+      }
     } finally {
       state.booting = false;
     }
@@ -717,24 +738,39 @@
   // Lắng nghe đổi route ngầm (SPA Watcher)
   const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
   if (typeof watchRoute === "function") {
-    watchRoute(() => {
+    watchRoute((newUrl) => {
+      const isViewerUrl = WIN.location.pathname.startsWith('/bviewer') || WIN.location.pathname.startsWith('/viewer');
+
+      if (!isViewerUrl) {
+        const ui = getUI();
+        if (ui?.panel) ui.panel.style.display = "none";
+        state.readerData = null;
+        state.loader = null;
+        state.publication = null;
+        state.lastBookCode = "";
+        state.lastUrl = "";
+        state.running = false;
+        return;
+      }
+
+      const currentCode = getBookCode();
+      if (state.lastBookCode && state.lastBookCode === currentCode) return;
+
+      state.lastUrl = newUrl;
+      state.lastBookCode = currentCode;
       state.readerData = null;
       state.loader = null;
       state.publication = null;
       state.running = false;
       state.engineMode = WIN.location.pathname.startsWith('/viewer') ? 'LIBER NUXT' : 'BUNCHVIEWER';
+
       const ui = getUI(state.engineMode);
       if (ui) {
-        ui.setBusy(false);
+        ui.setBusy(true);
         ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
       }
       boot();
     });
   }
-
-  if (DOC.readyState === "loading") {
-    DOC.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
-  }
+  boot()
 })();

@@ -114,29 +114,54 @@
     return { rawW: w, rawH: h, gridW, gridH, dummyText, visualCanvas, sharpCanvas, img };
   }
 
+  let lastLoadedInspector = null;
+
   async function boot() {
     while (!DOC.body) await sleep(50);
+
+    const targetPath = location.pathname;
     let vId = null, cleanDomain = `${location.host}/api`, contentId = '';
-    for (let i = 0; i < 40; i++) {
+
+    for (let i = 0; i < 12; i++) {
+      if (targetPath !== location.pathname) return; // Thoát nếu người dùng đã đổi URL
+
       const viewerEl = DOC.getElementById('comici-viewer') || DOC.querySelector('[data-comici-viewer-id]');
       if (viewerEl) {
-        vId = viewerEl.getAttribute('data-comici-viewer-id') || viewerEl.dataset?.comiciViewerId;
-        contentId = viewerEl.getAttribute('data-content-id') || '';
-        let apiDomain = viewerEl.getAttribute('data-api-domain') || viewerEl.dataset?.apiDomain || '/api';
-        apiDomain = apiDomain.trim();
-        if (apiDomain.startsWith('/')) apiDomain = `${location.host}${apiDomain}`;
-        cleanDomain = apiDomain.replace(/^https?:\/\//, '').replace(/\/+$/, '');
-        if (vId) break;
+        const curVId = viewerEl.getAttribute('data-comici-viewer-id') || viewerEl.dataset?.comiciViewerId;
+
+        // 👈 CỐT LÕI: Bỏ qua nếu ID này là của chap trước
+        const isStale = Boolean(lastLoadedInspector && lastLoadedInspector.path !== targetPath && curVId === lastLoadedInspector.viewerId);
+
+        if (curVId && !isStale) {
+          vId = curVId;
+          contentId = viewerEl.getAttribute('data-content-id') || '';
+          let apiDomain = viewerEl.getAttribute('data-api-domain') || viewerEl.dataset?.apiDomain || '/api';
+          apiDomain = apiDomain.trim();
+          if (apiDomain.startsWith('/')) apiDomain = `${location.host}${apiDomain}`;
+          cleanDomain = apiDomain.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+          break;
+        }
       }
-      await sleep(150);
+      await sleep(100);
     }
-    if (!vId) return;
+
+    if (targetPath !== location.pathname) return;
+
+    // Hết thời gian mà không có ID mới -> Chap khóa -> Gỡ Inspector UI
+    if (!vId) {
+      DOC.getElementById('manga-inspector-root')?.remove();
+      return;
+    }
+
+    lastLoadedInspector = { path: targetPath, viewerId: vId };
 
     try {
       const Utils = window.MangaUtils || globalThis.MangaUtils;
       const headers = { "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" };
       const initUrl = `${location.protocol}//${cleanDomain}/book/contentsInfo?comici-viewer-id=${vId}&page-from=0&page-to=1${contentId ? `&contentId=${contentId}` : ''}`;
       const initBuf = await Utils.fetchBuffer(initUrl, headers);
+      if (targetPath !== location.pathname) return;
+
       const initJson = JSON.parse(new TextDecoder().decode(initBuf));
       const total = initJson.totalPages || 50;
 

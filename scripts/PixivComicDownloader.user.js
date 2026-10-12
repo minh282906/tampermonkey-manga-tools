@@ -46,7 +46,9 @@
     running: false,
     convertJpeg: localStorage.getItem("pixiv-dl:convert-jpeg") === '1',
     chapterData: null,
-    ui: null
+    ui: null,
+    lastUrl: "",
+    lastEpisodeId: ""
   };
 
   /* =========================================================================
@@ -92,7 +94,7 @@
         storagePrefix: "pixiv-dl",
         title: "Pixiv Comic",
         engine: "PIXIV",
-        themeColor: "#0096fa",              // Màu xanh Pixiv
+        themeColor: "#0096fa",            
         themeBg: "#ffffff",
         titleColor: "#0096fa",
         topOffset: "64px",
@@ -105,6 +107,7 @@
       };
 
       state.ui = createUI(uiConfig);
+      state.ui.setBusy(true);
 
       if (state.ui?.panel) {
         const titleEl = state.ui.panel.querySelector('[style*="font: 800 13px"], [style*="font:800 13px"]');
@@ -497,7 +500,7 @@
    * 8. KHỞI CHẠY VÀ THEO DÕI ĐIỀU HƯỚNG SPA
    * ========================================================================= */
   async function boot() {
-    while (!DOC.body) await sleep(30);
+    while (!DOC.body) await sleep(20);
     const ui = getUI();
 
     if (!isEpisodeUrl()) {
@@ -505,26 +508,33 @@
       return;
     }
 
-    if (ui?.panel) ui.panel.style.display = "block";
-    
-    if (ui) ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
-
-    let data = null;
-    let retries = 0;
-
-    while (retries < 30) {
-      try {
-        data = await fetchPixivPages();
-        if (data && data.pages?.length > 0) break;
-      } catch (e) {}
-      await sleep(150);
-      retries++;
+    if (ui?.panel) {
+      ui.panel.style.display = "block";
+      ui.setBusy(true);
+      ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
     }
 
-    if (data && data.pages?.length > 0) {
+    try {
+      const episodeId = getEpisodeId();
+      if (!episodeId) throw new Error("Không tìm thấy ID chương.");
+
+      let data = null;
+      let retries = 0;
+
+      while (retries < 30) {
+        try {
+          data = await fetchPixivPages();
+          if (data && data.pages?.length > 0) break;
+        } catch (e) {}
+        await sleep(150);
+        retries++;
+      }
+
+      if (!data || !data.pages?.length) {
+        throw new Error("Không thể lấy danh sách trang Pixiv Comic.");
+      }
+
       state.chapterData = data;
-      
-      await sleep(80);
 
       if (ui) {
         ui.updateProgress({
@@ -532,29 +542,49 @@
           total: data.pages.length,
           status: "Sẵn sàng."
         });
+        ui.setBusy(false);
       }
-    } else {
-      if (ui) ui.updateProgress({ status: "Sẵn sàng." });
+    } catch (err) {
+      console.error("[pixiv-dl] Boot error:", err);
+      if (ui) {
+        ui.updateProgress({ status: "Lỗi: " + (err?.message || "Không thể tải trang.") });
+        ui.setBusy(true);
+      }
     }
   }
 
   const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
   if (typeof watchRoute === "function") {
-    watchRoute(() => {
+
+    watchRoute((newUrl) => {
+
+      if (!isEpisodeUrl()) {
+        const ui = getUI();
+        if (ui?.panel) ui.panel.style.display = "none";
+        state.chapterData = null;
+        state.capturedApiData = null;
+        state.lastEpisodeId = "";
+        state.lastUrl = "";
+        state.running = false;
+        return;
+      }
+
+      const currentEpisodeId = getEpisodeId();
+
+      if (state.lastEpisodeId && state.lastEpisodeId === currentEpisodeId) return;
+
+      state.lastUrl = newUrl;
+      state.lastEpisodeId = currentEpisodeId;
       state.chapterData = null;
       state.running = false;
+
       const ui = getUI();
       if (ui) {
-        ui.setBusy(false);
+        ui.setBusy(true);
         ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
       }
       boot();
     });
   }
-
-  if (DOC.readyState === "loading") {
-    DOC.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
-  }
+  boot();
 })();

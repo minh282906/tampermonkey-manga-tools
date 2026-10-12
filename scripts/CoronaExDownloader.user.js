@@ -47,7 +47,8 @@
     convertJpeg: localStorage.getItem("corona-dl:convert-jpeg") === '1',
     chapterData: null,
     ui: null,
-    lastEpId: null
+    lastUrl: "",
+    lastEpisodeId: ""
   };
 
   // Biến lưu trữ dữ liệu bắt được từ Hook mạng
@@ -105,6 +106,7 @@
       };
 
       state.ui = createUI(uiConfig);
+      state.ui.setBusy(true);
 
       // Tùy biến Header 2 tầng (Dòng 1: CORONA EX, Dòng 2: TO BOOKS)
       if (state.ui?.panel) {
@@ -415,7 +417,7 @@
    * 7. KHỞI CHẠY VÀ THEO DÕI SPA ROUTE
    * ========================================================================= */
   async function boot() {
-    while (!DOC.body) await sleep(30);
+    while (!DOC.body) await sleep(20);
     const ui = getUI();
 
     if (!isEpisodeUrl()) {
@@ -423,66 +425,88 @@
       return;
     }
 
-    if (ui?.panel) ui.panel.style.display = "block";
-    if (ui) ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
-
-    const curEpId = getEpisodeId();
-    let retries = 0;
-
-    while (retries < 20) {
-      try {
-        if (curEpId && curEpId === state.lastEpId && retries < 10) {
-          await sleep(150);
-          retries++;
-          continue;
-        }
-
-        const data = await fetchChapterData();
-        if (data) {
-          state.chapterData = data;
-          state.lastEpId = curEpId;
-
-          // NẾU LÀ CHAP BỊ KHÓA: Dừng ngay lập tức, không đợi 20 vòng!
-          if (data.isLocked || !data.pages?.length) break;
-
-          // Nếu có trang: Lấy thành công và dừng
-          if (data.pages.length > 0) break;
-        }
-      } catch (e) {}
-      await sleep(150);
-      retries++;
+    if (ui?.panel) {
+      ui.panel.style.display = "block";
+      ui.setBusy(true);
+      ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
     }
 
-    await sleep(80);
+    try {
+      const curEpId = getEpisodeId();
+      let data = null;
+      let retries = 0;
 
-    const totalPages = state.chapterData?.pages?.length || 0;
-    if (ui) {
-      ui.updateProgress({
-        completed: 0,
-        total: totalPages,
-        status: "Sẵn sàng."
-      });
+      while (retries < 20) {
+        try {
+          data = await fetchChapterData();
+          if (data) {
+            // Nhận diện chap khóa ngay trong RAM, dừng sớm không lặp vô ích
+            if (data.isLocked || !data.pages?.length) break;
+            if (data.pages.length > 0) break;
+          }
+        } catch (e) {}
+        await sleep(150);
+        retries++;
+      }
+
+      if (!data || data.isLocked || !data.pages?.length) {
+        throw new Error("Chương này chưa mở hoặc cần trả phí.");
+      }
+
+      state.chapterData = data;
+
+      if (ui) {
+        ui.updateProgress({
+          completed: 0,
+          total: data.pages.length,
+          status: "Sẵn sàng."
+        });
+        ui.setBusy(false);
+      }
+    } catch (err) {
+      console.error("[corona-dl] Boot error:", err);
+      if (ui) {
+        ui.updateProgress({ status: "Lỗi: " + (err?.message || "Không thể tải trang.") });
+        ui.setBusy(true);
+      }
     }
   }
 
   // Khởi động SPA Route Watcher
   const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
   if (typeof watchRoute === "function") {
-    watchRoute(() => {
+    watchRoute((newUrl) => {
+
+      if (!isEpisodeUrl()) {
+        const ui = getUI();
+        if (ui?.panel) ui.panel.style.display = "none";
+        state.chapterData = null;
+        capturedData = null;
+        capturedEpId = null;
+        state.lastEpisodeId = "";
+        state.lastUrl = "";
+        state.running = false;
+        return;
+      }
+
+      const currentEpId = getEpisodeId();
+
+      if (state.lastEpisodeId && state.lastEpisodeId === currentEpId) return;
+
+      state.lastUrl = newUrl;
+      state.lastEpisodeId = currentEpId;
       state.chapterData = null;
+      capturedData = null;
+      capturedEpId = null;
       state.running = false;
+
       const ui = getUI();
       if (ui) {
-        ui.setBusy(false);
+        ui.setBusy(true);
         ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
       }
       boot();
     });
   }
-
-  if (DOC.readyState === "loading") {
-    DOC.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
-  }
+  boot()
 })();

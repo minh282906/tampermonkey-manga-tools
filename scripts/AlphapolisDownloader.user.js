@@ -42,7 +42,9 @@
     running: false,
     convertJpeg: localStorage.getItem("alphapolis-dl:convert-jpeg") === '1',
     chapterData: null,
-    ui: null
+    ui: null,
+    lastUrl: "",
+    lastChapterId: ""
   };
 
   /* =========================================================================
@@ -72,6 +74,7 @@
       };
 
       state.ui = createUI(uiConfig);
+      state.ui.setBusy(true);
 
       if (state.ui?.panel) {
         const titleEl = state.ui.panel.querySelector('[style*="font: 800 13px"], [style*="font:800 13px"]');
@@ -489,24 +492,28 @@
 
     if (ui?.panel) {
       ui.panel.style.display = "block";
+      ui.setBusy(true);
       ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
     }
 
-    let data = null;
-    let retries = 0;
+    try {
+      let data = null;
+      let retries = 0;
 
-    while (retries < 25) {
-      try {
-        data = await fetchAlphapolisManifest();
-        if (data && data.pages?.length > 0) break;
-      } catch (e) {}
-      await sleep(150);
-      retries++;
-    }
+      while (retries < 25) {
+        try {
+          data = await fetchAlphapolisManifest();
+          if (data && data.pages?.length > 0) break;
+        } catch (e) {}
+        await sleep(150);
+        retries++;
+      }
 
-    if (data && data.pages?.length > 0) {
+      if (!data || !data.pages?.length) {
+        throw new Error("Không tìm thấy danh sách trang Alphapolis.");
+      }
+
       state.chapterData = data;
-      await sleep(80);
 
       if (ui) {
         ui.updateProgress({
@@ -514,29 +521,48 @@
           total: data.pages.length,
           status: "Sẵn sàng."
         });
+        ui.setBusy(false);
       }
-    } else {
-      if (ui) ui.updateProgress({ status: "Sẵn sàng." });
+    } catch (err) {
+      console.error("[alphapolis-dl] Boot error:", err);
+      if (ui) {
+        ui.updateProgress({ status: "Lỗi: " + (err?.message || "Không thể tải trang.") });
+        ui.setBusy(true);
+      }
     }
   }
 
   const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
   if (typeof watchRoute === "function") {
-    watchRoute(() => {
+    watchRoute((newUrl) => {
+
+      if (!isEpisodeUrl()) {
+        const ui = getUI();
+        if (ui?.panel) ui.panel.style.display = "none";
+        state.chapterData = null;
+        state.lastChapterId = "";
+        state.lastUrl = "";
+        state.running = false;
+        return;
+      }
+
+      const { chapterId } = getUrlParams();
+      const currentCid = String(chapterId || "");
+
+      if (state.lastChapterId && state.lastChapterId === currentCid) return;
+
+      state.lastUrl = newUrl;
+      state.lastChapterId = currentCid;
       state.chapterData = null;
       state.running = false;
+
       const ui = getUI();
       if (ui) {
-        ui.setBusy(false);
+        ui.setBusy(true);
         ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
       }
       boot();
     });
   }
-
-  if (DOC.readyState === "loading") {
-    DOC.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
-  }
+  boot();
 })();

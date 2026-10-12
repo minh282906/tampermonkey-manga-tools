@@ -88,7 +88,9 @@
     convertJpeg: localStorage.getItem("speedbinb-dl:convert-jpeg") === '1',
     chapterData: null,
     ui: null,
-    currentAdapter: null
+    currentAdapter: null,
+    lastUrl: "",
+    lastCid: ""
   };
 
   /* =========================================================================
@@ -1234,9 +1236,10 @@
 
     if (typeof createUI === "function" && DOC.body && adapter) {
       const { theme, name } = adapter;
-      state.ui = createUI({
+      const uiConfig = {
         storagePrefix: "speedbinb-dl",
         title: name,
+        engine: "SPEEDBINB",
         themeColor: theme.color,
         themeBg: theme.bg,
         titleColor: theme.text,
@@ -1247,7 +1250,10 @@
           state.convertJpeg = checked;
           localStorage.setItem("speedbinb-dl:convert-jpeg", checked ? '1' : '0');
         }
-      });
+      }
+
+      state.ui = createUI(uiConfig);
+      state.ui.setBusy(true);
 
       // Tùy biến Header 2 tầng: Dòng 1 Brand (13px Bold), Dòng 2 SPEEDBINB (9px Uppercase)
       if (state.ui?.panel) {
@@ -1255,7 +1261,7 @@
         if (titleEl) {
           titleEl.innerHTML = `
             <div style="all:initial;display:block;font:800 13px/1.2 system-ui,sans-serif;color:${theme.text};letter-spacing:0.2px;">${name}</div>
-            <div style="all:initial;display:block;font:700 9px/1.2 system-ui,sans-serif;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;margin-top:2px;">SPEEDBINB</div>
+            <div style="all:initial;display:block;font:700 9px/1.2 system-ui,sans-serif;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;margin-top:2px;">${uiConfig.engine}</div>
           `;
         }
       }
@@ -1403,7 +1409,7 @@
    * KHỞI CHẠY VÀ THEO DÕI ĐIỀU HƯỚNG SPA (ROUTE WATCHER)
    * ========================================================================= */
   async function boot() {
-    while (!DOC.body) await sleep(30);
+    while (!DOC.body) await sleep(20);
 
     const adapter = resolveSiteAdapter();
     state.currentAdapter = adapter;
@@ -1414,29 +1420,35 @@
       return;
     }
 
-    if (ui?.panel) ui.panel.style.display = "block";
-    if (ui) ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
-
-    // CHỜ DOM HYDRATE (Nếu chưa có CID, chờ tối đa 2 giây để web kịp gắn #content vào DOM)
-    let cid = adapter.getCid();
-    if (!cid || cid.includes("Episode")) {
-      for (let i = 0; i < 20; i++) {
-        await sleep(100);
-        cid = adapter.getCid();
-        if (cid && !cid.includes("Episode")) break;
-      }
-    }
-
-    if (!cid || cid.includes("Episode")) {
-      if (ui) ui.updateProgress({ status: "Sẵn sàng." });
-      return;
+    if (ui?.panel) {
+      ui.panel.style.display = "block";
+      ui.setBusy(true);
+      ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
     }
 
     try {
+      // Chờ DOM Hydrate để lấy đúng CID
+      let cid = adapter.getCid();
+      if (!cid || cid.includes("Episode")) {
+        for (let i = 0; i < 20; i++) {
+          await sleep(100);
+          cid = adapter.getCid();
+          if (cid && !cid.includes("Episode")) break;
+        }
+      }
+
+      if (!cid || cid.includes("Episode")) {
+        throw new Error("Không thể xác định CID của truyện.");
+      }
+
       const Tools = window.SpeedBinbTools || globalThis.SpeedBinbTools;
       const Utils = window.MangaUtils || globalThis.MangaUtils;
 
       const data = await adapter.fetchManifest(cid, Tools, Utils);
+      if (!data || !data.files?.length) {
+        throw new Error("Không tìm thấy danh sách trang từ máy chủ.");
+      }
+
       state.chapterData = data;
 
       if (ui) {
@@ -1445,28 +1457,50 @@
           total: data.files.length,
           status: "Sẵn sàng."
         });
+        ui.setBusy(false);
       }
     } catch (e) {
       console.error("[speedbinb-dl] Boot error:", e);
-      if (ui) ui.updateProgress({ status: "Sẵn sàng." });
+      if (ui) {
+        ui.updateProgress({ status: "Lỗi: " + (e?.message || "Không thể tải trang.") });
+        ui.setBusy(true);
+      }
     }
   }
 
   // Hook SPA History
   const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
   if (typeof watchRoute === "function") {
-    watchRoute(() => {
+    watchRoute((newUrl) => {
+      const adapter = resolveSiteAdapter();
+
+      if (!adapter) {
+        const ui = getUI();
+        if (ui?.panel) ui.panel.style.display = "none";
+        state.chapterData = null;
+        state.currentAdapter = null;
+        state.lastCid = "";
+        state.lastUrl = "";
+        state.running = false;
+        return;
+      }
+
+      const currentCid = adapter.getCid();
+
+      if (state.lastCid && state.lastCid === currentCid) return;
+
+      state.lastUrl = newUrl;
+      state.lastCid = currentCid;
       state.chapterData = null;
       state.running = false;
+
       const ui = getUI();
-      if (ui) ui.setBusy(false);
+      if (ui) {
+        ui.setBusy(true);
+        ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
+      }
       boot();
     });
   }
-
-  if (DOC.readyState === "loading") {
-    DOC.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
-  }
+  boot();
 })();

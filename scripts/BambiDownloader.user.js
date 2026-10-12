@@ -55,7 +55,9 @@
     chapterData: null,
     capturedApiData: null,
     ui: null,
-    currentAdapter: null
+    currentAdapter: null,
+    lastUrl: "",
+    lastEpisodeId: ""
   };
 
   /* =========================================================================
@@ -70,6 +72,9 @@
       try {
         const url = typeof args[0] === 'string' ? args[0] : (args[0]?.url || '');
         if (url.includes('/web/episode/viewer')) {
+          const epMatch = url.match(/[?&]episode_id=(\d+)/);
+          const reqEpId = epMatch ? epMatch[1] : null;
+
           const clone = response.clone();
           clone.json().then(data => {
             // Nếu phát hiện máy chủ trả về mã lỗi 3106
@@ -81,8 +86,11 @@
 
             const rawPages = data?.page_list || data?.pages || data?.data?.page_list;
             if (data && Array.isArray(rawPages) && rawPages.length > 0) {
+              if (reqEpId) {
+                data.episode_id = String(reqEpId);
+                try { sessionStorage.setItem(`bambi_dl_cache_${reqEpId}`, JSON.stringify(data)); } catch(e) {}
+              }
               state.capturedApiData = data;
-              // Tự động nhận diện adapter nếu chưa kịp gán
               if (!state.currentAdapter) state.currentAdapter = resolveSiteAdapter();
               syncChapterData();
             }
@@ -309,7 +317,8 @@
 
     if (typeof createUI === "function" && DOC.body && adapter) {
       const { theme, name, engine } = adapter;
-      state.ui = createUI({
+      
+      const uiConfig = {
         storagePrefix: "bambi-dl",
         title: name,
         themeColor: theme.color,
@@ -322,7 +331,10 @@
           state.convertJpeg = checked;
           localStorage.setItem("bambi-dl:convert-jpeg", checked ? '1' : '0');
         }
-      });
+      }
+
+      state.ui = createUI(uiConfig);
+      state.ui.setBusy(true);
 
       if (state.ui?.panel) {
         const titleEl = state.ui.panel.querySelector('[style*="font: 800 13px"], [style*="font:800 13px"]');
@@ -359,15 +371,29 @@
     // NGUYÊN TẮC VÀNG CHỐNG LỖI 3106: CHỜ GÓI TIN TỰ NHIÊN CỦA WEB TRONG 1500ms
     // Tuyệt đối KHÔNG tự ý gọi fetchApiFallback khi web đang tải!
     // =========================================================================
+    // Đọc ngay từ sessionStorage nếu vừa bấm F5 tải lại trang
+    if (!apiData) {
+      try {
+        const cached = sessionStorage.getItem(`bambi_dl_cache_${currentEpId}`);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed?.page_list || parsed?.pages) {
+            apiData = parsed;
+            state.capturedApiData = parsed;
+          }
+        }
+      } catch(e) {}
+    }
+
     if (!apiData) {
       const startWait = Date.now();
-      while (Date.now() - startWait < 1500) {
+      while (Date.now() - startWait < 5000) {
         apiData = state.capturedApiData;
         if (apiData && String(apiData.episode_id) === String(currentEpId)) break;
         await sleep(100);
       }
 
-      // CHỈ KHI NÀO SAU 1.5 GIÂY MÀ WEB VẪN CHƯA GỌI THÌ MỚI DÙNG FALLBACK
+      // CHỈ KHI NÀO SAU 5 GIÂY MÀ WEB VẪN CHƯA GỌI THÌ MỚI DÙNG FALLBACK
       if (!apiData || String(apiData.episode_id) !== String(currentEpId)) {
         const Utils = window.MangaUtils || globalThis.MangaUtils;
         try {
@@ -421,16 +447,27 @@
     const mangaId = apiData.title_id || apiData.mangaId || 0;
     const finalSeed = adapter.resolveSeed(apiData.scramble_seed, mangaId, currentEpId, Tools);
 
+    let targetVer = 2;
+    if (adapter.id === "kmanga") {
+      targetVer = 1; // KManga luôn luôn chạy Ver 1
+    } else if (adapter.id === "magapoke") {
+      targetVer = 2; // MagaPoke luôn luôn chạy Ver 2
+    } else if (adapter.id === "ciaoplus") {
+      targetVer = (Number(apiData?.scramble_ver) === 1) ? 1 : 2; // Ciao Plus linh hoạt theo server
+    }
+
     state.chapterData = {
       episodeId: String(currentEpId),
       seed: finalSeed,
-      ver: apiData.scramble_ver ?? 2,
+      ver: targetVer,
       pages: allPages
     };
 
     const ui = getUI();
     if (ui && !state.running) {
+      await sleep(120)
       ui.updateProgress({ completed: 0, total: allPages.length, status: "Sẵn sàng." });
+      ui.setBusy(false);
     }
   }
 
@@ -521,7 +558,7 @@
    * 7. KHỞI CHẠY VÀ THEO DÕI SPA ROUTE
    * ========================================================================= */
   async function boot() {
-    while (!DOC.body) await sleep(30);
+    while (!DOC.body) await sleep(20);
 
     const adapter = resolveSiteAdapter();
     state.currentAdapter = adapter;
@@ -532,22 +569,52 @@
       return;
     }
 
-    if (ui?.panel) ui.panel.style.display = "block";
-    if (ui) ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
+    if (ui?.panel) {
+      ui.panel.style.display = "block";
+      ui.setBusy(true);
+      ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
+    }
 
-    await syncChapterData();
+    try {
+      await syncChapterData();
+      if (!state.chapterData?.pages?.length) {
+        throw new Error("Không thể trích xuất trang truyện (Chương bị khóa hoặc lỗi kết nối).");
+      }
+    } catch (err) {
+      console.error("[bambi-dl] Boot error:", err);
+      if (ui) {
+        ui.updateProgress({ status: "Lỗi: " + (err?.message || "Không thể tải trang.") });
+        ui.setBusy(true);
+      }
+    }
   }
 
   const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
   if (typeof watchRoute === "function") {
-    watchRoute(() => {
+
+    watchRoute((newUrl) => {
+      const adapter = resolveSiteAdapter();
+
+      if (!adapter) {
+        const ui = getUI();
+        if (ui?.panel) ui.panel.style.display = "none";
+        state.chapterData = null;
+        state.capturedApiData = null;
+        state.lastEpisodeId = "";
+        state.lastUrl = "";
+        state.running = false;
+        return;
+      }
+
+      state.currentAdapter = adapter;
+      const curEpId = adapter.getEpisodeId();
+
+      if (state.lastEpisodeId && state.lastEpisodeId === curEpId) return;
+
+      state.lastUrl = newUrl;
+      state.lastEpisodeId = curEpId;
       state.chapterData = null;
       state.running = false;
-
-      // Nhận diện adapter của trang đích
-      const adapter = resolveSiteAdapter();
-      state.currentAdapter = adapter;
-      const curEpId = adapter?.getEpisodeId();
 
       // Chỉ xóa capturedApiData nếu nó là của tập cũ, không xóa nhầm gói tin mới vừa hứng được
       if (state.capturedApiData && curEpId && String(state.capturedApiData.episode_id) !== String(curEpId)) {
@@ -556,16 +623,11 @@
 
       const ui = getUI();
       if (ui) {
-        ui.setBusy(false);
+        ui.setBusy(true);
         ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
       }
       boot();
     });
   }
-
-  if (DOC.readyState === "loading") {
-    DOC.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
-  }
+  boot();
 })();

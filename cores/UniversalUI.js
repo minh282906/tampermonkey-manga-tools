@@ -189,39 +189,6 @@
       fill,
       status: statusText,
       
-      updateProgress: function(data = {}) {
-        const total = Number.isFinite(data.total) ? data.total : 0;
-        const completed = Number.isFinite(data.completed) ? data.completed : 0;
-        const pct = total > 0 ? Math.max(0, Math.min(100, Math.round(completed / total * 100))) : 0;
-        countText.textContent = total ? `${Math.min(completed, total)}/${total}` : "0/0";
-        percentText.textContent = `${pct}%`;
-        fill.style.transform = `scaleX(${total > 0 ? pct / 100 : 0})`;
-        if (data.status) statusText.textContent = data.status;
-
-        // 1. KHI RESET VỀ "Đang kiểm tra...": XÓA SẠCH DÒNG FORMAT
-        if (data.status && data.status.includes("Đang kiểm tra")) {
-          jpgInput.style.display = "none";
-          spanJpg.textContent = "";
-          isZeroCopy = false;
-        }
-
-        // 2. KHI "Sẵn sàng.": NẾU CÓ TRUYỀN format -> TỰ ĐỘNG CHUYỂN SANG CHẾ ĐỘ ZERO-COPY
-        if (data.format) {
-          isZeroCopy = true;
-          const extUpper = String(data.format).toUpperCase();
-          jpgInput.style.display = "none";
-          jpgInput.disabled = true;
-          spanJpg.style.cursor = "default";
-          spanJpg.textContent = `Ảnh gốc là ${extUpper}`;
-        }
-
-        // KHI SẴN SÀNG: NẾU LÀ SCRAMBLE (KHÔNG CÓ format TRUYỀN VÀO): HIỆN CHECKBOX MẶC ĐỊNH
-        else if (data.status && data.status.includes("Sẵn sàng") && !isZeroCopy) {
-          jpgInput.style.display = "";
-          spanJpg.style.cursor = "pointer";
-          spanJpg.textContent = "Xuất file JPG (mặc định PNG)";
-        }
-      },
       setBusy: function(state) {
         if (state === 'error') {
           // TRẠNG THÁI BÁO LỖI: Khóa nút, biểu tượng cấm bấm, không có con trỏ xoay
@@ -235,11 +202,12 @@
           btn.style.cursor = "progress";
         } else {
           // TRẠNG THÁI SẴN SÀNG: Mở khóa nút, con trỏ trỏ chuột bình thường
-          isBtnDisabled = true;
+          isBtnDisabled = false;
           btn.style.opacity = "1";
           btn.style.cursor = "pointer";
         }
       },
+      
       updateProgress: function(data = {}) {
         const total = Number.isFinite(data.total) ? data.total : 0;
         const completed = Number.isFinite(data.completed) ? data.completed : 0;
@@ -280,6 +248,15 @@
           spanJpg.textContent = "Xuất file JPG (mặc định PNG)";
         }
       },
+
+      updateFormatUI: function(format) {
+        isZeroCopy = true;
+        const extUpper = String(format || 'JPG').toUpperCase();
+        jpgInput.style.display = "none";
+        jpgInput.disabled = true;
+        spanJpg.style.cursor = "default";
+        spanJpg.textContent = `Ảnh gốc là ${extUpper}`;
+      }
     };
   }
 

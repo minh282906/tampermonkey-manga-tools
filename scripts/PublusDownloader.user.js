@@ -7,6 +7,7 @@
 // @author       anonymous & AI
 // @match        https://viewer.bookwalker.jp/*/viewer.html*
 // @match        https://viewer-trial.bookwalker.jp/*/viewer.html*
+// @match        https://viewer-subscription.bookwalker.jp/*/viewer.html*
 // @match        https://comic-store-viewer.pixiv.net/static/viewer*
 // @match        https://book.dmm.com/*
 // @match        https://book.dmm.co.jp/*
@@ -71,7 +72,9 @@
     convertJpeg: localStorage.getItem("publus-dl:convert-jpeg") === '1',
     chapterData: null,
     episodeData: null,
-    ui: null
+    ui: null,
+    lastUrl: "",
+    lastCid: ""
   };
 
   /* =========================================================================
@@ -214,8 +217,6 @@
 
     if (typeof createUI === "function" && DOC.body) {
       const theme = resolveSiteTheme();
-      const isBwTrial = WIN.location.hostname.includes("viewer-trial.bookwalker.jp") || WIN.location.href.includes("viewer-trial");
-
       const uiConfig = {
         storagePrefix: "publus-dl",
         title: theme.name,
@@ -230,7 +231,7 @@
         tabColor: theme.tabColor,
         tabBorder: theme.tabBorder,
         topOffset: theme.top,
-        defaultJpgText: isBwTrial ? "Xuất file JPG (ảnh gốc là JPG)" : "Xuất file JPG (mặc định PNG)",
+        defaultJpgText: "Xuất file JPG (mặc định PNG)",
         onDownload: startDownload,
         onJpgChange: (checked) => {
           state.convertJpeg = checked;
@@ -239,11 +240,7 @@
       };
 
       state.ui = createUI(uiConfig);
-
-      // Khóa cứng định dạng JPG gốc ngay từ đầu cho BookWalker Trial
-      if (isBwTrial && state.ui?.updateFormatUI) {
-        state.ui.updateFormatUI('jpg');
-      }
+      state.ui.setBusy(true);
 
       if (state.ui?.panel) {
         const titleEl = state.ui.panel.querySelector('[style*="font: 800 13px"], [style*="font:800 13px"]');
@@ -491,18 +488,36 @@
     const isTrial = WIN.location.hostname.includes("viewer-trial.bookwalker.jp") || WIN.location.href.includes("viewer-trial");
     if (isTrial) return null;
 
-    let reqUrl = '/browserWebApi/03/getLoader';
-    const scripts = Array.from(DOC.head.querySelectorAll('script[src*="/browserWebApi/"]'));
-    if (scripts.length > 0) reqUrl = scripts[0].getAttribute('src');
+    // 1. Quét tìm URL getLoader thực tế từ lịch sử nạp mạng của trình duyệt
+    let reqUrl = WIN.performance?.getEntriesByType?.('resource')?.find(r => r.name.includes('getLoader'))?.name;
 
-    const res = await WIN.fetch(reqUrl);
-    const text = await res.text();
+    // 2. Nếu không thấy, tìm trên toàn bộ thẻ script của trang (kể cả body)
+    if (!reqUrl) {
+      const scripts = Array.from(DOC.querySelectorAll('script[src*="getLoader"], script[src*="browserWebApi"]'));
+      if (scripts.length > 0) reqUrl = scripts[0].getAttribute('src');
+    }
 
-    const match = text.match(/(\w+)\s*=\s*function\(\)\s*\{([^{}]*toFixed[^{}]*)\}/);
-    if (!match) throw new Error("Không giải mã được hàm getLoader.");
+    // 3. Nếu vẫn không thấy, tự động ghép theo đúng version trên URL (ví dụ /03/16/ thay vì ép cứng /03/)
+    if (!reqUrl) {
+      const pathMatch = WIN.location.pathname.match(/^(\/\d+(?:\/\d+)?)\//);
+      const verPrefix = pathMatch ? pathMatch[1] : '/03';
+      reqUrl = `/browserWebApi${verPrefix}/getLoader`;
+    }
 
-    const fn = new Function(match[2]);
-    return fn();
+    try {
+      const res = await WIN.fetch(reqUrl);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const text = await res.text();
+
+      const match = text.match(/(\w+)\s*=\s*function\(\)\s*\{([^{}]*toFixed[^{}]*)\}/);
+      if (!match) throw new Error("Không khớp hàm toFixed trong getLoader.");
+
+      const fn = new Function(match[2]);
+      return fn();
+    } catch (err) {
+      console.warn("[publus-dl] Không bóc được thử thách getLoader:", err);
+      return null;
+    }
   }
 
   async function fetchBookWalkerManifest(cid) {
@@ -519,12 +534,23 @@
     const params = new URLSearchParams({ cid: cid, BID: bid });
     if (challengeNum) params.set('cr', challengeNum);
 
+    const currentSearch = new URLSearchParams(WIN.location.search);
+    if (currentSearch.has('cty')) params.set('cty', currentSearch.get('cty'));
+
     const cookieMatch = DOC.cookie.match(/(?:^| )u1=([^;]+)/);
     if (cookieMatch) params.set('u1', cookieMatch[1]);
     const u2Match = DOC.cookie.match(/(?:^| )u2=([^;]+)/);
     if (u2Match) params.set('u2', u2Match[1]);
 
-    const authApi = isTrial ? '/trial-page/c' : '/browserWebApi/c';
+    
+    let apiPrefix = '/browserWebApi';
+    const matchedEntry = WIN.performance?.getEntriesByType?.('resource')?.find(r => r.name.match(/\/browserWebApi\d*\//));
+    if (matchedEntry) {
+      const match = matchedEntry.name.match(/\/(browserWebApi\d*)\//);
+      if (match) apiPrefix = `/${match[1]}`;
+    }
+
+    const authApi = isTrial ? '/trial-page/c' : `${apiPrefix}/c`;
     const authRes = await WIN.fetch(`${authApi}?${params.toString()}`);
     const authData = await authRes.json();
 
@@ -616,8 +642,15 @@
       }
     }
 
+    let rawTitle = authData?.cti || config.configuration?.title || DOC.title || "";
+    let cleanTitle = rawTitle
+      .replace(/【(?!(?:フルカラー版|カラー版|完全版|特装版))[^】]*】/gi, '')
+      .replace(/[\\/*?:"<>|]/g, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+
     return {
-      title: authData.cti || config.configuration?.title || "",
+      title: cleanTitle || `BookWalker_${cid}`,
       cid: cid,
       pages: pages
     };
@@ -1541,8 +1574,12 @@
       // Nạp dữ liệu từ RAM hoặc gọi Router
       let data = state.chapterData;
       if (!data) {
-        data = await fetchSiteManifest(cid);
-        state.chapterData = data;
+        try {
+          data = await fetchSiteManifest(cid);
+          state.chapterData = data;
+        } catch (manifestErr) {
+          console.warn("[publus-dl] Kéo Direct Manifest không thành công, dùng dữ liệu Reader trong RAM:", manifestErr);
+        }
       }
 
       // =======================================================================
@@ -1622,12 +1659,30 @@
 
               if (!res.ok) throw new Error(`HTTP ${res.status}`);
               const rawBuffer = await res.arrayBuffer();
+              const realExt = Utils.detectExt(rawBuffer);
+              const uint8 = new Uint8Array(rawBuffer);
 
-              // Trang không xáo trộn (Bìa / Trial) -> Ghi thẳng mảng byte gốc
+              if (isBwTrial) {
+                return {
+                  pageNo: pageObj.pageNo,
+                  fileName: `${pageObj.pageNo}.${realExt}`,
+                  data: uint8,
+                  rawData: uint8,
+                  rawExt: realExt,
+                  isScrambled: false
+                };
+              }
+
               if (!pageObj.isScrambled) {
-                const uint8 = new Uint8Array(rawBuffer);
-                if (isBwTrial || useJpeg) {
-                  return { pageNo: pageObj.pageNo, fileName: `${pageObj.pageNo}.jpg`, data: uint8, rawData: uint8, isScrambled: false };
+                if (useJpeg) {
+                  return {
+                    pageNo: pageObj.pageNo,
+                    fileName: `${pageObj.pageNo}.${realExt}`,
+                    data: uint8,
+                    rawData: uint8,
+                    rawExt: realExt,
+                    isScrambled: false
+                  };
                 }
               }
 
@@ -1642,7 +1697,8 @@
                 pageNo: pageObj.pageNo,
                 fileName: decoded.fileName,
                 data: decoded.data,
-                rawData: new Uint8Array(rawBuffer),
+                rawData: uint8,
+                rawExt: realExt,
                 isScrambled: pageObj.isScrambled
               };
             } catch (err) {
@@ -1663,9 +1719,11 @@
         for (const res of results) {
           if (res?.data) {
             zip.addFile(res.fileName, res.data);
-            // Bảo tồn file JPG gốc cho trang bìa BookWalker Paid
-            if (!isBwTrial && res.pageNo === 1 && res.isScrambled === false && res.rawData && !res.fileName.endsWith('.jpg')) {
-              zip.addFile(`1.jpg`, res.rawData);
+            if (!isBwTrial && res.pageNo === 1 && res.isScrambled === false && res.rawData) {
+              const coverExt = res.rawExt || 'jpg';
+              if (!res.fileName.endsWith(`.${coverExt}`)) {
+                zip.addFile(`1.${coverExt}`, res.rawData);
+              }
             }
           }
         }
@@ -1681,6 +1739,8 @@
       // =======================================================================
       // NHÁNH 3: PHAO CỨU SINH IFRAME FALLBACK (BOOKWALKER & PIXIV STORE)
       // =======================================================================
+      console.warn("[publus-dl] Thông báo: Đang chạy chế độ chậm (Fallback Iframe). Hãy báo lại dev.");
+      
       if (!state.episodeData) return;
       const { rt: mainRt, pagesList } = state.episodeData;
       const totalPages = pagesList.length;
@@ -1702,8 +1762,11 @@
 
           zip.addFile(`${i + 1}.${capture.ext}`, capture.cleanData);
 
-          if (capture.isScrambled === false && capture.rawData && capture.ext !== 'jpg') {
-            zip.addFile(`${i + 1}.jpg`, capture.rawData);
+          if (capture.isScrambled === false && capture.rawData) {
+            const rawExt = Utils.detectExt(capture.rawData.buffer) || 'jpg';
+            if (capture.ext !== rawExt) {
+              zip.addFile(`${i + 1}.${rawExt}`, capture.rawData);
+            }
           }
 
           if (ui) {
@@ -1758,95 +1821,126 @@
     if (ui?.panel) {
       ui.panel.style.display = "block";
       if (!DOC.body.contains(ui.panel)) DOC.body.appendChild(ui.panel);
+      ui.setBusy(true);
       ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
     }
 
-    const cid = getEpisodeId();
-    let data = null;
-    let retries = 0;
+    try {
+      const cid = getEpisodeId();
+      let data = null;
+      let retries = 0;
 
-    while (retries < 25) {
-      try {
-        data = await fetchSiteManifest(cid);
-        if (data && data.pages?.length > 0) break;
-      } catch (e) {}
-      await sleep(150);
-      retries++;
-    }
-
-    if (data && data.pages?.length > 0) {
-      state.chapterData = data;
-
-      // Cập nhật vị trí top chuẩn xác cho DMM Tateyomi
-      if (isDmm() && ui?.panel) {
-        ui.panel.style.top = getDmmTopOffset(resolveSiteTheme().top);
-      }
-
-      // Nhận diện BookWalker Trial để chuyển UI sang JPG
-      const isBwTrial = WIN.location.hostname.includes("viewer-trial.bookwalker.jp") || WIN.location.href.includes("viewer-trial");
-      if (isBwTrial) {
-        state.convertJpeg = true;
-        if (ui?.updateFormatUI) ui.updateFormatUI('jpg');
-      }
-
-      await sleep(80);
-      if (ui) ui.updateProgress({ completed: 0, total: data.pages.length, status: "Sẵn sàng." });
-      return;
-    }
-
-    // DỰ PHÒNG AN TOÀN (IFRAME FALLBACK CHO BOOKWALKER / PIXIV STORE)
-    let rt = null;
-    let pagesList = [];
-    let attempts = 0;
-
-    while (attempts < 60) {
-      rt = getNFBRRuntime(WIN);
-      if (rt) {
+      // 1. Quét tìm Direct Manifest
+      while (retries < 25) {
         try {
-          pagesList = getPageListFromNFBR(rt);
-          if (pagesList.length > 0) break;
+          data = await fetchSiteManifest(cid);
+          if (data && data.pages?.length > 0) break;
         } catch (e) {}
+        await sleep(150);
+        retries++;
       }
-      await sleep(150);
-      attempts++;
-    }
 
-    if (pagesList.length > 0) {
-      state.episodeData = { rt, pagesList };
-      await sleep(80);
-      if (ui) ui.updateProgress({ completed: 0, total: pagesList.length, status: "Sẵn sàng." });
-    } else {
-      if (ui) ui.updateProgress({ status: "Sẵn sàng." });
+      if (data && data.pages?.length > 0) {
+        state.chapterData = data;
+
+        if (isDmm() && ui?.panel) {
+          ui.panel.style.top = getDmmTopOffset(resolveSiteTheme().top);
+        }
+
+        const isBwTrial = WIN.location.hostname.includes("viewer-trial.bookwalker.jp") || WIN.location.href.includes("viewer-trial");
+        let trialExt = null;
+
+        if (isBwTrial) {
+          try {
+            const Utils = window.MangaUtils || globalThis.MangaUtils;
+            const testUrl = data.pages[0]?.url;
+            if (testUrl) {
+              const testBuf = await Utils.fetchBuffer(testUrl);
+              trialExt = Utils.detectExt(testBuf);
+            }
+          } catch (e) {}
+        }
+
+        if (ui) {
+          const progressOpts = { completed: 0, total: data.pages.length, status: "Sẵn sàng." };
+          if (trialExt) progressOpts.format = trialExt;
+
+          ui.updateProgress(progressOpts);
+          ui.setBusy(false);
+        }
+        return;
+      }
+
+      // 2. Dự phòng an toàn (Iframe Fallback / NFBR Runtime trong RAM)
+      let rt = null;
+      let pagesList = [];
+      let attempts = 0;
+
+      while (attempts < 60) {
+        rt = getNFBRRuntime(WIN);
+        if (rt) {
+          try {
+            pagesList = getPageListFromNFBR(rt);
+            if (pagesList.length > 0) break;
+          } catch (e) {}
+        }
+        await sleep(150);
+        attempts++;
+      }
+
+      if (pagesList.length > 0) {
+        state.episodeData = { rt, pagesList };
+        await sleep(80);
+        if (ui) {
+          ui.updateProgress({ completed: 0, total: pagesList.length, status: "Sẵn sàng." });
+          ui.setBusy(false);
+        }
+      } else {
+        throw new Error("Không thể trích xuất trang truyện.");
+      }
+    } catch (err) {
+      console.error("[publus-dl] Boot error:", err);
+      if (ui) {
+        ui.updateProgress({ status: "Lỗi: " + (err?.message || "Không thể tải trang.") });
+        ui.setBusy(true);
+      }
     }
   }
 
   const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
   if (typeof watchRoute === "function") {
-    watchRoute(() => {
-      const ui = getUI();
+    watchRoute((newUrl) => {
 
       // Nếu thực sự thoát ra ngoài (không còn cid=) -> Ẩn bảng
       if (!isEpisodeUrl()) {
+        const ui = getUI();
         if (ui?.panel) ui.panel.style.display = "none";
-        state.dmmData = null;
-        state.bwData = null;
+        state.chapterData = null;
         state.episodeData = null;
+        state.lastCid = "";
+        state.lastUrl = "";
+        state.running = false;
         return;
       }
 
-      // NẾU VẪN Ở TRANG TRUYỆN: Khóa cứng hiển thị, tự ghim lại vào body nếu bị DMM xóa
-      if (ui?.panel) {
+      const currentCid = getEpisodeId();
+      if (state.lastCid && state.lastCid === currentCid) return;
+
+      state.lastUrl = newUrl;
+      state.lastCid = currentCid;
+      state.chapterData = null;
+      state.episodeData = null;
+      state.running = false;
+
+      const ui = getUI();
+      if (ui) {
         ui.panel.style.display = "block";
         if (!DOC.body.contains(ui.panel)) DOC.body.appendChild(ui.panel);
+        ui.setBusy(true);
+        ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
       }
-
       boot();
     });
   }
-
-  if (DOC.readyState === "loading") {
-    DOC.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
-  }
+  boot();
 })();

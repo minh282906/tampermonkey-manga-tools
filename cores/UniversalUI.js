@@ -64,8 +64,7 @@
       "user-select:none", `box-shadow:${panelShadow}`,
       "transition:transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)",
       `transform:${isCollapsed ? `translateX(calc(100% - ${TAB_WIDTH}px))` : "translateX(0)"}`,
-      "display:none", "overflow:hidden",
-      "isolation:isolate", "contain:paint"
+      "display:none", "overflow:hidden"
     ].join(';');
 
     const collapsedStrip = DOC.createElement("div");
@@ -108,8 +107,7 @@
       "all:initial", "display:block", "box-sizing:border-box", "width:100%", "padding:7px 0",
       `border:${btnBorder}`, "border-radius:6px", `background:${btnBg}`, `color:${btnTextColor}`,
       "font:800 14px/1.2 system-ui,sans-serif", "text-align:center", "cursor:pointer",
-      `box-shadow:${btnShadow}`, "pointer-events:auto",
-      "isolation:isolate"
+      `box-shadow:${btnShadow}`, "pointer-events:auto"
     ].join(';');
 
     btn.addEventListener("click", e => {
@@ -250,7 +248,6 @@
           spanJpg.textContent = "Xuất file JPG (mặc định PNG)";
         }
       },
-
       updateFormatUI: function(format) {
         isZeroCopy = true;
         const extUpper = String(format || 'JPG').toUpperCase();

@@ -860,11 +860,7 @@
       }
     }
   }
-
-  setInterval(() => {
-    if (isEpisodeUrl() && DOC.body) ensureUIPresence();
-  }, 500);
-
+  
   const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
   if (typeof watchRoute === "function") {
     watchRoute((newUrl) => {

@@ -37,8 +37,7 @@
    * 1. CẤU HÌNH & KHỞI TẠO HỆ THỐNG
    * ========================================================================= */
   const CONFIG = {
-    MAX_CONCURRENT: 6,   // 6 luồng tải song song qua CDN
-    JPEG_QUALITY: 1.0   // Chất lượng xuất JPG nếu chuyển đổi
+    MAX_CONCURRENT: 6   // 6 luồng tải song song qua CDN
   };
 
   const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;
@@ -49,10 +48,10 @@
 
   const state = {
     running: false,
-    convertJpeg: localStorage.getItem("sqex-dl:convert-jpeg") === '1',
     chapterData: null,
     ui: null,
     lastUrl: "",
+    lastEpisodeId: "",
     globalMupViewerRaw: ""
   };
 
@@ -168,9 +167,9 @@
     // Vẫn thuộc web của Square Enix
     "/gangan/":               { name: "Shounen Gangan", top: "70px",   color: "#38b6e6", bg: "#ffffff", text: "#0284c7", sub: "SQUARE ENIX" },
     "/gfantasy/":             { name: "GFantasy",       top: "70px",   color: "#a855f7", bg: "#18181b", text: "#c084fc", sub: "SQUARE ENIX" },
-    "/joker/":                { name: "Gangan Joker",   top: "70px",   color: "#18181b", bg: "#ffffff", text: "#18181b", sub: "SQUARE ENIX" },
-    "/yg/":                   { name: "Young Gangan",   top: "110px",  color: "#e11d48", bg: "#ffffff", text: "#e11d48", sub: "SQUARE ENIX" },
-    "/biggangan/":            { name: "Big Gangan",     top: "80px",   color: "#78be20", bg: "#ffffff", text: "#4c7c13", sub: "SQUARE ENIX" },
+    "/joker/":                { name: "Gangan Joker",   top: "71.66px",   color: "#18181b", bg: "#ffffff", text: "#18181b", sub: "SQUARE ENIX" },
+    "/yg/":                   { name: "Young Gangan",   top: "63px",   color: "#e11d48", bg: "#ffffff", text: "#e11d48", sub: "SQUARE ENIX" },
+    "/biggangan/":            { name: "Big Gangan",     top: "55.79px",   color: "#78be20", bg: "#ffffff", text: "#4c7c13", sub: "SQUARE ENIX" },
     "/comiweb/":              { name: "Comiweb",        top: "70px",   color: "#e60012", bg: "#18181b", text: "#fca5a5", sub: "SQUARE ENIX" },
 
     // MANGAUP! (Bản toàn cầu)
@@ -195,9 +194,6 @@
     if (typeof createUI === "function" && DOC.body) {
       const theme = resolveSiteTheme();
       const host = WIN.location.hostname;
-      const isSquareMagazine = host.includes('square-enix.com');
-      const defaultFormat = isSquareMagazine ? 'jpg' : 'webp';
-      const defaultText = isSquareMagazine ? "Xuất file JPG (ảnh gốc là JPG)" : "Xuất file JPG (ảnh gốc là WebP)";
 
       state.ui = createUI({
         storagePrefix: "sqex-dl",
@@ -206,15 +202,10 @@
         themeBg: theme.bg,
         titleColor: theme.text,
         topOffset: theme.top,
-        defaultJpgText: defaultText,
         onDownload: startDownload,
-        onJpgChange: (checked) => {
-          state.convertJpeg = checked;
-          localStorage.setItem("sqex-dl:convert-jpeg", checked ? '1' : '0');
-        }
       });
 
-      state.ui.updateFormatUI(defaultFormat);
+      state.ui.setBusy(true);
 
       if (state.ui?.panel) {
         const titleEl = state.ui.panel.querySelector('[style*="font: 800 13px"], [style*="font:800 13px"]');
@@ -265,7 +256,7 @@
     episodeTitle = episodeTitle.replace(/[「\[]([^」\]]+)[」\]]/g, '\u3000$1').trim();
 
     // Nếu trong seriesTitle đã có sẵn số chương (ví dụ: "宵明けの魔女 第1話" -> tách thành "宵明けの魔女" và "第1話")
-    const sMatch = seriesTitle.match(/^(.+?)(?:\s+[-－–—]\s+|\s+)((?:第\s*)?[0-9０-９IVXLCDMivxlcdm一二三四五六七八九十百千万\s\-\–\—\ー\~〜\.]+(?:話|局|曲|話目|限目|時限目|部|エピソード|分冊版|単話|前編|中編|後編|本目).*)$/i);
+    const sMatch = seriesTitle.match(/^(.+?)(?:\s+[-－–—]\s+|\s+)((?:第\s*)?[0-9０-９IVXLCDMivxlcdm一二三四五六七八九十百千万\s\-\–\—\ー\~〜\.]+(?:話|局|曲|話目|限目|時限目|部|エピソード|分冊版|単話|前編|中編|後編|本目|幕).*)$/i);
     if (sMatch) {
       seriesTitle = cleanString(sMatch[1]);
       if (!episodeTitle) episodeTitle = cleanString(sMatch[2]);
@@ -292,18 +283,6 @@
       return `${seriesTitle} - ${episodeTitle}`;
     }
     return seriesTitle || episodeTitle || `SquareEnix_${getEpisodeId()}`;
-  }
-
-  function getExtensionFromUrl(url, defaultExt = 'jpg') {
-    try {
-      const pathname = new URL(url, WIN.location.href).pathname;
-      const match = pathname.match(/\.([a-zA-Z0-9]+)$/);
-      if (match && match[1]) {
-        const ext = match[1].toLowerCase();
-        if (['jpg', 'jpeg', 'png', 'webp', 'avif'].includes(ext)) return ext === 'jpeg' ? 'jpg' : ext;
-      }
-    } catch (e) {}
-    return defaultExt;
   }
 
   function unhex(hexString) {
@@ -374,7 +353,7 @@
     let seriesTitle = "";
     let episodeTitle = "";
 
-    const titleMatch = rawTitle.match(/^(.+?)(?:\s+[-－–—]\s+|\s+)((?:第\s*)?[0-9０-９IVXLCDMivxlcdm一二三四五六七八九十百千万\s\-\–\—\ー\~〜\.]+(?:話|局|曲|話目|限目|時限目|部|エピソード|分冊版|単話|前編|中編|後編|本目).*)$/i);
+    const titleMatch = rawTitle.match(/^(.+?)(?:\s+[-－–—]\s+|\s+)((?:第\s*)?[0-9０-９IVXLCDMivxlcdm一二三四五六七八九十百千万\s\-\–\—\ー\~〜\.]+(?:話|局|曲|話目|限目|時限目|部|エピソード|分冊版|単話|前編|中編|後編|本目|幕).*)$/i);
     if (titleMatch) {
       seriesTitle = cleanString(titleMatch[1]);
       episodeTitle = cleanString(titleMatch[2]);
@@ -383,7 +362,7 @@
       const domEpEl = DOC.querySelector('.content_inner p.title, #tachiyomi p.title, p.title');
       if (domEpEl) {
         let epText = cleanBaseTitle(domEpEl.textContent).replace(/[「\[]([^」\]]+)[」\]]/g, '\u3000$1').trim();
-        const mEp = epText.match(/(?:第\s*)?[0-9０-９IVXLCDMivxlcdm一二三四五六七八九十百千万\s\-\–\—\ー\~〜\.]+(?:話|局|曲|話目|限目|時限目|部|エピソード|分冊版|単話|前編|中編|後編|本目).*/i);
+        const mEp = epText.match(/(?:第\s*)?[0-9０-９IVXLCDMivxlcdm一二三四五六七八九十百千万\s\-\–\—\ー\~〜\.]+(?:話|局|曲|話目|限目|時限目|部|エピソード|分冊版|単話|前編|中編|後編|本目|幕).*/i);
         if (mEp) episodeTitle = cleanString(mEp[0]);
       }
     }
@@ -736,7 +715,6 @@
 
       const pages = data.pages;
       const totalPages = pages.length;
-      const useJpeg = Boolean(state.convertJpeg);
 
       const ZipClass = window.PureZipWriter || globalThis.PureZipWriter;
       const Utils = window.MangaUtils || globalThis.MangaUtils;
@@ -761,34 +739,14 @@
           rawBuffer = await WIN.crypto.subtle.decrypt({ name: 'AES-CBC', iv: unhex(pageObj.crypto.iv) }, cryptoKey, rawBuffer);
         }
 
-        const originalExt = getExtensionFromUrl(pageObj.url, 'webp');
+        const ext = Utils.detectExt(rawBuffer);
 
         if (pageObj.customName) {
           return { fileName: pageObj.customName, data: new Uint8Array(rawBuffer) };
         }
 
-        // Zero-Copy nếu không ép JPG hoặc ảnh gốc đã là JPG
-        if (!useJpeg || originalExt === 'jpg') {
-          return { fileName: `${pageObj.pageNo}.${originalExt}`, data: new Uint8Array(rawBuffer) };
-        }
+        return { fileName: `${pageObj.pageNo}.${ext}`, data: new Uint8Array(rawBuffer) };
 
-        // Chuyển đổi sang JPG nếu người dùng chọn
-        const img = await Utils.loadImage(rawBuffer, `image/${originalExt}`);
-        const canvas = DOC.createElement('canvas');
-        canvas.width = img.naturalWidth || img.width;
-        canvas.height = img.naturalHeight || img.height;
-        
-        const ctx = canvas.getContext('2d', { alpha: false });
-        ctx.imageSmoothingEnabled = false;
-        ctx.mozImageSmoothingEnabled = false;
-        ctx.webkitImageSmoothingEnabled = false;
-        ctx.msImageSmoothingEnabled = false;
-
-        ctx.drawImage(img, 0, 0);
-        const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', CONFIG.JPEG_QUALITY));
-        canvas.width = 0; canvas.height = 0;
-
-        return { fileName: `${pageObj.pageNo}.jpg`, data: new Uint8Array(await blob.arrayBuffer()) };
       });
 
       const results = await Utils.runParallelQueue(tasks, CONFIG.MAX_CONCURRENT, (completed, total) => {
@@ -829,43 +787,77 @@
   }
 
   async function boot() {
-    while (!DOC.body) await sleep(30);
+    while (!DOC.body) await sleep(20);
 
     ensureUIPresence();
     const ui = getUI();
 
     if (!isEpisodeUrl()) return;
-    if (ui) ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
+    if (ui) {
+      ui.setBusy(true);
+      ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
+    }
 
-    let data = null;
-    let retries = 0;
-
-    while (retries < 6) {
+    try {
+      let data = null;
+      let retries = 0;
+      while (retries < 6) {
       try {
         data = await fetchSquareEnixPages();
         if (data && data.pages?.length > 0) break;
       } catch (e) {}
       await sleep(100);
       retries++;
-    }
-
-    if (data && data.pages?.length > 0) {
-      await sleep(100);
+      }
+      if (!data || !data.pages?.length) {
+        throw new Error("Không đọc được số trang.");
+      }
       state.chapterData = data;
 
-      const firstUrl = data.pages[0]?.url || "";
-      const originalExt = getExtensionFromUrl(firstUrl, 'webp');
-      if (ui?.updateFormatUI) ui.updateFormatUI(originalExt);
+      // 3. Kiểm tra Magic Bytes thực tế của trang 1 (Zero-Trust)
+      const firstPage = data.pages[0]; // bên này dùng data.pages[0]
+      if (!firstPage?.url) {
+        throw new Error("URL trang 1 không hợp lệ.");
+      }
+      
+      const Utils = window.MangaUtils || globalThis.MangaUtils;
+      let buf = await Utils.fetchBuffer(firstPage.url, { "Referer": WIN.location.href });
 
+      // Giải mã AES-CBC trong RAM nếu là MANGA UP! Global
+      if (firstPage.isEncrypted && firstPage.crypto?.key && firstPage.crypto?.iv) {
+        const cryptoKey = await WIN.crypto.subtle.importKey(
+          'raw',
+          unhex(firstPage.crypto.key),
+          { name: 'AES-CBC' },
+          false,
+          ['decrypt']
+        );
+        buf = await WIN.crypto.subtle.decrypt(
+          { name: 'AES-CBC', iv: unhex(firstPage.crypto.iv) },
+          cryptoKey,
+          buf
+        );
+      }
+
+      const realExt = Utils.detectExt(buf);
+      if (!realExt) {
+        throw new Error("Không thể nhận diện Magic Bytes ảnh.");
+      }
       if (ui) {
         ui.updateProgress({
           completed: 0,
           total: data.pages.length,
-          status: "Sẵn sàng."
+          status: "Sẵn sàng.",
+          format: realExt
         });
+        ui.setBusy(false);
       }
-    } else {
-      if (ui) ui.updateProgress({ status: "Sẵn sàng." });
+    } catch (e) {
+      console.error("[sqex-dl] Boot error:", e);
+      if (ui) {
+        ui.updateProgress({ status: "Lỗi: " + (e?.message || "không thể tải trang.") });
+        ui.setBusy(true);
+      }
     }
   }
 
@@ -876,24 +868,34 @@
   const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
   if (typeof watchRoute === "function") {
     watchRoute((newUrl) => {
-      if (newUrl === state.lastUrl) return;
-      state.lastUrl = newUrl;
+      
+      if (!isEpisodeUrl()) {
+        const ui = getUI();
+        if (ui?.panel) ui.panel.style.display = "none";
+        state.chapterData = null;
+        state.lastEpisodeId = "";
+        state.lastUrl = "";
+        state.globalMupViewerRaw = "";
+        state.running = false;
+        return;
+      }
 
+      const currentEpId = getEpisodeId();
+      if (state.lastEpisodeId && state.lastEpisodeId === currentEpId) return;
+
+      state.lastUrl = newUrl;
+      state.lastEpisodeId = currentEpId;
       state.chapterData = null;
+      state.globalMupViewerRaw = "";
       state.running = false;
 
       const ui = getUI();
       if (ui) {
-        ui.setBusy(false);
+        ui.setBusy(true);
         ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
       }
       boot();
     });
   }
-
-  if (DOC.readyState === "loading") {
-    DOC.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
-  }
+  boot();
 })();

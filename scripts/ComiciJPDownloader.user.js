@@ -33,8 +33,7 @@
    * CẤU HÌNH HỆ THỐNG
    * ========================================================================= */
   const CONFIG = {
-    MAX_CONCURRENT: 6,
-    JPEG_QUALITY: 1.0
+    MAX_CONCURRENT: 6
   };
 
   const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;
@@ -45,10 +44,10 @@
 
   const state = {
     running: false,
-    convertJpeg: localStorage.getItem("comicijp-dl:convert-jpeg") === '1',
-    detectedSourceFormat: 'jpg',
     chapterData: null,
-    ui: null
+    ui: null,
+    lastUrl: "",
+    lastArticleId: ""
   };
 
   function getUI() {
@@ -64,15 +63,11 @@
         themeBg: "#ffffff",
         titleColor: "#000000",
         topOffset: "59px",
-        defaultJpgText: "Xuất file JPG (ảnh gốc là WebP)",
-        onDownload: startDownload,
-        onJpgChange: (checked) => {
-          state.convertJpeg = checked;
-          localStorage.setItem("comicijp-dl:convert-jpeg", checked ? '1' : '0');
-        }
+        onDownload: startDownload
       };
 
       state.ui = createUI(uiConfig);
+      state.ui.setBusy(true);
 
       if (state.ui?.panel) {
         const titleEl = state.ui.panel.querySelector('[style*="font: 800 13px"], [style*="font:800 13px"]');
@@ -125,48 +120,19 @@
       }
     }
 
-    const pages = Array.from(urls).map((u, i) => ({ pageNo: i + 1, url: u }));
-    if (pages.length > 0) {
-      const ext = pages[0].url.match(/\.([a-zA-Z0-9]+)(?:\?|$)/)?.[1]?.toLowerCase() || 'jpg';
-      state.detectedSourceFormat = ext;
-      getUI()?.updateFormatUI(ext);
-    }
-    return pages;
+    return Array.from(urls).map((u, i) => ({ pageNo: i + 1, url: u }));
   }
 
   /* =========================================================================
    * ZERO-COPY XỬ LÝ ẢNH
    * ========================================================================= */
-  async function processImage(pageObj, forceJpg) {
+  async function processImage(pageObj) {
     const Utils = window.MangaUtils || globalThis.MangaUtils;
     const buffer = await Utils.fetchBuffer(pageObj.url);
     const uint8 = new Uint8Array(buffer);
+    const ext = Utils.detectExt(buffer);
 
-    let ext = 'jpg';
-    if (uint8[0] === 0x52 && uint8[1] === 0x49) ext = 'webp';
-    else if (uint8[0] === 0x89 && uint8[1] === 0x50) ext = 'png';
-    else if (uint8[0] === 0xFF && uint8[1] === 0xD8) ext = 'jpg';
-
-    if (!forceJpg || ext === 'jpg') {
-      return { fileName: `${pageObj.pageNo}.${ext}`, data: uint8 };
-    }
-
-    const img = await Utils.loadImage(uint8, `image/${ext}`);
-    const canvas = DOC.createElement('canvas');
-    canvas.width = img.naturalWidth || img.width;
-    canvas.height = img.naturalHeight || img.height;
-    
-    const ctx = canvas.getContext('2d', { alpha: false });
-    ctx.imageSmoothingEnabled = false;
-    ctx.mozImageSmoothingEnabled = false;
-    ctx.webkitImageSmoothingEnabled = false;
-    ctx.msImageSmoothingEnabled = false;
-
-    ctx.drawImage(img, 0, 0);
-
-    const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', CONFIG.JPEG_QUALITY));
-    canvas.width = 0; canvas.height = 0;
-    return { fileName: `${pageObj.pageNo}.jpg`, data: new Uint8Array(await blob.arrayBuffer()) };
+    return { fileName: `${pageObj.pageNo}.${ext}`, data: uint8 };
   }
 
   /* =========================================================================
@@ -188,7 +154,6 @@
       const total = pages.length;
       if (!total) throw new Error("Không tìm thấy ảnh truyện.");
 
-      const forceJpg = Boolean(state.convertJpeg);
       const ZipClass = window.PureZipWriter || globalThis.PureZipWriter;
       const Utils = window.MangaUtils || globalThis.MangaUtils;
       const zip = new ZipClass();
@@ -196,7 +161,7 @@
       zip.addFile(`${getArticleId()}.txt`, new Uint8Array(0));
       if (ui) ui.updateProgress({ completed: 0, total, status: "Đang tải..." });
 
-      const tasks = pages.map(pageObj => () => processImage(pageObj, forceJpg));
+      const tasks = pages.map(pageObj => () => processImage(pageObj));
       const results = await Utils.runParallelQueue(tasks, CONFIG.MAX_CONCURRENT, (completed, total) => {
         if (ui) ui.updateProgress({ completed, total, status: "Đang tải..." });
       });
@@ -222,53 +187,94 @@
    * KHỞI CHẠY & SPA WATCHER
    * ========================================================================= */
   async function boot() {
-    while (!DOC.body) await sleep(30);
+    while (!DOC.body) await sleep(20);
     const ui = getUI();
 
     if (!isEpisodeUrl()) {
       if (ui?.panel) ui.panel.style.display = "none";
-      if (ui) ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
       return;
     }
 
-    if (ui?.panel) ui.panel.style.display = "block";
-    if (ui) ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
-
-    let pages = [];
-    let retries = 0;
-    while (retries < 25) {
-      pages = fetchPages();
-      if (pages.length > 0) break;
-      await sleep(150);
-      retries++;
+    if (ui?.panel) {
+      ui.panel.style.display = "block";
+      ui.setBusy(true);
+      ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
     }
 
-    if (pages.length > 0) {
-      await sleep(100);
+    try {
+      let pages = [];
+      let retries = 0;
+      while (retries < 25) {
+        pages = fetchPages();
+        if (pages.length > 0) break;
+        await sleep(150);
+        retries++;
+      }
+      if (!pages || pages.length === 0) {
+        throw new Error("Không tìm thấy ảnh truyện.");
+      }
       state.chapterData = pages;
-      ui?.updateProgress({ completed: 0, total: pages.length, status: "Sẵn sàng." });
-    } else {
-      ui?.updateProgress({ status: "Sẵn sàng." });
+
+      const testUrl = pages[0]?.url; // bên này dùng pages[0].url
+      if (!testUrl) throw new Error("URL trang 1 không hợp lệ.");
+
+      const Utils = window.MangaUtils || globalThis.MangaUtils;
+      const testBuf = await Utils.fetchBuffer(testUrl);
+      const realExt = Utils.detectExt(testBuf);
+
+      if (!realExt) {
+        throw new Error("Không thể nhận diện Magic Bytes ảnh.");
+      }
+
+      if (ui) {
+        ui.updateProgress({
+          completed: 0,
+          total: pages.length,
+          status: "Sẵn sàng.",
+          format: realExt
+        });
+        ui.setBusy(false);
+      }
+    } catch (e) {
+      console.error("[comicijp-dl] Boot error:", e);
+      if (ui) {
+        ui.updateProgress({ status: "Lỗi: " + (e?.message || "không thể tải trang.") });
+        ui.setBusy(true); // Khóa nút cứng khi gặp lỗi
+      }
     }
   }
 
   const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
   if (typeof watchRoute === "function") {
-    watchRoute(() => {
+    watchRoute((newUrl) => {
+
+      if (!isEpisodeUrl()) {
+        const ui = getUI();
+        if (ui?.panel) ui.panel.style.display = "none";
+        state.chapterData = null;
+        state.lastArticleId = "";
+        state.lastUrl = "";
+        state.running = false;
+        return;
+      }
+
+      const currentId = getArticleId();
+      if (state.lastArticleId && state.lastArticleId === currentId) return;
+
+      state.lastUrl = newUrl;
+      state.lastArticleId = currentId;
       state.chapterData = null;
       state.running = false;
+
       const ui = getUI();
       if (ui) {
-        ui.setBusy(false);
+        ui.setBusy(true);
         ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
       }
       boot();
     });
   }
-
-  if (DOC.readyState === "loading") {
-    DOC.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
-  }
+  boot();
 })();
+
+// Trang web comici.jp đã chính thức đóng cửa vào ngày 30/09/2026

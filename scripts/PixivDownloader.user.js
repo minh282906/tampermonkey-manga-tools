@@ -39,12 +39,13 @@
 
   const state = {
     running: false,
-    detectedSourceFormat: 'jpg',
     chapterData: null,
     preloadingId: null,
     preloadedBuffer: null,
     preloadedExt: null,
-    ui: null
+    ui: null,
+    lastUrl: "",
+    lastIllustId: ""
   };
 
   /* =========================================================================
@@ -57,29 +58,19 @@
     if (typeof createUI === "function" && DOC.body) {
       const uiConfig = {
         storagePrefix: "pixiv-dl",
-        title: "pixiv",                      // Sửa thành pixiv theo yêu cầu của bạn
+        title: "pixiv",                     
         engine: "PIXIV",
-        themeColor: "#0096f9",              // Xanh thương hiệu Pixiv
-        themeBg: "#ffffff",                 // Nền trắng sáng
+        themeColor: "#0096f9",              
+        themeBg: "#ffffff",                 
         titleColor: "#0096f9",
         btnBg: "#0096f9",
         btnColor: "#ffffff",
         topOffset: "64px",
-        defaultJpgText: "Ảnh gốc là JPG",
         onDownload: startDownload
       };
 
       state.ui = createUI(uiConfig);
-
-      // Ẩn hoàn toàn ô checkbox, chỉ giữ lại nhãn chữ hiển thị định dạng gốc
-      if (state.ui?.jpgInput) {
-        state.ui.jpgInput.style.display = "none";
-        state.ui.jpgInput.disabled = true;
-      }
-      if (state.ui?.jpgSpan) {
-        state.ui.jpgSpan.style.cursor = "default";
-        state.ui.jpgSpan.textContent = `Ảnh gốc là ${state.detectedSourceFormat.toUpperCase()}`;
-      }
+      state.ui.setBusy(true);
 
       // Header 2 tầng: Dòng 1 "pixiv", Dòng 2 tàng hình giữ nguyên khung
       if (state.ui?.panel) {
@@ -163,19 +154,6 @@
     return workTitle || `${author} - ${illustId}`;
   }
 
-  function getExtensionFromUrl(url, defaultExt = 'jpg') {
-    try {
-      const match = url.split('?')[0].match(/\.([a-zA-Z0-9]+)$/);
-      if (match && match[1]) {
-        const ext = match[1].toLowerCase();
-        if (['jpg', 'jpeg', 'png', 'webp', 'avif'].includes(ext)) {
-          return ext === 'jpeg' ? 'jpg' : ext;
-        }
-      }
-    } catch (e) {}
-    return defaultExt;
-  }
-
   function downloadSingleFile(uint8Array, fileName, mimeType) {
     const blob = new Blob([uint8Array], { type: mimeType || 'application/octet-stream' });
     const url = URL.createObjectURL(blob);
@@ -211,8 +189,7 @@
     if (pageCount === 1) {
       const originalUrl = body.urls?.original;
       if (!originalUrl) throw new Error("Không tìm thấy link ảnh Original.");
-      const ext = getExtensionFromUrl(originalUrl, 'jpg');
-      pages.push({ pageNo: 1, url: originalUrl, ext });
+      pages.push({ pageNo: 1, url: originalUrl });
     } else {
       const pagesRes = await WIN.fetch(`https://www.pixiv.net/ajax/illust/${illustId}/pages?lang=en`, {
         headers: { 'Accept': 'application/json' }
@@ -221,11 +198,10 @@
       if (pagesJson.error || !Array.isArray(pagesJson.body) || pagesJson.body.length === 0) {
         throw new Error(pagesJson.message || "Không lấy được danh sách trang từ Pixiv.");
       }
-      pages = pagesJson.body.map((item, idx) => {
-        const url = item.urls?.original || "";
-        const ext = getExtensionFromUrl(url, 'jpg');
-        return { pageNo: idx + 1, url, ext };
-      });
+      pages = pagesJson.body.map((item, idx) => ({
+        pageNo: idx + 1,
+        url: item.urls?.original || ""
+      }));
     }
 
     return {
@@ -246,7 +222,7 @@
       "Referer": "https://www.pixiv.net/"
     });
 
-    const realExt = Utils.detectExt(rawBuffer) || pageObj.ext || 'jpg';
+    const realExt = Utils.detectExt(rawBuffer);
 
     return {
       pageNo: pageObj.pageNo,
@@ -321,7 +297,7 @@
       const ZipClass = window.PureZipWriter || globalThis.PureZipWriter;
       const zip = new ZipClass();
 
-      // Golden Rule 2: Luôn có 1 file .txt rỗng mang tên ID định danh ở thư mục gốc
+      // Luôn có 1 file .txt rỗng mang tên ID định danh ở thư mục gốc
       zip.addFile(`${illustId}.txt`, new Uint8Array(0));
 
       if (ui) ui.updateProgress({ completed: 0, total: totalPages, status: "Đang tải..." });
@@ -367,82 +343,93 @@
 
     if (ui?.panel) {
       ui.panel.style.display = "block";
-      if (!DOC.body.contains(ui.panel)) DOC.body.appendChild(ui.panel);
+      ui.setBusy(true);
+      ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
     }
-
-    const illustId = getIllustId();
-    if (!illustId) return;
-
-    if (state.chapterData && state.chapterData.illustId === illustId) {
-      return;
-    }
-
-    if (ui) ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
 
     try {
+      const illustId = getIllustId();
+      if (!illustId) throw new Error("Không tìm thấy ID tác phẩm.");
+
+      if (state.chapterData && state.chapterData.illustId === illustId) {
+        return;
+      }
+
       const data = await fetchPixivArtworkData(illustId);
+      if (!data || !data.pages?.length) {
+        throw new Error("Không lấy được danh sách tranh.");
+      }
       state.chapterData = data;
 
-      const firstExt = (data.pages[0]?.ext || 'jpg').toUpperCase();
-      state.detectedSourceFormat = firstExt;
-      if (ui?.jpgSpan) {
-        ui.jpgSpan.textContent = `Ảnh gốc là ${firstExt}`;
+      // Soi Magic Bytes thực tế trang 1 (Vừa test vừa dùng làm Preload 0ms cho bài 1 ảnh)
+      const testUrl = data.pages[0]?.url; // bên này dùng data.pages[0].url
+      if (!testUrl) throw new Error("URL ảnh 1 không hợp lệ.");
+
+      const Utils = window.MangaUtils || globalThis.MangaUtils;
+      const testBuf = await Utils.fetchBuffer(testUrl, { "Referer": "https://www.pixiv.net/" });
+      const realExt = Utils.detectExt(testBuf);
+
+      if (!realExt) {
+        throw new Error("Không thể nhận diện Magic Bytes ảnh.");
       }
 
-      // KÍCH HOẠT PRELOAD NGẦM CHO BÀI VIẾT 1 ẢNH (CHỈ TẢI ĐÚNG LINK ORIGINAL)
       if (data.pageCount === 1) {
         state.preloadingId = illustId;
-        const Utils = window.MangaUtils || globalThis.MangaUtils;
-        Utils.fetchBuffer(data.pages[0].url, { "Referer": "https://www.pixiv.net/" })
-          .then(buf => {
-            if (state.preloadingId === illustId) {
-              state.preloadedBuffer = buf;
-              state.preloadedExt = Utils.detectExt(buf) || data.pages[0].ext;
-            }
-          })
-          .catch(() => {});
+        state.preloadedBuffer = testBuf;
+        state.preloadedExt = realExt;
       }
-
-      await sleep(80);
 
       if (ui) {
         ui.updateProgress({
           completed: 0,
           total: data.pages.length,
-          status: "Sẵn sàng."
+          status: "Sẵn sàng.",
+          format: realExt
         });
+        ui.setBusy(false);
       }
     } catch (err) {
       console.error("[pixiv-dl] Boot error:", err);
-      if (ui) ui.updateProgress({ status: "Sẵn sàng." });
+      if (ui) {
+        ui.updateProgress({ status: "Lỗi: " + (err?.message || "không thể tải tranh.") });
+        ui.setBusy(true);
+      }
     }
   }
 
   // Hook theo dõi chuyển trang SPA
   const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
   if (typeof watchRoute === "function") {
-    watchRoute(() => {
-      const illustId = getIllustId();
-      
-      if (!state.chapterData || state.chapterData.illustId !== illustId) {
-        state.chapterData = null;
-        state.preloadingId = null;
-        state.preloadedBuffer = null;
-        state.preloadedExt = null;
-        state.running = false;
+    watchRoute((newUrl) => {
+
+      if (!isArtworkUrl()) {
         const ui = getUI();
-        if (ui) {
-          ui.setBusy(false);
-          ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
-        }
+        if (ui?.panel) ui.panel.style.display = "none";
+        state.chapterData = null;
+        state.lastIllustId = "";
+        state.lastUrl = "";
+        state.running = false;
+        return;
+      }
+
+      const illustId = getIllustId();
+      if (state.lastIllustId && state.lastIllustId === illustId) return;
+
+      state.lastUrl = newUrl;
+      state.lastIllustId = illustId;
+      state.chapterData = null;
+      state.preloadingId = null;
+      state.preloadedBuffer = null;
+      state.preloadedExt = null;
+      state.running = false;
+      
+      const ui = getUI();
+      if (ui) {
+        ui.setBusy(true);
+        ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
       }
       boot();
     });
   }
-
-  if (DOC.readyState === "loading") {
-    DOC.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
-  }
+  boot();
 })();

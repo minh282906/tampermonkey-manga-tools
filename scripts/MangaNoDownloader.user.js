@@ -28,8 +28,7 @@
    * CẤU HÌNH HỆ THỐNG
    * ========================================================================= */
   const CONFIG = {
-    MAX_CONCURRENT: 6,   // 6 luồng S3
-    JPEG_QUALITY: 1.0    // Chất lượng nếu người dùng tick chọn ép xuất JPG
+    MAX_CONCURRENT: 6   // 6 luồng S3
   };
 
   const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;
@@ -40,8 +39,6 @@
 
   const state = {
     running: false,
-    convertJpeg: localStorage.getItem("mangano-dl:convert-jpeg") === '1',
-    detectedSourceFormat: 'jpg',
     chapterData: null,
     ui: null,
     lastUrl: "",
@@ -56,7 +53,7 @@
     const createUI = window.createMangaDownloaderUI || globalThis.createMangaDownloaderUI;
 
     if (typeof createUI === "function" && DOC.body) {
-      state.ui = createUI({
+      const uiConfig = {
         storagePrefix: "mangano-dl",
         title: "マンガノ",
         engine: "HATENA",
@@ -66,22 +63,18 @@
         btnBg: "#262626",           
         btnColor: "#ffffff",        
         topOffset: "64px",
-        defaultJpgText: "Xuất file JPG (ảnh gốc là JPG)",
-        onDownload: startDownload,
-        onJpgChange: (checked) => {
-          state.convertJpeg = checked;
-          localStorage.setItem("mangano-dl:convert-jpeg", checked ? '1' : '0');
-        }
-      });
-
-      state.ui.updateFormatUI(state.detectedSourceFormat);
+        onDownload: startDownload
+      }
+      
+      state.ui = createUI(uiConfig);
+      state.ui.setBusy(true);
 
       if (state.ui?.panel) {
         const titleEl = state.ui.panel.querySelector('[style*="font: 800 13px"], [style*="font:800 13px"]');
         if (titleEl) {
           titleEl.innerHTML = `
-            <div style="all:initial;display:block;font:800 13px/1.2 system-ui,sans-serif;color:#262626;letter-spacing:0.3px;">マンガノ</div>
-            <div style="all:initial;display:block;font:700 9px/1.2 system-ui,sans-serif;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;margin-top:2px;visibility:hidden;">HATENA</div>
+            <div style="all:initial;display:block;font:800 13px/1.2 system-ui,sans-serif;color:${uiConfig.titleColor};letter-spacing:0.3px;">${uiConfig.title}</div>
+            <div style="all:initial;display:block;font:700 9px/1.2 system-ui,sans-serif;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;margin-top:2px;visibility:hidden;">${uiConfig.engine}</div>
           `;
         }
       }
@@ -260,17 +253,10 @@
       throw new Error("Không thể trích xuất danh sách ảnh chương Manga-no.");
     }
 
-    // Nhận diện định dạng nguồn thực tế
-    let detectedFormat = 'jpg';
-    const firstUrl = manifest.urls[0].toLowerCase();
-    if (firstUrl.endsWith('.webp')) detectedFormat = 'webp';
-    else if (firstUrl.endsWith('.png')) detectedFormat = 'png';
-
     return {
       episodeId: episodeId,
       urls: manifest.urls,
-      title: manifest.title || getCleanTitle(""),
-      format: detectedFormat
+      title: manifest.title || getCleanTitle("")
     };
   }
 
@@ -299,20 +285,19 @@
         state.chapterData = data;
       }
 
-      const { urls, title, format } = data;
+      const { urls, title } = data;
       const totalPages = urls.length;
       if (!totalPages) throw new Error("Không có trang hợp lệ để tải.");
 
-      const useJpeg = Boolean(state.convertJpeg);
       const ZipClass = window.PureZipWriter || globalThis.PureZipWriter;
       const Utils = window.MangaUtils || globalThis.MangaUtils;
       const zip = new ZipClass();
 
-      // File định danh ID chương theo Golden Rule 2
+      // File định danh ID chương
       zip.addFile(`${episodeId}.txt`, new Uint8Array(0));
       if (ui) ui.updateProgress({ completed: 0, total: totalPages, status: "Đang tải..." });
 
-      // Hàng đợi tải 6 luồng kịch trần từ kho S3 gốc img.manga-no.com
+      // Hàng đợi tải 6 luồng từ kho S3 gốc img.manga-no.com
       const tasks = urls.map((url, idx) => async () => {
         let rawBuffer = null;
 
@@ -328,28 +313,7 @@
         const rawUint8 = new Uint8Array(rawBuffer);
         const ext = Utils.detectExt(rawBuffer);
 
-        // ZERO-COPY: Ghi thẳng mảng byte ảnh gốc vào ZIP (0ms, không qua Canvas)
-        if (!useJpeg || ext === 'jpg') {
-          return { fileName: `${idx + 1}.${ext}`, data: rawUint8 };
-        }
-
-        // Chuyển sang JPG nếu người dùng tick chọn trên ảnh WebP/PNG
-        const img = await Utils.loadImage(rawBuffer, `image/${ext}`);
-        const canvas = DOC.createElement('canvas');
-        canvas.width = img.naturalWidth || img.width;
-        canvas.height = img.naturalHeight || img.height;
-
-        const ctx = canvas.getContext('2d', { alpha: false });
-        ctx.imageSmoothingEnabled = false;
-        ctx.mozImageSmoothingEnabled = false;
-        ctx.webkitImageSmoothingEnabled = false;
-        ctx.msImageSmoothingEnabled = false;
-        ctx.drawImage(img, 0, 0);
-
-        const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', CONFIG.JPEG_QUALITY));
-        canvas.width = 0; canvas.height = 0;
-
-        return { fileName: `${idx + 1}.jpg`, data: new Uint8Array(await blob.arrayBuffer()) };
+        return { fileName: `${idx + 1}.${ext}`, data: rawUint8 };
       });
 
       const results = await Utils.runParallelQueue(tasks, CONFIG.MAX_CONCURRENT, (completed, total) => {
@@ -390,48 +354,73 @@
 
     if (ui?.panel) {
       ui.panel.style.display = "block";
+      ui.setBusy(true);
       ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
     }
-
-    const episodeId = getEpisodeId();
-    if (!episodeId) {
-      if (ui) ui.updateProgress({ status: "Lỗi: Không tìm thấy ID chương." });
-      return;
-    }
-
+    
     try {
+      const episodeId = getEpisodeId();
+      if (!episodeId) {
+        throw new Error("Không tìm thấy ID chương.");
+      }
+
       const data = await fetchMangaNoManifest(episodeId);
-      if (data && data.urls?.length > 0) {
-        state.chapterData = data;
-        state.detectedSourceFormat = data.format;
+      if (!data || !data.urls?.length) {
+        throw new Error("Không lấy được danh sách trang.");
+      }
+      state.chapterData = data;
 
-        // Nếu ảnh gốc là JPG -> Khóa cứng cờ convertJpeg = true
-        if (data.format === 'jpg') {
-          state.convertJpeg = true;
-        }
+      const testUrl = data.urls[0]; // bên này dùng data.urls[0]
+      if (!testUrl) throw new Error("URL trang 1 không hợp lệ.");
 
-        // Tự động cập nhật UI:
-        // - Gốc JPG: Khóa tick [x] "Xuất file JPG (ảnh gốc là JPG)"
-        // - Gốc WebP: Mở tick [ ] "Xuất file JPG (ảnh gốc là WebP)" cho người dùng chọn
-        if (ui?.updateFormatUI) ui.updateFormatUI(data.format);
+      const Utils = window.MangaUtils || globalThis.MangaUtils;
+      let testBuf = null;
+      try {
+        const res = await WIN.fetch(testUrl);
+        if (res.ok) testBuf = await res.arrayBuffer();
+      } catch (e) {}
 
-        await sleep(80);
-        if (ui) {
-          ui.updateProgress({
-            completed: 0,
-            total: data.urls.length,
-            status: "Sẵn sàng."
-          });
-        }
+      if (!testBuf) {
+        testBuf = await Utils.fetchBuffer(testUrl, { "Referer": "https://manga-no.com/" });
+      }
+
+      const realExt = Utils.detectExt(testBuf);
+      if (!realExt) {
+        throw new Error("Không thể nhận diện Magic Bytes ảnh.");
+      }
+
+      if (ui) {
+        ui.updateProgress({
+          completed: 0,
+          total: data.urls.length,
+          status: "Sẵn sàng.",
+          format: realExt
+        });
+        ui.setBusy(false);
       }
     } catch (e) {
-      if (ui) ui.updateProgress({ status: "Lỗi: " + (e?.message || e) });
+      console.error("[mangano-dl] Boot error:", e);
+      if (ui) {
+        ui.updateProgress({ status: "Lỗi: " + (e?.message || "không thể tải trang.") });
+        ui.setBusy(true);
+      }
     }
   }
 
   const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
   if (typeof watchRoute === "function") {
     watchRoute((newUrl) => {
+
+      if (!isEpisodeUrl()) {
+        const ui = getUI();
+        if (ui?.panel) ui.panel.style.display = "none";
+        state.chapterData = null;
+        state.lastEpisodeId = "";
+        state.lastUrl = ""; 
+        state.running = false;
+        return;
+      }
+
       const currentEpisodeId = getEpisodeId();
       if (state.lastEpisodeId && state.lastEpisodeId === currentEpisodeId) return;
 
@@ -442,16 +431,11 @@
 
       const ui = getUI();
       if (ui) {
-        ui.setBusy(false);
+        ui.setBusy(true);
         ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
       }
       boot();
     });
   }
-
-  if (DOC.readyState === "loading") {
-    DOC.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
-  }
+  boot();
 })();

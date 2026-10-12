@@ -32,8 +32,7 @@
    * 1. CẤU HÌNH & KHỞI TẠO HỆ THỐNG
    * ========================================================================= */
   const CONFIG = {
-    MAX_CONCURRENT: 6,   // 6 luồng tải song song
-    JPEG_QUALITY: 1.0   // Chất lượng xuất JPG nếu chuyển đổi
+    MAX_CONCURRENT: 6   // 6 luồng tải song song
   };
 
   const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;
@@ -44,19 +43,18 @@
 
   const state = {
     running: false,
-    convertJpeg: localStorage.getItem("mplus-dl:convert-jpeg") === '1',
-    detectedSourceFormat: 'jpg',
     chapterData: null,
     capturedPayloadRaw: null,
     capturedChapterId: null,
     ui: null,
-    lastUrl: ""
+    lastUrl: "",
+    lastChapterId: ""
   };
 
   /* =========================================================================
    * 2. MAIN-WORLD DIRECT HOOK: ĐỒNG BỘ TRỰC TIẾP TRÊN UNSAFEWINDOW
    * ========================================================================= */
-  function handleViewerPayload(rawBuffer, url) {
+  function handleViewerPayload(rawBuffer) {
     if (!rawBuffer) return;
     state.capturedPayloadRaw = rawBuffer;
     const cid = getChapterId();
@@ -68,8 +66,12 @@
       } catch (e) {}
     }
 
+    if (state.chapterData && String(state.chapterData.chapterId) === String(cid)) {
+      return;
+    }
+
     if (isEpisodeUrl() && !state.running) {
-      syncChapterData();
+      boot();
     }
   }
 
@@ -96,7 +98,7 @@
           try {
             const clone = res.clone();
             const buf = await clone.arrayBuffer();
-            handleViewerPayload(buf, u);
+            handleViewerPayload(buf);
           } catch (e) {}
         }
         return res;
@@ -121,7 +123,7 @@
           if (this._mplus_url && isViewerReq(this._mplus_url)) {
             try {
               let raw = (this.responseType === '' || this.responseType === 'text') ? this.responseText : this.response;
-              if (raw) handleViewerPayload(raw, this._mplus_url);
+              if (raw) handleViewerPayload(raw);
             } catch (e) {}
           }
         });
@@ -149,16 +151,11 @@
         themeBg: "#18181b",
         titleColor: "#ef4444",
         topOffset: "88px",
-        defaultJpgText: "Xuất file JPG (ảnh gốc là JPG)",
-        onDownload: startDownload,
-        onJpgChange: (checked) => {
-          state.convertJpeg = checked;
-          localStorage.setItem("mplus-dl:convert-jpeg", checked ? '1' : '0');
-        }
+        onDownload: startDownload
       };
 
       state.ui = createUI(uiConfig);
-      state.ui.updateFormatUI(state.detectedSourceFormat);
+      state.ui.setBusy(true);
 
       if (state.ui?.panel) {
         const titleEl = state.ui.panel.querySelector('[style*="font: 800 13px"], [style*="font:800 13px"]');
@@ -240,17 +237,6 @@
     }
 
     return series || episodeFull || `MangaPlus_${getChapterId()}`;
-  }
-
-  function getExtensionFromUrl(url, defaultExt = 'jpg') {
-    try {
-      const match = url.split('?')[0].match(/\.([a-zA-Z0-9]+)$/);
-      if (match && match[1]) {
-        const ext = match[1].toLowerCase();
-        if (['jpg', 'jpeg', 'png', 'webp', 'avif'].includes(ext)) return ext === 'jpeg' ? 'jpg' : ext;
-      }
-    } catch (e) {}
-    return defaultExt;
   }
 
   function unhex(hexString) {
@@ -423,21 +409,6 @@
       chapterName: parsed.chapterName,
       chapterSubTitle: parsed.chapterSubTitle
     };
-
-    const ui = getUI();
-    if (ui && !state.running) {
-      const firstExt = getExtensionFromUrl(parsed.pages[0]?.url || "", 'jpg');
-      state.detectedSourceFormat = firstExt;
-      if (ui.updateFormatUI) ui.updateFormatUI(firstExt);
-
-      await sleep(80);
-
-      ui.updateProgress({
-        completed: 0,
-        total: parsed.pages.length,
-        status: "Sẵn sàng."
-      });
-    }
   }
 
   /* =========================================================================
@@ -467,7 +438,7 @@
     });
   }
 
-  async function processMangaPlusImage(pageObj, token, forceJpg) {
+  async function processMangaPlusImage(pageObj, token) {
     const Utils = window.MangaUtils || globalThis.MangaUtils;
     let rawBuffer = null;
 
@@ -487,40 +458,12 @@
       uint8 = decryptMangaPlusXor(uint8, pageObj.key);
     }
 
-    let ext = 'jpg';
-    if (uint8[0] === 0x52 && uint8[1] === 0x49 && uint8[2] === 0x46 && uint8[3] === 0x46) ext = 'webp';
-    else if (uint8[0] === 0x89 && uint8[1] === 0x50 && uint8[2] === 0x4E && uint8[3] === 0x47) ext = 'png';
-    else if (uint8[0] === 0xFF && uint8[1] === 0xD8 && uint8[2] === 0xFF) ext = 'jpg';
-
-    if (!forceJpg || ext === 'jpg') {
-      return {
-        pageNo: pageObj.pageNo,
-        fileName: `${pageObj.pageNo}.${ext}`,
-        data: uint8
-      };
-    }
-
-    const img = await Utils.loadImage(uint8, `image/${ext}`);
-    const canvas = DOC.createElement('canvas');
-    canvas.width = img.naturalWidth || img.width;
-    canvas.height = img.naturalHeight || img.height;
-    
-    const ctx = canvas.getContext('2d', { alpha: false });
-    ctx.imageSmoothingEnabled = false;
-    ctx.mozImageSmoothingEnabled = false;
-    ctx.webkitImageSmoothingEnabled = false;
-    ctx.msImageSmoothingEnabled = false;
-
-    ctx.drawImage(img, 0, 0);
-
-    const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', CONFIG.JPEG_QUALITY));
-    canvas.width = 0;
-    canvas.height = 0;
+    const ext = Utils.detectExt(uint8.buffer);
 
     return {
       pageNo: pageObj.pageNo,
-      fileName: `${pageObj.pageNo}.jpg`,
-      data: new Uint8Array(await blob.arrayBuffer())
+      fileName: `${pageObj.pageNo}.${ext}`,
+      data: uint8
     };
   }
 
@@ -555,7 +498,6 @@
       const data = state.chapterData;
       const { pages, vwToken } = data;
       const totalPages = pages.length;
-      const forceJpg = Boolean(state.convertJpeg);
 
       const ZipClass = window.PureZipWriter || globalThis.PureZipWriter;
       const Utils = window.MangaUtils || globalThis.MangaUtils;
@@ -564,43 +506,19 @@
       zip.addFile(`${chapterId}.txt`, new Uint8Array(0));
       if (ui) ui.updateProgress({ completed: 0, total: totalPages, status: "Đang tải..." });
 
-      const resultMap = new Map();
-
       const tasks = pages.map((pageObj) => async () => {
-        try {
-          const res = await processMangaPlusImage(pageObj, vwToken, forceJpg);
-          if (res?.data) {
-            resultMap.set(pageObj.pageNo, res);
-          }
-        } catch (e) {}
+        return await processMangaPlusImage(pageObj, vwToken);
       });
 
-      await Utils.runParallelQueue(tasks, CONFIG.MAX_CONCURRENT, () => {
-        if (ui) ui.updateProgress({ completed: resultMap.size, total: totalPages, status: "Đang tải..." });
+      const results = await Utils.runParallelQueue(tasks, CONFIG.MAX_CONCURRENT, (completed, total) => {
+        if (ui) ui.updateProgress({ completed, total, status: "Đang tải..." });
       });
-
-      if (resultMap.size < totalPages) {
-        if (ui) ui.updateProgress({ completed: resultMap.size, total: totalPages, status: "Đang tải bù các trang sót..." });
-        for (const pageObj of pages) {
-          if (!resultMap.has(pageObj.pageNo)) {
-            try {
-              const res = await processMangaPlusImage(pageObj, vwToken, forceJpg);
-              if (res?.data) resultMap.set(pageObj.pageNo, res);
-            } catch (e) {}
-          }
-        }
-      }
-
-      if (resultMap.size < totalPages) {
-        throw new Error(`Tải thiếu ${totalPages - resultMap.size}/${totalPages} trang. Vui lòng bấm Tải lại!`);
-      }
 
       if (ui) ui.updateProgress({ completed: totalPages, total: totalPages, status: "Đang đóng gói file ZIP..." });
       await sleep(50);
 
-      const sortedPages = Array.from(resultMap.values()).sort((a, b) => a.pageNo - b.pageNo);
-      for (const res of sortedPages) {
-        zip.addFile(res.fileName, res.data);
+      for (const res of results) {
+        if (res?.data) zip.addFile(res.fileName, res.data);
       }
 
       const zipName = `${getCleanTitle(data)}.zip`;
@@ -619,66 +537,95 @@
   /* =========================================================================
    * 10. KHỞI TẠO & THEO DÕI ĐIỀU HƯỚNG SPA
    * ========================================================================= */
-  function ensureUIPresence() {
+  async function boot() {
+    while (!DOC.body) await sleep(20);
+    const ui = getUI();
+
     if (!isEpisodeUrl()) {
-      if (state.ui?.panel) state.ui.panel.style.display = "none";
+      if (ui?.panel) ui.panel.style.display = "none";
       return;
     }
-    const ui = getUI();
+
     if (ui?.panel) {
       ui.panel.style.display = "block";
-      if (!DOC.body.contains(ui.panel)) DOC.body.appendChild(ui.panel);
+      ui.setBusy(true);
+      ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
+    }
+
+    try {
+      const chapterId = getChapterId();
+      if (!chapterId) throw new Error("Không tìm thấy ID chương.");
+
+      let retries = 0;
+      while (retries < 25) {
+        await syncChapterData();
+        if (state.chapterData?.pages?.length > 0) break;
+        await sleep(150);
+        retries++;
+      }
+
+      if (!state.chapterData?.pages?.length) {
+        throw new Error("Không lấy được dữ liệu trang.");
+      }
+
+      const data = state.chapterData;
+
+      const Utils = window.MangaUtils || globalThis.MangaUtils;
+      const testBuf = await fetchImageGM(data.pages[0].url, data.vwToken); // bên này dùng data.pages[0].url
+      if (!testBuf) throw new Error("Không thể tải ảnh trang 1.");
+
+      const dec = decryptMangaPlusXor(new Uint8Array(testBuf), data.globalKey);
+      const realExt = Utils.detectExt(dec.buffer);
+      if (!realExt) throw new Error("Không thể nhận diện Magic Bytes ảnh.");
+
+      if (ui) {
+        ui.updateProgress({
+          completed: 0,
+          total: data.pages.length,
+          status: "Sẵn sàng.",
+          format: realExt
+        });
+        ui.setBusy(false);
+      }
+    } catch (err) {
+      console.error("[mplus-dl] Boot error:", err);
+      if (ui) {
+        ui.updateProgress({ status: "Lỗi: " + (err?.message || "không thể tải trang.") });
+        ui.setBusy(true);
+      }
     }
   }
-
-  async function boot() {
-    while (!DOC.body) await sleep(30);
-
-    ensureUIPresence();
-    const ui = getUI();
-
-    if (!isEpisodeUrl()) return;
-    if (ui) ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
-
-    let retries = 0;
-    while (retries < 25) {
-      await syncChapterData();
-      if (state.chapterData?.pages?.length > 0) break;
-      await sleep(150);
-      retries++;
-    }
-
-    if (!state.chapterData?.pages?.length) {
-      if (ui) ui.updateProgress({ status: "Sẵn sàng." });
-    }
-  }
-
-  setInterval(() => {
-    if (isEpisodeUrl() && DOC.body) ensureUIPresence();
-  }, 500);
 
   const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
   if (typeof watchRoute === "function") {
     watchRoute((newUrl) => {
-      if (newUrl === state.lastUrl) return;
-      state.lastUrl = newUrl;
+      if (!isEpisodeUrl()) {
+        const ui = getUI();
+        if (ui?.panel) ui.panel.style.display = "none";
+        state.chapterData = null;
+        state.lastChapterId = "";
+        state.lastUrl = ""; 
+        state.capturedPayloadRaw = null;
+        state.running = false;
+        return;
+      }
 
+      const currentCid = getChapterId();
+      if (state.lastChapterId && state.lastChapterId === currentCid) return;
+
+      state.lastUrl = newUrl;
+      state.lastChapterId = currentCid;
       state.chapterData = null;
       state.capturedPayloadRaw = null;
       state.running = false;
 
       const ui = getUI();
       if (ui) {
-        ui.setBusy(false);
+        ui.setBusy(true);
         ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
       }
       boot();
     });
   }
-
-  if (DOC.readyState === "loading") {
-    DOC.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
-  }
+  boot();
 })();

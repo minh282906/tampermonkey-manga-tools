@@ -27,8 +27,7 @@
    * CẤU HÌNH HỆ THỐNG
    * ========================================================================= */
   const CONFIG = {
-    MAX_CONCURRENT: 6,   // 6 luồng tải song song
-    JPEG_QUALITY: 1.0    // Chất lượng nếu người dùng chọn ép xuất JPG
+    MAX_CONCURRENT: 6   // 6 luồng tải song song
   };
 
   const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;
@@ -39,11 +38,10 @@
 
   const state = {
     running: false,
-    convertJpeg: localStorage.getItem("souffle-dl:convert-jpeg") === '1',
-    detectedSourceFormat: 'jpg',
     chapterData: null,
     ui: null,
-    lastUrl: ""
+    lastUrl: "",
+    lastEpisodeSlug: ""
   };
 
   /* =========================================================================
@@ -57,31 +55,28 @@
       const isPetit = WIN.location.pathname.includes('/petitprincess/');
       const brandTitle = isPetit ? "Petit Princess" : "Souffle";
 
-      state.ui = createUI({
+      const uiConfig = {
         storagePrefix: "souffle-dl",
         title: brandTitle,
         engine: "AKITA SHOTEN",
-        themeColor: "#18181b",      // Đen theo logo Souffle
-        themeBg: "#ffffff",         // Nền panel trắng sáng đồng bộ Header
-        titleColor: "#18181b",      // Tiêu đề đen đậm
-        btnBg: "#18181b",           // Nút Download màu đen
-        btnColor: "#ffffff",        // Chữ trắng đậm
+        themeColor: "#18181b",      
+        themeBg: "#ffffff",        
+        titleColor: "#18181b",      
+        btnBg: "#18181b",          
+        btnColor: "#ffffff",   
         topOffset: "60px",
-        defaultJpgText: "Xuất file JPG (ảnh gốc là JPG)",
         onDownload: startDownload,
-        onJpgChange: (checked) => {
-          state.convertJpeg = checked;
-          localStorage.setItem("souffle-dl:convert-jpeg", checked ? '1' : '0');
-        }
-      });
+      }
 
-      state.ui.updateFormatUI(state.detectedSourceFormat);
+      state.ui = createUI(uiConfig);
+
+      state.ui.setBusy(true);
 
       if (state.ui?.panel) {
         const titleEl = state.ui.panel.querySelector('[style*="font: 800 13px"], [style*="font:800 13px"]');
         if (titleEl) {
           titleEl.innerHTML = `
-            <div style="all:initial;display:block;font:800 13px/1.2 system-ui,sans-serif;color:#18181b;letter-spacing:0.3px;">${brandTitle}</div>
+            <div style="all:initial;display:block;font:800 13px/1.2 system-ui,sans-serif;color:${uiConfig.titleColor};letter-spacing:0.3px;">${brandTitle}</div>
             <div style="all:initial;display:block;font:700 9px/1.2 system-ui,sans-serif;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;margin-top:2px;visibility:hidden;">AKITA SHOTEN</div>
           `;
         }
@@ -183,17 +178,10 @@
 
     if (urls.length === 0) return null;
 
-    // Nhận diện định dạng thực tế
-    let detectedFormat = 'jpg';
-    const firstUrl = urls[0].toLowerCase();
-    if (firstUrl.endsWith('.webp')) detectedFormat = 'webp';
-    else if (firstUrl.endsWith('.png')) detectedFormat = 'png';
-
     return {
       slug: getEpisodeSlug(),
       title: getCleanTitle(),
-      urls: urls,
-      format: detectedFormat
+      urls: urls
     };
   }
 
@@ -218,11 +206,10 @@
 
       if (!data || !data.urls?.length) throw new Error("Không tìm thấy danh sách ảnh trang truyện.");
 
-      const { urls, title, slug, format } = data;
+      const { urls, title, slug } = data;
       const totalPages = urls.length;
       if (!totalPages) throw new Error("Không có trang hợp lệ để tải.");
 
-      const useJpeg = Boolean(state.convertJpeg);
       const ZipClass = window.PureZipWriter || globalThis.PureZipWriter;
       const Utils = window.MangaUtils || globalThis.MangaUtils;
       const zip = new ZipClass();
@@ -237,28 +224,7 @@
         const rawUint8 = new Uint8Array(rawBuffer);
         const ext = Utils.detectExt(rawBuffer);
 
-        // ZERO-COPY: Ghi thẳng mảng byte JPEG gốc vào ZIP (0ms, không qua Canvas)
-        if (!useJpeg || ext === 'jpg') {
-          return { fileName: `${idx + 1}.${ext}`, data: rawUint8 };
-        }
-
-        // Chuyển sang JPG nếu người dùng tick chọn
-        const img = await Utils.loadImage(rawBuffer, `image/${ext}`);
-        const canvas = DOC.createElement('canvas');
-        canvas.width = img.naturalWidth || img.width;
-        canvas.height = img.naturalHeight || img.height;
-
-        const ctx = canvas.getContext('2d', { alpha: false });
-        ctx.imageSmoothingEnabled = false;
-        ctx.mozImageSmoothingEnabled = false;
-        ctx.webkitImageSmoothingEnabled = false;
-        ctx.msImageSmoothingEnabled = false;
-        ctx.drawImage(img, 0, 0);
-
-        const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', CONFIG.JPEG_QUALITY));
-        canvas.width = 0; canvas.height = 0;
-
-        return { fileName: `${idx + 1}.jpg`, data: new Uint8Array(await blob.arrayBuffer()) };
+        return { fileName: `${idx + 1}.${ext}`, data: rawUint8 };
       });
 
       const results = await Utils.runParallelQueue(tasks, CONFIG.MAX_CONCURRENT, (completed, total) => {
@@ -299,36 +265,49 @@
 
     if (ui?.panel) {
       ui.panel.style.display = "block";
+      ui.setBusy(true);
       ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
     }
 
-    let data = null;
-    for (let i = 0; i < 25; i++) {
-      data = extractSoufflePages();
-      if (data && data.urls?.length > 0) break;
-      await sleep(150);
-    }
-
-    if (data && data.urls?.length > 0) {
-      state.chapterData = data;
-      state.detectedSourceFormat = data.format;
-
-      if (data.format === 'jpg') {
-        state.convertJpeg = true;
+    try {
+      let data = null;
+      for (let i = 0; i < 25; i++) {
+        data = extractSoufflePages();
+        if (data && data.urls?.length > 0) break;
+        await sleep(150);
       }
 
-      if (ui?.updateFormatUI) ui.updateFormatUI(data.format);
+      if (!data || !data.urls?.length) {
+        throw new Error("Không đọc được số trang.");
+      }
+      state.chapterData = data;
 
-      await sleep(80);
+      // 3. Kiểm tra Magic Bytes thực tế của trang 1 (Zero-Trust URL)
+      const Utils = window.MangaUtils || globalThis.MangaUtils;
+      const testUrl = data.urls[0] // bên này dùng data.urls[0]
+      if (!testUrl) throw new Error("URL trang 1 không hợp lệ.");
+
+      const testBuf = await Utils.fetchBuffer(testUrl, { "Referer": WIN.location.href });
+      const realExt = Utils.detectExt(testBuf); // Soi Magic Bytes thật sự
+      if (!realExt) {
+        throw new Error("Không thể nhận diện Magic Bytes ảnh.");
+      }
+
       if (ui) {
         ui.updateProgress({
           completed: 0,
           total: data.urls.length,
-          status: "Sẵn sàng."
+          status: "Sẵn sàng.",
+          format: realExt
         });
+        ui.setBusy(false);
       }
-    } else {
-      if (ui) ui.updateProgress({ status: "Sẵn sàng." });
+    } catch (e) {
+      console.error("[souffle-dl] Boot error:", e);
+      if (ui) {
+        ui.updateProgress({ status: "Lỗi: " + (e?.message || "không thể tải trang.") });
+        ui.setBusy(true);
+      }
     }
   }
 
@@ -339,18 +318,23 @@
         const ui = getUI();
         if (ui?.panel) ui.panel.style.display = "none";
         state.chapterData = null;
+        state.lastEpisodeSlug = "";
+        state.lastUrl = "";
         state.running = false;
         return;
       }
 
-      if (newUrl === state.lastUrl) return;
+      const currentSlug = getEpisodeSlug();
+      if (state.lastEpisodeSlug && state.lastEpisodeSlug === currentSlug) return;
+
       state.lastUrl = newUrl;
+      state.lastEpisodeSlug = currentSlug
       state.chapterData = null;
       state.running = false;
 
       const ui = getUI();
       if (ui) {
-        ui.setBusy(false);
+        ui.setBusy(true);
         ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
       }
       boot();

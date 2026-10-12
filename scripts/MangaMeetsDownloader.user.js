@@ -28,8 +28,7 @@
    * CẤU HÌNH HỆ THỐNG
    * ========================================================================= */
   const CONFIG = {
-    MAX_CONCURRENT: 6,   // 6 luồng kịch trần Cloudinary CDN
-    JPEG_QUALITY: 1.0    // Chất lượng xuất JPG nếu người dùng chọn
+    MAX_CONCURRENT: 6   // 6 luồng Cloudinary CDN
   };
 
   const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;
@@ -40,8 +39,6 @@
 
   const state = {
     running: false,
-    convertJpeg: localStorage.getItem("mangameets-dl:convert-jpeg") === '1',
-    detectedSourceFormat: 'png',
     chapterData: null,
     ui: null,
     lastUrl: "",
@@ -56,7 +53,7 @@
     const createUI = window.createMangaDownloaderUI || globalThis.createMangaDownloaderUI;
 
     if (typeof createUI === "function" && DOC.body) {
-      state.ui = createUI({
+      const uiConfig = {
         storagePrefix: "mangameets-dl",
         title: "MangaMeets",
         engine: "SHUEISHA",
@@ -65,23 +62,19 @@
         titleColor: "#ef9fc2",
         btnBg: "#ef9fc2",          
         btnColor: "#ffffff",
-        topOffset: "188.57px",
-        defaultJpgText: "Xuất file JPG (ảnh gốc là PNG)",
-        onDownload: startDownload,
-        onJpgChange: (checked) => {
-          state.convertJpeg = checked;
-          localStorage.setItem("mangameets-dl:convert-jpeg", checked ? '1' : '0');
-        }
-      });
-
-      state.ui.updateFormatUI(state.detectedSourceFormat);
+        topOffset: "188px",
+        onDownload: startDownload
+      }
+      
+      state.ui = createUI(uiConfig);
+      state.ui.setBusy(true);
 
       if (state.ui?.panel) {
         const titleEl = state.ui.panel.querySelector('[style*="font: 800 13px"], [style*="font:800 13px"]');
         if (titleEl) {
           titleEl.innerHTML = `
-            <div style="all:initial;display:block;font:800 13px/1.2 system-ui,sans-serif;color:#F4B7D1;letter-spacing:0.3px;">MangaMeets</div>
-            <div style="all:initial;display:block;font:700 9px/1.2 system-ui,sans-serif;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;margin-top:2px;visibility:hidden;">SHUEISHA</div>
+            <div style="all:initial;display:block;font:800 13px/1.2 system-ui,sans-serif;color:${uiConfig.titleColor};letter-spacing:0.3px;">${uiConfig.title}</div>
+            <div style="all:initial;display:block;font:700 9px/1.2 system-ui,sans-serif;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;margin-top:2px;visibility:hidden;">${uiConfig.engine}</div>
           `;
         }
       }
@@ -161,12 +154,6 @@
     const urls = pageItems.map(p => p.url);
     if (urls.length === 0) return null;
 
-    // Nhận diện định dạng gốc từ URL thực tế
-    let detectedFormat = 'png';
-    const firstUrlClean = urls[0].split('?')[0].toLowerCase();
-    if (firstUrlClean.endsWith('.jpg') || firstUrlClean.endsWith('.jpeg')) detectedFormat = 'jpg';
-    else if (firstUrlClean.endsWith('.webp')) detectedFormat = 'webp';
-
     let finalTitle = "";
     if (seriesTitle && chapterTitle) {
       if (seriesTitle === chapterTitle) finalTitle = seriesTitle;
@@ -180,8 +167,7 @@
       seriesTitle,
       chapterTitle,
       title: finalTitle,
-      urls,
-      format: detectedFormat
+      urls
     };
   }
 
@@ -237,8 +223,7 @@
           return {
             episodeId: vJson.id || episodeNo,
             title: (sTitle && cTitle) ? `${sTitle} - ${cTitle}` : (sTitle || cTitle),
-            urls: cleanUrls,
-            format: 'png'
+            urls: cleanUrls
           };
         }
       } catch (e) {}
@@ -268,12 +253,8 @@
 
       if (!data || !data.urls?.length) throw new Error("Không thể trích xuất danh sách trang.");
 
-      const { urls, title, episodeId, format } = data;
+      const { urls, title, episodeId } = data;
       const totalPages = urls.length;
-
-      // Nếu ảnh gốc là JPG thì luôn là true; nếu gốc là PNG/WebP thì theo checkbox
-      const forceJpg = (format === 'jpg') || Boolean(state.convertJpeg);
-      const useJpeg = Boolean(state.convertJpeg);
 
       const ZipClass = window.PureZipWriter || globalThis.PureZipWriter;
       const Utils = window.MangaUtils || globalThis.MangaUtils;
@@ -299,28 +280,7 @@
         const rawUint8 = new Uint8Array(rawBuffer);
         const ext = Utils.detectExt(rawBuffer);
 
-        // ZERO-COPY: Ghi thẳng mảng byte ảnh gốc vào ZIP (0ms, không qua Canvas)
-        if (!useJpeg || ext === 'jpg') {
-          return { fileName: `${idx + 1}.${ext}`, data: rawUint8 };
-        }
-
-        // Chuyển sang JPG nếu người dùng tick chọn
-        const img = await Utils.loadImage(rawBuffer, `image/${ext}`);
-        const canvas = DOC.createElement('canvas');
-        canvas.width = img.naturalWidth || img.width;
-        canvas.height = img.naturalHeight || img.height;
-
-        const ctx = canvas.getContext('2d', { alpha: false });
-        ctx.imageSmoothingEnabled = false;
-        ctx.mozImageSmoothingEnabled = false;
-        ctx.webkitImageSmoothingEnabled = false;
-        ctx.msImageSmoothingEnabled = false;
-        ctx.drawImage(img, 0, 0);
-
-        const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', CONFIG.JPEG_QUALITY));
-        canvas.width = 0; canvas.height = 0;
-
-        return { fileName: `${idx + 1}.jpg`, data: new Uint8Array(await blob.arrayBuffer()) };
+        return { fileName: `${idx + 1}.${ext}`, data: rawUint8 };
       });
 
       const results = await Utils.runParallelQueue(tasks, CONFIG.MAX_CONCURRENT, (completed, total) => {
@@ -361,58 +321,76 @@
 
     if (ui?.panel) {
       ui.panel.style.display = "block";
+      ui.setBusy(true);
       ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
     }
 
-    const { comicId, episodeNo } = getRouteParams();
-    if (!comicId || !episodeNo) {
-      if (ui) ui.updateProgress({ status: "Lỗi: Không tìm thấy ID chương." });
-      return;
-    }
-
     try {
+      const { comicId, episodeNo } = getRouteParams();
+      if (!comicId || !episodeNo) {
+        throw new Error("Không tìm thấy ID chương.");
+      }
+
       const data = await fetchMangaMeetsManifest();
-      if (data && data.urls?.length > 0) {
-        state.chapterData = data;
-        state.detectedSourceFormat = data.format;
+      if (!data || !data.urls?.length) {
+        throw new Error("Không lấy được danh sách trang.");
+      }
+      state.chapterData = data;
 
-        if (data.format === 'jpg') {
-          state.convertJpeg = true;
-        }
+      const testUrl = data.urls[0]; // bên này dùng data.urls[0]
+      if (!testUrl) throw new Error("URL trang 1 không hợp lệ.");
 
-        if (ui?.updateFormatUI) ui.updateFormatUI(data.format);
+      const Utils = window.MangaUtils || globalThis.MangaUtils;
+      let testBuf = null;
+      try {
+        const res = await WIN.fetch(testUrl);
+        if (res.ok) testBuf = await res.arrayBuffer();
+      } catch (e) {}
 
-        await sleep(80);
-        if (ui) {
-          ui.updateProgress({
-            completed: 0,
-            total: data.urls.length,
-            status: "Sẵn sàng."
-          });
-        }
-      } else {
-        if (ui) ui.updateProgress({ status: "Lỗi: Không lấy được danh sách trang." });
+      if (!testBuf) {
+        testBuf = await Utils.fetchBuffer(testUrl, { "Referer": "https://manga-meets.jp/" });
+      }
+
+      const realExt = Utils.detectExt(testBuf);
+      if (!realExt) {
+        throw new Error("Không thể nhận diện Magic Bytes ảnh.");
+      }
+      if (ui) {
+        ui.updateProgress({
+          completed: 0,
+          total: data.urls.length,
+          status: "Sẵn sàng.",
+          format: realExt
+        });
+        ui.setBusy(false)
       }
     } catch (e) {
-      if (ui) ui.updateProgress({ status: "Lỗi: " + (e?.message || e) });
+      console.error("[mangameets-dl] Boot error:", e);
+      if (ui) {
+        ui.updateProgress({ status: "Lỗi: " + (e?.message || "không thể tải trang.") });
+        ui.setBusy(true);
+      }
     }
   }
 
   const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
   if (typeof watchRoute === "function") {
     watchRoute((newUrl) => {
-      // Nếu rời khỏi trang đọc truyện -> Ẩn panel ngay
+
+      // Thoát ra ngoài trang đọc -> Ẩn panel
       if (!isEpisodeUrl()) {
         const ui = getUI();
         if (ui?.panel) ui.panel.style.display = "none";
         state.chapterData = null;
         state.lastEpisodeKey = "";
+        state.lastUrl = "";
         state.running = false;
         return;
       }
 
       const { comicId, episodeNo } = getRouteParams();
       const currentKey = `${comicId}/${episodeNo}`;
+
       if (state.lastEpisodeKey && state.lastEpisodeKey === currentKey) return;
 
       state.lastUrl = newUrl;
@@ -422,16 +400,11 @@
 
       const ui = getUI();
       if (ui) {
-        ui.setBusy(false);
+        ui.setBusy(true);
         ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
       }
       boot();
     });
   }
-
-  if (DOC.readyState === "loading") {
-    DOC.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
-  }
+  boot();
 })();

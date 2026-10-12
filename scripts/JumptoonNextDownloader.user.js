@@ -28,8 +28,7 @@
   'use strict';
 
   const CONFIG = {
-    MAX_CONCURRENT: 6,   // 6 luồng tải song song Zero-Copy
-    JPEG_QUALITY: 1.0    // Chất lượng nếu người dùng chọn convert JPG
+    MAX_CONCURRENT: 6   // 6 luồng tải song song Zero-Copy
   };
 
   const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;
@@ -40,10 +39,10 @@
 
   const state = {
     running: false,
-    convertJpeg: localStorage.getItem("jnext-dl:convert-jpeg") === '1',
     chapterData: null,
     ui: null,
-    lastCleanUrl: null
+    lastUrl: "",
+    lastEpisodeId: ""
   };
 
   /* =========================================================================
@@ -58,28 +57,24 @@
         storagePrefix: "jnext-dl",
         title: "ジャンプTOON NEXT!",
         engine: "SHUEISHA UGC",
-        themeColor: "#f97316",       // Cam tươi sáng năng động theo phong cách Indie
-        themeBg: "#18181b",          // Nền tối sang trọng
+        themeColor: "#f97316",       
+        themeBg: "#18181b",         
         titleColor: "#ffffff",
         btnBg: "#f97316",
         btnColor: "#ffffff",
         topOffset: "64px",
-        defaultJpgText: "Xuất file JPG (ảnh gốc là PNG)",
         onDownload: startDownload,
-        onJpgChange: (checked) => {
-          state.convertJpeg = checked;
-          localStorage.setItem("jnext-dl:convert-jpeg", checked ? '1' : '0');
-        }
       };
 
       state.ui = createUI(uiConfig);
+      state.ui.setBusy(true);
 
       if (state.ui?.panel) {
         const titleEl = state.ui.panel.querySelector('[style*="font: 800 13px"], [style*="font:800 13px"]');
         if (titleEl) {
           titleEl.innerHTML = `
             <div style="all:initial;display:block;font:800 13px/1.2 system-ui,sans-serif;color:${uiConfig.titleColor};letter-spacing:0.2px;">${uiConfig.title}</div>
-            <div style="all:initial;display:block;font:700 9px/1.2 system-ui,sans-serif;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;margin-top:2px;">${uiConfig.engine}</div>
+            <div style="all:initial;display:block;font:700 9px/1.2 system-ui,sans-serif;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;margin-top:2px;visibility:hidden;">${uiConfig.engine}</div>
           `;
         }
       }
@@ -250,7 +245,7 @@
     let episodeTitle = "";
     const rawMetaTitle = DOC.querySelector('meta[property="og:title"]')?.getAttribute('content') || DOC.title || "";
     const cleanFull = rawMetaTitle.split(/[|｜]/)[0].trim();
-    const match = cleanFull.match(/^(.*?)\s+((?:第\s*)?[0-9０-９IVXLCDMivxlcdm一二三四五六七八九十百千万\.]+\s*(?:話|巻|章|節|部|エピソード)?.*)$/i);
+    const match = cleanFull.match(/^(.*?)\s+((?:第\s*)?[0-9０-９IVXLCDMivxlcdm一二三四五六七八九十百千万\.]+\s*(?:話|巻|章|節|部|エピソード|幕)?.*)$/i);
 
     if (match) {
       seriesTitle = match[1];
@@ -291,7 +286,6 @@
 
       const { pages, seriesTitle, episodeTitle, episodeId } = data;
       const totalPages = pages.length;
-      const useJpeg = Boolean(state.convertJpeg);
 
       const ZipClass = window.PureZipWriter || globalThis.PureZipWriter;
       const Utils = window.MangaUtils || globalThis.MangaUtils;
@@ -303,27 +297,11 @@
 
       const tasks = pages.map((url, idx) => async () => {
         const rawBuffer = await Utils.fetchBuffer(url, { "Referer": "https://jumptoon-next.com/" });
-        const ext = Utils.detectExt(rawBuffer) || 'png';
+        const ext = Utils.detectExt(rawBuffer);
 
-        if (!useJpeg || ext === 'jpg') {
-          return {
-            fileName: `${idx + 1}.${ext}`,
-            data: new Uint8Array(rawBuffer)
-          };
-        }
-
-        const img = await Utils.loadImage(rawBuffer, `image/${ext}`);
-        const canvas = DOC.createElement('canvas');
-        canvas.width = img.width; canvas.height = img.height;
-        const ctx = canvas.getContext('2d', { alpha: false });
-        ctx.imageSmoothingEnabled = false;
-        ctx.drawImage(img, 0, 0);
-
-        const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', CONFIG.JPEG_QUALITY));
-        canvas.width = 0; canvas.height = 0;
         return {
-          fileName: `${idx + 1}.jpg`,
-          data: new Uint8Array(await blob.arrayBuffer())
+          fileName: `${idx + 1}.${ext}`,
+          data: new Uint8Array(rawBuffer)
         };
       });
 
@@ -355,53 +333,84 @@
    * 5. KHỞI CHẠY (BOOT) - ẨN MẶC ĐỊNH & SPA ROUTE WATCHER
    * ========================================================================= */
   async function boot() {
-    while (!DOC.body) await sleep(30);
+    while (!DOC.body) await sleep(20);
     const ui = getUI();
 
-    // 1. Luôn giấu UI lúc đầu (CHỐNG CHỚP NHÁY / FLICKER)
-    if (ui?.panel) ui.panel.style.display = "none";
-
-    // 2. Chỉ phục vụ trang đọc chương /e/
     if (!isEpisodeUrl()) {
+      if (ui?.panel) ui.panel.style.display = "none";
       return;
     }
 
-    state.chapterData = null;
-    const data = await syncChapterData();
-    state.chapterData = data;
-
-    // 3. CHỈ KHI NÀO CÓ TRANG TRANH THÌ MỚI HIỆN UI!
-    if (!data || !data.pages || !data.pages.length) {
-      return;
+    if (ui?.panel) {
+      ui.panel.style.display = "block";
+      ui.setBusy(true);
+      ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
     }
+    try {
+      const data = await syncChapterData();
+      if (!data || !data.pages?.length) {
+          throw new Error("Không lấy được danh sách trang.");
+        }
+      state.chapterData = data;
 
-    if (ui?.panel) ui.panel.style.display = "block";
-    await sleep(80); // Micro-delay chuẩn Golden Rule 3
+      const testUrl = data.pages[0]; // bên này dùng data.pages[0]
+      if (!testUrl) throw new Error("URL trang 1 không hợp lệ.");
 
-    if (ui) {
-      ui.updateFormatUI('png');
-      ui.updateProgress({
-        completed: 0,
-        total: data.pages.length,
-        status: "Sẵn sàng."
-      });
+      const Utils = window.MangaUtils || globalThis.MangaUtils;
+      const testBuf = await Utils.fetchBuffer(testUrl, { "Referer": "https://jumptoon-next.com/" });
+      const realExt = Utils.detectExt(testBuf);
+
+      if (!realExt) {
+        throw new Error("Không thể nhận diện Magic Bytes ảnh.");
+      }
+
+      if (ui) {
+        ui.updateProgress({
+          completed: 0,
+          total: data.pages.length,
+          status: "Sẵn sàng.",
+          format: realExt
+        });
+        ui.setBusy(false);
+      }
+    } catch (e) {
+      console.error("[jnext-dl] Boot error:", e);
+      if (ui) {
+        ui.updateProgress({ status: "Lỗi: " + (e?.message || "không thể tải trang.") });
+        ui.setBusy(true);
+      }
     }
   }
 
-  state.lastCleanUrl = getCleanUrl();
-  setInterval(() => {
-    const cur = getCleanUrl();
-    if (cur !== state.lastCleanUrl) {
-      state.lastCleanUrl = cur;
+  const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
+  if (typeof watchRoute === "function") {
+    watchRoute((newUrl) => {
+
+      if (!isEpisodeUrl()) {
+        const ui = getUI();
+        if (ui?.panel) ui.panel.style.display = "none";
+        state.chapterData = null;
+        state.lastEpisodeId = "";
+        state.lastUrl = "";
+        state.running = false;
+        return;
+      }
+
+      const currentEpId = getEpisodeId();
+      if (state.lastEpisodeId && state.lastEpisodeId === currentEpId) return;
+
+      state.lastUrl = newUrl;
+      state.lastEpisodeId = currentEpId;
       state.chapterData = null;
       state.running = false;
-      boot();
-    }
-  }, 400);
 
-  if (DOC.readyState === "loading") {
-    DOC.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
+      const ui = getUI();
+      if (ui) {
+        ui.setBusy(true);
+        ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
+      }
+      boot();
+    });
   }
+  boot();
 })();

@@ -27,8 +27,7 @@
    * CẤU HÌNH HỆ THỐNG
    * ========================================================================= */
   const CONFIG = {
-    MAX_CONCURRENT: 6,
-    JPEG_QUALITY: 1.0 // Chất lượng nếu xuất file JPG
+    MAX_CONCURRENT: 6
   };
 
   const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;
@@ -39,11 +38,10 @@
 
   const state = {
     running: false,
-    convertJpeg: localStorage.getItem("comicfuz-dl:convert-jpeg") === '1',
-    detectedSourceFormat: 'jpg',
     chapterData: null,
     ui: null,
-    lastUrl: ""
+    lastUrl: "",
+    lastChapterId: ""
   };
 
   /* =========================================================================
@@ -54,7 +52,8 @@
     const createUI = window.createMangaDownloaderUI || globalThis.createMangaDownloaderUI;
 
     if (typeof createUI === "function" && DOC.body) {
-      state.ui = createUI({
+      
+      const uiConfig = {
         storagePrefix: "comicfuz-dl",
         title: "COMIC FUZ",
         engine: "HOUBUNSHA",
@@ -67,16 +66,18 @@
         tabColor: "#000000",
         tabBorder: "none", 
         topOffset: "98px", 
-        defaultJpgText: "Xuất file JPG (ảnh gốc là JPG)",
         onDownload: startDownload
-      });
+      }
+
+      state.ui = createUI(uiConfig);
+      state.ui.setBusy(true);
 
       if (state.ui?.panel) {
         const titleEl = state.ui.panel.querySelector('[style*="font: 800 13px"], [style*="font:800 13px"]');
         if (titleEl) {
           titleEl.innerHTML = `
-            <div style="all:initial;display:block;font:900 13px/1.2 system-ui,sans-serif;color:#ffffff;letter-spacing:0.5px;">COMIC FUZ</div>
-            <div style="all:initial;display:block;font:700 9px/1.2 system-ui,sans-serif;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;margin-top:2px;visibility:hidden;">HOUBUNSHA</div>
+            <div style="all:initial;display:block;font:900 13px/1.2 system-ui,sans-serif;color:${uiConfig.titleColor};letter-spacing:0.5px;">${uiConfig.title}</div>
+            <div style="all:initial;display:block;font:700 9px/1.2 system-ui,sans-serif;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;margin-top:2px;visibility:hidden;">${uiConfig.engine}</div>
           `;
         }
       }
@@ -273,21 +274,7 @@
     return pages;
   }
 
-  async function fetchBufferWithTimeout(url) {
-    try {
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 7000); // Tối đa 7 giây
-      const res = await WIN.fetch(url, { signal: ctrl.signal });
-      clearTimeout(timer);
-      if (res.ok) return await res.arrayBuffer();
-    } catch (e) {}
-
-    // Fallback sang GM_xmlhttpRequest nếu fetch bị nghẽn
-    const Utils = window.MangaUtils || globalThis.MangaUtils;
-    return await Utils.fetchBuffer(url, { "Referer": "https://comic-fuz.com/" });
-  }
-
-  async function decryptComicFuzImage(pageItem, forceJpg) {
+  async function decryptComicFuzImage(pageItem) {
     const Utils = window.MangaUtils || globalThis.MangaUtils;
 
     // 1. Tải mảng byte nhị phân qua GM_xmlhttpRequest
@@ -312,35 +299,10 @@
     // 3. Nhận diện định dạng thực tế từ Magic Bytes (chống giả mạo đuôi URL)
     const ext = Utils.detectExt(decryptedBuffer);
 
-    // 4. ZERO-COPY: Nếu không ép JPG hoặc ảnh vốn dĩ đã là JPG -> Ghi thẳng vào ZIP 0ms!
-    if (!forceJpg || ext === 'jpg') {
-      return {
+    return {
         fileName: `${pageItem.pageNo}.${ext}`,
         data: decryptedBytes
       };
-    }
-
-    // 5. Nếu truyện gốc là WebP/PNG mà người dùng tick ép xuất JPG -> Vẽ Canvas Point Sampling
-    const img = await Utils.loadImage(decryptedBytes, `image/${ext}`);
-    const canvas = DOC.createElement('canvas');
-    canvas.width = img.naturalWidth || img.width;
-    canvas.height = img.naturalHeight || img.height;
-
-    const ctx = canvas.getContext('2d', { alpha: false });
-    ctx.imageSmoothingEnabled = false;
-    ctx.mozImageSmoothingEnabled = false;
-    ctx.webkitImageSmoothingEnabled = false;
-    ctx.msImageSmoothingEnabled = false;
-
-    ctx.drawImage(img, 0, 0);
-
-    const jpgBlob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', CONFIG.JPEG_QUALITY));
-    canvas.width = 0; canvas.height = 0;
-
-    return {
-      fileName: `${pageItem.pageNo}.jpg`,
-      data: new Uint8Array(await jpgBlob.arrayBuffer())
-    };
   }
 
   /* =========================================================================
@@ -379,10 +341,8 @@
       zip.addFile(`${ctx.chapterId}.txt`, new Uint8Array(0));
       if (ui) ui.updateProgress({ completed: 0, total: totalPages, status: "Đang tải..." });
 
-      const forceJpg = Boolean(state.convertJpeg) || (state.detectedSourceFormat === 'jpg');
-
       // 6 luồng tải song song Zero-Copy trong RAM
-      const tasks = pages.map(pageItem => () => decryptComicFuzImage(pageItem, forceJpg));
+      const tasks = pages.map(pageItem => () => decryptComicFuzImage(pageItem));
       const results = await Utils.runParallelQueue(tasks, CONFIG.MAX_CONCURRENT, (completed, total) => {
         if (ui) ui.updateProgress({ completed, total, status: "Đang tải..." });
       });
@@ -430,58 +390,91 @@
 
     if (ui?.panel) {
       ui.panel.style.display = "block";
+      ui.setBusy(true);
       ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
     }
 
-    const ctx = await resolveComicFuzContext();
-    if (!ctx || !ctx.chapterId) {
-      if (ui) ui.updateProgress({ status: "Không tìm thấy chương đọc." });
-      return;
-    }
-
     try {
+      const ctx = await resolveComicFuzContext();
+      if (!ctx || !ctx.chapterId) throw new Error("Không tìm thấy chương truyện.");
+
       const pages = await fetchComicFuzManifest(ctx.chapterId);
-      if (pages && pages.length > 0) {
-        state.chapterData = { pages, title: ctx.title };
-
-        // --- NHẬN DIỆN ĐỊNH DẠNG RAW (WEBP / JPG) ĐỂ CẬP NHẬT UI ---
-        const firstUrl = pages[0]?.url || "";
-        const rawExt = firstUrl.includes('.webp') ? 'webp' : (firstUrl.includes('.png') ? 'png' : 'jpg');
-        state.detectedSourceFormat = rawExt;
-        if (ui?.updateFormatUI) ui.updateFormatUI(rawExt);
-
-        if (ui) {
-          ui.updateProgress({
-            completed: 0,
-            total: pages.length,
-            status: "Sẵn sàng."
-          });
-        }
+      if (!pages || !pages.length) {
+        throw new Error("Không lấy được danh sách trang.");
       }
-    } catch (e) {
-      if (ui) ui.updateProgress({ status: "Sẵn sàng." });
+      state.chapterData = { pages, title: ctx.title };
+
+      // SOI MAGIC BYTES THỰC TẾ TRANG 1 SAU KHI GIẢI MÃ PHẦN CỨNG AES-256-CBC:
+      const firstPage = pages[0]; // bên này dùng pages[0].url
+      if (!firstPage?.url) throw new Error("URL trang 1 không hợp lệ.");
+
+      const Utils = window.MangaUtils || globalThis.MangaUtils;
+      const encryptedBuf = await Utils.fetchBuffer(firstPage.url, { "Referer": "https://comic-fuz.com/" });
+      const cryptoKey = await WIN.crypto.subtle.importKey(
+        "raw",
+        hexToBytes(firstPage.key),
+        { name: "AES-CBC" },
+        false,
+        ["decrypt"]
+      );
+      const decryptedBuf = await WIN.crypto.subtle.decrypt(
+        { name: "AES-CBC", iv: hexToBytes(firstPage.iv) },
+        cryptoKey,
+        encryptedBuf
+      );
+
+      const realExt = Utils.detectExt(decryptedBuf);
+      if (!realExt) throw new Error("Không thể nhận diện Magic Bytes ảnh.");
+
+      if (ui) {
+        ui.updateProgress({
+          completed: 0,
+          total: pages.length,
+          status: "Sẵn sàng.",
+          format: realExt
+        });
+        ui.setBusy(false);
+      }
+    } catch (err) {
+      console.error("[comicfuz-dl] Boot error:", err);
+      if (ui) {
+        ui.updateProgress({ status: "Lỗi: " + (err?.message || "không thể tải trang.") });
+        ui.setBusy(true);
+      }
     }
   }
 
   const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
   if (typeof watchRoute === "function") {
     watchRoute((newUrl) => {
-      if (newUrl === state.lastUrl) return;
+      
+      if (!isEpisodeUrl()) {
+        const ui = getUI();
+        if (ui?.panel) ui.panel.style.display = "none";
+        state.chapterData = null;
+        state.lastChapterId = "";
+        state.lastUrl = "";
+        state.running = false;
+        return;
+      }
+
+      const pathMatch = WIN.location.pathname.match(/\/(?:manga|book|magazine)\/(?:viewer\/)?(\d+)/i);
+      const currentCid = pathMatch ? pathMatch[1] : WIN.location.pathname;
+
+      if (state.lastChapterId && state.lastChapterId === currentCid) return;
+
       state.lastUrl = newUrl;
+      state.lastChapterId = currentCid;
       state.chapterData = null;
       state.running = false;
+
       const ui = getUI();
       if (ui) {
-        ui.setBusy(false);
+        ui.setBusy(true);
         ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
       }
       boot();
     });
   }
-
-  if (DOC.readyState === "loading") {
-    DOC.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
-  }
+  boot();
 })();

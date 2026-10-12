@@ -39,7 +39,9 @@
   const state = {
     running: false,
     pages: [],
-    ui: null
+    ui: null,
+    lastUrl: "",
+    lastSlugId: ""
   };
 
   /* =========================================================================
@@ -60,16 +62,11 @@
         btnBg: "#D22428",           
         btnColor: "#ffffff",
         topOffset: "140px",
-        defaultJpgText: "Xuất file JPG (ảnh gốc là JPG)",
         onDownload: startDownload
       };
 
       state.ui = createUI(uiConfig);
-
-      // Khóa cứng nhãn ảnh gốc JPEG (Zero-Copy)
-      if (typeof state.ui?.updateFormatUI === 'function') {
-        state.ui.updateFormatUI('jpg');
-      }
+      state.ui.setBusy(true);
 
       // Header 2 tầng (Dòng 1: Comic Owl, Dòng 2: FUNGUILD)
       if (state.ui?.panel) {
@@ -86,7 +83,7 @@
   }
 
   /* =========================================================================
-   * 2. XỬ LÝ CHUỖI & TIÊU ĐỀ CHUẨN (GOLDEN RULES)
+   * 2. XỬ LÝ CHUỖI & TIÊU ĐỀ
    * ========================================================================= */
   function isTargetUrl() {
     return /\/titles\/[^\/]+/.test(WIN.location.pathname);
@@ -207,7 +204,7 @@
    * 5. KHỞI CHẠY (BOOT) & ĐỒNG BỘ TRẠNG THÁI
    * ========================================================================= */
   async function boot() {
-    while (!DOC.body) await sleep(30);
+    while (!DOC.body) await sleep(20);
     const ui = getUI();
 
     if (!isTargetUrl()) {
@@ -215,45 +212,79 @@
       return;
     }
 
-    if (ui?.panel) ui.panel.style.display = "block";
-    if (ui) ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
-
-    let pages = [];
-    for (let i = 0; i < 20; i++) {
-      pages = extractPages();
-      if (pages.length > 0) break;
-      await sleep(150);
+    if (ui?.panel) {
+      ui.panel.style.display = "block";
+      ui.setBusy(true);
+      ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
     }
 
-    state.pages = pages;
-    await sleep(80); // Micro-delay chuẩn Golden Rule 3
+    try {
+      let pages = [];
+      for (let i = 0; i < 20; i++) {
+        pages = extractPages();
+        if (pages.length > 0) break;
+        await sleep(150);
+      }
 
-    if (ui) {
-      ui.updateProgress({
-        completed: 0,
-        total: pages.length,
-        status: "Sẵn sàng."
-      });
+      if (!pages || pages.length === 0) {
+        throw new Error("Không tìm thấy trang đọc thử.");
+      }
+      state.pages = pages;
+
+      const Utils = window.MangaUtils || globalThis.MangaUtils;
+      const testBuf = await Utils.fetchBuffer(pages[0]); // bên này dùng pages[0]
+      const realExt = Utils.detectExt(testBuf);
+      if (!realExt) {
+        throw new Error("Không thể nhận diện Magic Bytes ảnh.");
+      }
+
+      if (ui) {
+        ui.updateProgress({
+          completed: 0,
+          total: pages.length,
+          status: "Sẵn sàng.",
+          format: realExt
+        });
+        ui.setBusy(false);
+      }
+    } catch (e) {
+      console.error("[owl-dl] Boot error:", e);
+      if (ui) {
+        ui.updateProgress({ status: "Lỗi: " + (e?.message || "không thể tải trang.") });
+        ui.setBusy(true); // Khóa nút cứng khi gặp lỗi
+      }
     }
   }
 
   const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
   if (typeof watchRoute === "function") {
-    watchRoute(() => {
+    watchRoute((newUrl) => {
+
+      if (!isTargetUrl()) {
+        const ui = getUI();
+        if (ui?.panel) ui.panel.style.display = "none";
+        state.pages = [];
+        state.lastSlugId = "";
+        state.lastUrl = "";
+        state.running = false;
+        return;
+      }
+
+      const currentSlug = getSlugId();
+      if (state.lastSlugId && state.lastSlugId === currentSlug) return;
+
+      state.lastUrl = newUrl;
+      state.lastSlugId = currentSlug;
       state.pages = [];
       state.running = false;
+      
       const ui = getUI();
       if (ui) {
-        ui.setBusy(false);
+        ui.setBusy(true);
         ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
       }
       boot();
     });
   }
-
-  if (DOC.readyState === "loading") {
-    DOC.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
-  }
+  boot();
 })();

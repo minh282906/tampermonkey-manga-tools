@@ -34,8 +34,7 @@
    * CẤU HÌNH HỆ THỐNG
    * ========================================================================= */
   const CONFIG = {
-    MAX_CONCURRENT: 6,   // 6 luồng tải song song
-    JPEG_QUALITY: 1.0    // Chất lượng xuất JPG nếu tick chọn
+    MAX_CONCURRENT: 6   // 6 luồng tải song song
   };
 
   const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;
@@ -48,8 +47,6 @@
    * BỘ BẪY WEB WORKER TỰ ĐỘNG (BẮT KHÓA DÀNH RIÊNG CHO COMIPO FREE CÓ THỜI HẠN)
    * ========================================================================= */
   let capturedWorkerKey = null;
-  let workerKeyResolver = null;
-  const keyReadyPromise = new Promise(resolve => { workerKeyResolver = resolve; });
 
   try {
     if (typeof WIN.Worker !== 'undefined') {
@@ -57,22 +54,19 @@
       WIN.Worker.prototype.postMessage = function(msg, ...rest) {
         if (msg && typeof msg === 'object' && msg.param && msg.param.key) {
           capturedWorkerKey = String(msg.param.key).trim();
-          if (workerKeyResolver) {
-            workerKeyResolver(capturedWorkerKey);
-            workerKeyResolver = null;
-          }
         }
-        return origPostMessage.apply(this, [msg, ...rest]);
+        return origPostMessage.apply(this, arguments);
       };
     }
   } catch (e) {}
 
   const state = {
     running: false,
-    convertJpeg: localStorage.getItem("dlsite-dl:convert-jpeg") === '1',
-    detectedSourceFormat: 'webp',
     chapterData: null,
-    ui: null
+    ui: null,
+    lastUrl: "",
+    lastWorkNo: "",
+    lastMetaUrl: ""
   };
 
   /* =========================================================================
@@ -130,16 +124,11 @@
         themeBg: profile.themeBg,
         titleColor: profile.titleColor,
         topOffset: profile.top,
-        defaultJpgText: "Xuất file JPG (ảnh gốc là WebP)",
         onDownload: startDownload,
-        onJpgChange: (checked) => {
-          state.convertJpeg = checked;
-          localStorage.setItem("dlsite-dl:convert-jpeg", checked ? '1' : '0');
-        }
       };
 
       state.ui = createUI(uiConfig);
-      state.ui.updateFormatUI(state.detectedSourceFormat);
+      state.ui.setBusy(true);
 
       if (state.ui?.panel) {
         const titleEl = state.ui.panel.querySelector('[style*="font: 800 13px"], [style*="font:800 13px"]');
@@ -361,8 +350,17 @@
       let metaUrl = null;
       for (let i = 0; i < 35; i++) {
         const res = WIN.performance?.getEntriesByType?.("resource") || [];
-        const found = res.find(r => r.name && r.name.includes('/viewer/ebook_fixed/v2/'));
-        if (found) { metaUrl = found.name; break; }
+        // CHỈ TÌM ĐÚNG FILE viewer-meta.json (QUÉT NGƯỢC TỪ CUỐI LÊN, BỎ QUA TẬP CŨ):
+        for (let k = res.length - 1; k >= 0; k--) {
+          const rName = res[k].name;
+          if (rName && rName.includes('viewer-meta.json')) {
+            if (!state.lastMetaUrl || rName !== state.lastMetaUrl) {
+              metaUrl = rName;
+              break;
+            }
+          }
+        }
+        if (metaUrl) break;
         await sleep(100);
       }
 
@@ -381,19 +379,17 @@
         if (keyRes.ok) keyHex = (await keyRes.text()).trim();
       } catch (e) {}
 
+      // NẾU LÀ COMIPO FREE: ĐỢI ĐÚNG KHÓA MỚI TỪ WEB WORKER:
       if (!keyHex) {
-        if (capturedWorkerKey) {
-          keyHex = capturedWorkerKey;
-        } else {
-          keyHex = await Promise.race([
-            keyReadyPromise,
-            sleep(3000).then(() => null)
-          ]);
+        for (let w = 0; w < 35 && !capturedWorkerKey; w++) {
+          await sleep(100);
         }
+        keyHex = capturedWorkerKey;
       }
 
       if (!keyHex) throw new Error("Chưa bắt được khóa giải mã từ Web Worker. Vui lòng lật 1 trang rồi thử lại.");
-
+      
+      state.lastMetaUrl = metaUrl;
       const keyBytes = hexToBytes(keyHex);
 
       const rawPages = Array.isArray(meta?.pages) ? meta.pages : [];
@@ -481,7 +477,7 @@
   /* =========================================================================
    * 5. GIẢI MÃ BITWISE XOR TRONG RAM (ZERO-COPY 0ms)
    * ========================================================================= */
-  async function processDlsiteImage(pageObj, keyBytes, forceJpg) {
+  async function processDlsiteImage(pageObj, keyBytes) {
     const Utils = window.MangaUtils || globalThis.MangaUtils;
     const rawBuffer = await Utils.fetchBuffer(pageObj.url);
     const rawUint8 = new Uint8Array(rawBuffer);
@@ -496,35 +492,9 @@
     // 2. Nhận diện Magic Bytes thực tế
     const ext = Utils.detectExt(decryptedBytes.buffer);
 
-    // 3. ZERO-COPY: Nếu không ép JPG hoặc ảnh đã là JPG -> ghi thẳng mảng byte vào ZIP
-    if (!forceJpg || ext === 'jpg') {
-      return {
-        fileName: `${pageObj.pageNo}.${ext}`,
-        data: decryptedBytes
-      };
-    }
-
-    // 4. Nếu người dùng tick chọn xuất JPG -> vẽ qua Canvas
-    const img = await Utils.loadImage(decryptedBytes.buffer, `image/${ext}`);
-    const canvas = DOC.createElement('canvas');
-    canvas.width = img.naturalWidth || img.width;
-    canvas.height = img.naturalHeight || img.height;
-
-    const ctx = canvas.getContext('2d', { alpha: false });
-    ctx.imageSmoothingEnabled = false;
-    ctx.mozImageSmoothingEnabled = false;
-    ctx.webkitImageSmoothingEnabled = false;
-    ctx.msImageSmoothingEnabled = false;
-
-    ctx.drawImage(img, 0, 0);
-
-    const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', CONFIG.JPEG_QUALITY));
-    canvas.width = 0;
-    canvas.height = 0;
-
     return {
-      fileName: `${pageObj.pageNo}.jpg`,
-      data: new Uint8Array(await blob.arrayBuffer())
+      fileName: `${pageObj.pageNo}.${ext}`,
+      data: decryptedBytes
     };
   }
 
@@ -551,7 +521,6 @@
       const totalPages = pages.length;
       if (!totalPages) throw new Error("Không tìm thấy trang hợp lệ.");
 
-      const forceJpg = Boolean(state.convertJpeg);
       const ZipClass = window.PureZipWriter || globalThis.PureZipWriter;
       const Utils = window.MangaUtils || globalThis.MangaUtils;
       const zip = new ZipClass();
@@ -561,7 +530,7 @@
 
       if (ui) ui.updateProgress({ completed: 0, total: totalPages, status: "Đang tải..." });
 
-      const tasks = pages.map((pageObj) => () => processDlsiteImage(pageObj, keyBytes, forceJpg));
+      const tasks = pages.map((pageObj) => () => processDlsiteImage(pageObj, keyBytes));
 
       const results = await Utils.runParallelQueue(tasks, CONFIG.MAX_CONCURRENT, (completed, total) => {
         if (ui) ui.updateProgress({ completed, total, status: "Đang tải..." });
@@ -601,66 +570,89 @@
 
     if (ui?.panel) {
       ui.panel.style.display = "block";
+      ui.setBusy(true);
       ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
     }
 
-    let data = null;
-    let retries = 0;
+    try {
+      let data = null;
+      let retries = 0;
 
-    // Retry loop 25 lần chờ Cookie / Auth sẵn sàng
-    while (retries < 25) {
-      try {
-        data = await fetchDlsiteManifest();
-        if (data && data.pages?.length > 0) break;
-      } catch (e) {}
-      await sleep(150);
-      retries++;
-    }
+      while (retries < 25) {
+        try {
+          data = await fetchDlsiteManifest();
+          if (data && data.pages?.length > 0) break;
+        } catch (e) {}
+        await sleep(150);
+        retries++;
+      }
 
-    if (data && data.pages?.length > 0) {
+      if (!data || !data.pages || !data.pages.length) {
+        throw new Error("Không lấy được danh sách trang hoặc chưa đăng nhập / mua truyện.");
+      }
       state.chapterData = data;
 
-      // Nhận diện định dạng gốc từ trang đầu tiên
-      try {
-        const Utils = window.MangaUtils || globalThis.MangaUtils;
-        const testBuf = await Utils.fetchBuffer(data.pages[0].url);
-        const testRaw = new Uint8Array(testBuf);
-        const dec = new Uint8Array(testRaw.length);
-        for (let i = 0; i < testRaw.length; i++) dec[i] = testRaw[i] ^ data.keyBytes[i % data.keyBytes.length];
-        const detectedExt = Utils.detectExt(dec.buffer);
-        state.detectedSourceFormat = detectedExt;
-        if (ui) ui.updateFormatUI(detectedExt);
-      } catch (e) {}
+      // SOI MAGIC BYTES THỰC TẾ TRANG 1 SAU KHI GIẢI MÃ XOR (ZERO-TRUST):
+      const firstPage = data.pages[0]; // bên này dùng data.pages[0].url
+      if (!firstPage?.url) throw new Error("URL trang 1 không hợp lệ.");
+
+      const Utils = window.MangaUtils || globalThis.MangaUtils;
+      const testBuf = await Utils.fetchBuffer(firstPage.url);
+      const testRaw = new Uint8Array(testBuf);
+      const dec = new Uint8Array(testRaw.length);
+      for (let i = 0; i < testRaw.length; i++) dec[i] = testRaw[i] ^ data.keyBytes[i % data.keyBytes.length];
+      
+      const realExt = Utils.detectExt(dec.buffer);
+      if (!realExt) throw new Error("Không thể nhận diện Magic Bytes ảnh.");
 
       if (ui) {
         ui.updateProgress({
           completed: 0,
           total: data.pages.length,
-          status: "Sẵn sàng."
+          status: "Sẵn sàng.",
+          format: realExt
         });
+        ui.setBusy(false);
       }
-    } else {
-      if (ui) ui.updateProgress({ status: "Sẵn sàng." });
+    } catch (err) {
+      console.error("[dlsite-dl] Boot error:", err);
+      if (ui) {
+        ui.updateProgress({ status: "Lỗi: " + (err?.message || "không thể tải trang.") });
+        ui.setBusy(true);
+      }
     }
   }
 
   const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
   if (typeof watchRoute === "function") {
-    watchRoute(() => {
+    watchRoute((newUrl) => {
+
+      if (!isEpisodeUrl()) {
+        const ui = getUI();
+        if (ui?.panel) ui.panel.style.display = "none";
+        state.chapterData = null;
+        state.lastUrl = "";
+        state.lastMetaUrl = ""; 
+        state.lastWorkNo = "";
+        state.running = false;
+        return;
+      }
+      const currentWorkNo = parseWorkNo();
+      if (state.lastWorkNo && state.lastWorkNo === currentWorkNo) return;
+      
+      capturedWorkerKey = null;
+      state.lastUrl = newUrl;
+      state.lastWorkNo = currentWorkNo;
       state.chapterData = null;
       state.running = false;
+
       const ui = getUI();
       if (ui) {
-        ui.setBusy(false);
+        ui.setBusy(true);
         ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
       }
       boot();
     });
   }
-
-  if (DOC.readyState === "loading") {
-    DOC.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
-  }
+  boot();
 })();

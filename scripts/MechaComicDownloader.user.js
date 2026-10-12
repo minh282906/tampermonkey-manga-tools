@@ -29,8 +29,7 @@
    * CẤU HÌNH HỆ THỐNG
    * ========================================================================= */
   const CONFIG = {
-    MAX_CONCURRENT: 6,   // 6 luồng kịch trần TCP Socket
-    JPEG_QUALITY: 1.0    // Chất lượng khi tick chọn JPG
+    MAX_CONCURRENT: 6   // 6 luồng kịch trần TCP Socket
   };
 
   const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;
@@ -41,10 +40,10 @@
 
   const state = {
     running: false,
-    convertJpeg: localStorage.getItem("mechacomic-dl:convert-jpeg") === '1',
-    detectedSourceFormat: 'webp',
     chapterData: null,
-    ui: null
+    ui: null,
+    lastUrl: "",
+    lastIdentifier: ""
   };
 
   /* =========================================================================
@@ -65,16 +64,11 @@
         btnBg: "#ea3878",
         btnColor: "#ffffff",
         topOffset: "100px",
-        defaultJpgText: "Xuất file JPG (ảnh gốc là WebP)",
         onDownload: startDownload,
-        onJpgChange: (checked) => {
-          state.convertJpeg = checked;
-          localStorage.setItem("mechacomic-dl:convert-jpeg", checked ? '1' : '0');
-        }
       };
 
       state.ui = createUI(uiConfig);
-      state.ui.updateFormatUI(state.detectedSourceFormat);
+      state.ui.setBusy(true);
 
       if (state.ui?.panel) {
         const titleEl = state.ui.panel.querySelector('[style*="font: 800 13px"], [style*="font:800 13px"]');
@@ -90,7 +84,7 @@
   }
 
   /* =========================================================================
-   * 2. BỘ HỖ TRỢ XỬ LÝ CHUỖI & TÊN FILE CHUẨN (GOLDEN RULES)
+   * 2. BỘ HỖ TRỢ XỬ LÝ CHUỖI & TÊN FILE
    * ========================================================================= */
   function isViewerUrl() {
     return WIN.location.pathname.includes('/viewer/') && WIN.location.search.includes('directory=');
@@ -281,14 +275,21 @@
     // Nếu vừa chuyển từ _sp sang _pg, KHÔNG dùng ver của _sp vì sẽ gây lệch chữ ký CDN (HTTP 404)
     const activeVer = isSwitchedToPg ? "" : (ver ? `?ver=${ver}` : "");
 
+    let defaultEncExt = '.webp.enc';
+    const firstSample = rawImages[keys[0]];
+    const sampleRawName = String(typeof firstSample === 'string' ? firstSample : (firstSample?.src || firstSample?.file || firstSample?.path || ''));
+    const encMatch = sampleRawName.match(/\.([a-zA-Z0-9]+)(?:\.enc)?$/i);
+    if (encMatch) {
+      defaultEncExt = `.${encMatch[1].toLowerCase()}.enc`;
+    }
+
     const pages = keys.map((k, idx) => {
       const item = rawImages[k] || {};
       const rawName = typeof item === 'string' ? item : (item.src || item.file || item.path || item.url || item.name || "");
       const cleanRaw = String(rawName || '').replace(/^\/+/, '').trim();
 
-      // Lưu 2 dạng: thứ tự (001.webp.enc) và số trang gốc (ví dụ 115.webp.enc nếu có)
-      const padName = `${String(idx + 1).padStart(3, '0')}.webp.enc`;
-      const originalKeyName = cleanRaw ? (cleanRaw.endsWith('.enc') ? cleanRaw : `${cleanRaw}.webp.enc`) : `${k}.webp.enc`;
+      const padName = `${String(idx + 1).padStart(3, '0')}${defaultEncExt}`;
+      const originalKeyName = cleanRaw ? (cleanRaw.endsWith('.enc') ? cleanRaw : `${cleanRaw}${defaultEncExt}`) : `${k}${defaultEncExt}`;
 
       return {
         pageNo: idx + 1,
@@ -296,7 +297,9 @@
         originalKeyName: originalKeyName,
         baseDir: dir,
         verSuffix: activeVer,
-        url: `${dir}${padName}${activeVer}`
+        url: `${dir}${padName}${activeVer}`,
+        padIndex: String(idx + 1).padStart(3, '0'),
+        cleanRawName: cleanRaw || String(k)
       };
     });
 
@@ -339,16 +342,19 @@
   /* =========================================================================
    * 5. XỬ LÝ ẢNH ZERO-COPY TRONG RAM
    * ========================================================================= */
-  async function processMechaImage(pageObj, keyHex, forceJpg) {
+  async function processMechaImage(pageObj, keyHex) {
     const Utils = window.MangaUtils || globalThis.MangaUtils;
 
     try {
       // Lưới danh sách link thử nghiệm chống lỗi 404 (triệt tiêu lệch ver và lệch index 001 vs 115)
       const candidateUrls = [
-        pageObj.url,                                                      // 1. 001.webp.enc kèm ver
-        `${pageObj.baseDir}${pageObj.fileName}`,                         // 2. 001.webp.enc không ver (sạch)
-        `${pageObj.baseDir}${pageObj.originalKeyName}${pageObj.verSuffix}`, // 3. 115.webp.enc kèm ver
-        `${pageObj.baseDir}${pageObj.originalKeyName}`                   // 4. 115.webp.enc không ver
+        pageObj.url,                                                      // 1. Link chính kèm ver
+        `${pageObj.baseDir}${pageObj.fileName}`,                         // 2. Tên 001 sạch không ver
+        `${pageObj.baseDir}${pageObj.originalKeyName}${pageObj.verSuffix}`, // 3. Tên 115 kèm ver
+        `${pageObj.baseDir}${pageObj.originalKeyName}`,                  // 4. Tên 115 sạch không ver
+        // PHÒNG THỦ DỰ PHÒNG: NẾU BẢN WEBP 404, THỬ SANG ĐUÔI JPG.ENC:
+        `${pageObj.baseDir}${pageObj.padIndex}.jpg.enc${pageObj.verSuffix}`,
+        `${pageObj.baseDir}${pageObj.padIndex}.jpg.enc`
       ];
 
       let rawBuffer = null;
@@ -372,29 +378,8 @@
       // 2. Nhận diện Magic Bytes thực tế
       const ext = Utils.detectExt(decryptedBuffer);
 
-      // 3. ZERO-COPY: Ghi thẳng vào ZIP
-      if (!forceJpg || ext === 'jpg') {
-        return { fileName: `${pageObj.pageNo}.${ext}`, data: decryptedUint8 };
-      }
+      return { fileName: `${pageObj.pageNo}.${ext}`, data: decryptedUint8 };
 
-      // 4. Nếu chọn chuyển đổi sang JPG -> Vẽ qua Canvas Point Sampling
-      const img = await Utils.loadImage(decryptedUint8, `image/${ext}`);
-      const canvas = DOC.createElement('canvas');
-      canvas.width = img.naturalWidth || img.width;
-      canvas.height = img.naturalHeight || img.height;
-
-      const ctx = canvas.getContext('2d', { alpha: false });
-      ctx.imageSmoothingEnabled = false;
-      ctx.mozImageSmoothingEnabled = false;
-      ctx.webkitImageSmoothingEnabled = false;
-      ctx.msImageSmoothingEnabled = false;
-
-      ctx.drawImage(img, 0, 0);
-
-      const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', CONFIG.JPEG_QUALITY));
-      canvas.width = 0; canvas.height = 0;
-
-      return { fileName: `${pageObj.pageNo}.jpg`, data: new Uint8Array(await blob.arrayBuffer()) };
     } catch (err) {
       console.error(`[mechacomic-dl] Lỗi xử lý trang ${pageObj.pageNo} (${pageObj.url}):`, err);
       throw err;
@@ -424,7 +409,6 @@
       const totalPages = pages.length;
       if (!totalPages) throw new Error("Không có lát cắt hợp lệ để tải.");
 
-      const forceJpg = Boolean(state.convertJpeg);
       const ZipClass = window.PureZipWriter || globalThis.PureZipWriter;
       const Utils = window.MangaUtils || globalThis.MangaUtils;
       const zip = new ZipClass();
@@ -433,7 +417,7 @@
 
       if (ui) ui.updateProgress({ completed: 0, total: totalPages, status: "Đang tải..." });
 
-      const tasks = pages.map((pageObj) => () => processMechaImage(pageObj, keyHex, forceJpg));
+      const tasks = pages.map((pageObj) => () => processMechaImage(pageObj, keyHex));
 
       const results = await Utils.runParallelQueue(tasks, CONFIG.MAX_CONCURRENT, (completed, total) => {
         if (ui) ui.updateProgress({ completed, total, status: "Đang tải..." });
@@ -481,53 +465,104 @@
 
     if (ui?.panel) {
       ui.panel.style.display = "block";
+      ui.setBusy(true);
       ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
     }
 
-    let data = null;
-    let retries = 0;
+    try {
+      let data = null;
+      let retries = 0;
+      while (retries < 25) {
+        try {
+          data = await fetchMechaComicManifest();
+          if (data && data.pages?.length > 0) break;
+        } catch (e) {}
+        await sleep(150);
+        retries++;
+      }
 
-    while (retries < 25) {
-      try {
-        data = await fetchMechaComicManifest();
-        if (data && data.pages?.length > 0) break;
-      } catch (e) {}
-      await sleep(150);
-      retries++;
-    }
-
-    if (data && data.pages?.length > 0) {
+      if (!data || !data.pages?.length) {
+        throw new Error("Không lấy được danh sách trang.");
+      }
       state.chapterData = data;
+
+      // 3. Tải thử trang 1 & giải mã AES-128-CBC để soi Magic Bytes thực tế
+      const firstPage = data.pages[0]; // bên này dùng data.pages[0]
+      if (!firstPage?.url) throw new Error("URL trang 1 không hợp lệ.");
+
+      const Utils = window.MangaUtils || globalThis.MangaUtils;
+      let rawBuf = null;
+
+      const candidateUrls = [
+        firstPage.url,
+        `${firstPage.baseDir}${firstPage.fileName}`,
+        `${firstPage.baseDir}${firstPage.originalKeyName}${firstPage.verSuffix}`,
+        `${firstPage.baseDir}${firstPage.originalKeyName}`,
+        `${firstPage.baseDir}${firstPage.padIndex}.jpg.enc${firstPage.verSuffix}`,
+        `${firstPage.baseDir}${firstPage.padIndex}.jpg.enc`
+      ];
+
+      for (const testUrl of candidateUrls) {
+        try {
+          rawBuf = await Utils.fetchBuffer(testUrl);
+          if (rawBuf && rawBuf.byteLength > 100) break;
+        } catch (e) {}
+      }
+
+      if (!rawBuf) throw new Error("Không thể tải trang 1 từ CDN (404 trên toàn bộ lưới).");
+
+      const decBuf = await decryptMechaAesCbc(rawBuf, data.keyHex);
+      const realExt = Utils.detectExt(decBuf); // Soi Magic Bytes thật sau giải mã
+      if (!realExt) throw new Error("Không thể nhận diện Magic Bytes ảnh.");
 
       if (ui) {
         ui.updateProgress({
           completed: 0,
           total: data.pages.length,
-          status: "Sẵn sàng."
+          status: "Sẵn sàng.",
+          format: realExt
         });
+        ui.setBusy(false);
       }
-    } else {
-      if (ui) ui.updateProgress({ status: "Sẵn sàng." });
+    } catch (e) {
+      console.error("[mechacomic-dl] Boot error:", e);
+      if (ui) {
+        ui.updateProgress({ status: "Lỗi: " + (e?.message || "không thể tải trang.") });
+        ui.setBusy(true);
+      }
     }
   }
 
   const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
   if (typeof watchRoute === "function") {
-    watchRoute(() => {
+    watchRoute((newUrl) => {
+
+      // 1. Nếu rời khỏi trang đọc truyện (ra trang giới thiệu sách /books/...) -> Ẩn panel ngay
+      if (!isViewerUrl()) {
+        const ui = getUI();
+        if (ui?.panel) ui.panel.style.display = "none";
+        state.chapterData = null;
+        state.lastIdentifier = "";
+        state.lastUrl = "";
+        state.running = false;
+        return;
+      }
+
+      const currentId = getIdentifier();
+      if (state.lastIdentifier && state.lastIdentifier === currentId) return;
+
+      state.lastUrl = newUrl;
+      state.lastIdentifier = currentId;
       state.chapterData = null;
       state.running = false;
+
       const ui = getUI();
       if (ui) {
-        ui.setBusy(false);
+        ui.setBusy(true);
         ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
       }
       boot();
     });
   }
-
-  if (DOC.readyState === "loading") {
-    DOC.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
-  }
+  boot();
 })();

@@ -35,8 +35,7 @@
    * CẤU HÌNH & KHỞI TẠO
    * ========================================================================= */
   const CONFIG = {
-    MAX_CONCURRENT: 6,   // 6 luồng tải và giải mã song song
-    JPEG_QUALITY: 1.0    // Chất lượng xuất JPG nếu chuyển đổi
+    MAX_CONCURRENT: 6   // 6 luồng tải và giải mã song song
   };
 
   const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;
@@ -48,10 +47,10 @@
 
   const state = {
     running: false,
-    convertJpeg: localStorage.getItem("mangaone-dl:convert-jpeg") === '1',
-    detectedSourceFormat: 'webp',
     chapterData: null,
-    ui: null
+    ui: null,
+    lastUrl: "",
+    lastChapterId: ""
   };
 
   function getUI() {
@@ -64,27 +63,25 @@
       const siteTitle  = isUrasunday ? "Ura Sunday" : "MangaONE";
       const topOffset  = isUrasunday ? "100px" : "80px"; 
 
-      state.ui = createUI({
+      const uiconfig = {
         storagePrefix: isUrasunday ? "urasunday-dl" : "mangaone-dl",
         title: siteTitle,
+        engine: "SHOGAKUKAN",
         themeColor: themeColor,
         themeBg: "#18181b",
         titleColor: titleColor,
         topOffset: topOffset,
-        defaultJpgText: "Xuất file JPG (ảnh gốc là WebP)",
         onDownload: startDownload,
-        onJpgChange: (checked) => {
-          state.convertJpeg = checked;
-          localStorage.setItem(`${isUrasunday ? "urasunday" : "mangaone"}-dl:convert-jpeg`, checked ? '1' : '0');
-        }
-      });
+      }
+      state.ui = createUI(uiconfig);
+      state.ui.setBusy(true);
 
       if (state.ui?.panel) {
         const titleEl = state.ui.panel.querySelector('[style*="font: 800 13px"], [style*="font:800 13px"]');
         if (titleEl) {
           titleEl.innerHTML = `
               <div style="all:initial;display:block;font:800 13px/1.2 system-ui,sans-serif;color:${titleColor};letter-spacing:0.2px;">${siteTitle}</div>
-              <div style="all:initial;display:block;font:700 9px/1.2 system-ui,sans-serif;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;margin-top:2px;">SHOGAKUKAN</div>
+              <div style="all:initial;display:block;font:700 9px/1.2 system-ui,sans-serif;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;margin-top:2px;visibility:hidden;">${uiconfig.engine}</div>
             `;
         }
       }
@@ -93,7 +90,7 @@
   }
 
   /* =========================================================================
-   * BỘ HỖ TRỢ XỬ LÝ CHUỖI & TÊN FILE CHUẨN (GOLDEN RULES)
+   * BỘ HỖ TRỢ XỬ LÝ CHUỖI & TÊN FILE
    * ========================================================================= */
   function isEpisodeUrl() {
     if (isUrasunday) {
@@ -125,9 +122,6 @@
       .trim();
   }
 
-  /* =========================================================================
-   * BỘ HỖ TRỢ XỬ LÝ CHUỖI & TÊN FILE CHUẨN
-   * ========================================================================= */
   function getCleanTitle() {
     try {
       const isUra = WIN.location.hostname.includes("urasunday.com");
@@ -202,17 +196,6 @@
     const matchedUrls = configString.match(urlRegex);
     if (!matchedUrls || matchedUrls.length === 0) throw new Error("Không tìm thấy danh sách ảnh.");
 
-    if (matchedUrls[0].includes('/webp/') || matchedUrls[0].includes('.webp')) {
-      state.detectedSourceFormat = 'webp';
-    } else if (matchedUrls[0].includes('/png/') || matchedUrls[0].includes('.png')) {
-      state.detectedSourceFormat = 'png';
-    } else if (matchedUrls[0].includes('/jpg/') || matchedUrls[0].includes('.jpg') || matchedUrls[0].includes('.jpeg')) {
-      state.detectedSourceFormat = 'jpg';
-    }
-
-    const ui = getUI();
-    if (ui) ui.updateFormatUI(state.detectedSourceFormat);
-
     const cryptoMatch = configString.match(/(?<key>[0-9a-f]{64}).*(?<iv>[0-9a-f]{32})/);
     const cryptoData = cryptoMatch ? cryptoMatch.groups : null;
 
@@ -229,7 +212,7 @@
 
   function parseUrasundayPages(htmlString) {
     // Quét trực tiếp mảng zao.Viewer trong source HTML
-    const regex = /src:\s*'([^']+manga_page(?:_high)?.*?\.webp[^']+)'/g;
+    const regex = /src:\s*'([^']+manga_page(?:_high)?.*?\.(?:webp|jpe?g|png)[^']+)'/g;
     let matches;
     const urls = [];
     while ((matches = regex.exec(htmlString)) !== null) {
@@ -237,10 +220,6 @@
     }
 
     if (urls.length === 0) throw new Error("Không tìm thấy link ảnh trên Ura Sunday.");
-
-    state.detectedSourceFormat = 'webp';
-    const ui = getUI();
-    if (ui) ui.updateFormatUI('webp');
 
     return urls.map((url, idx) => ({
       pageNo: idx + 1,
@@ -256,7 +235,7 @@
     return arr;
   }
 
-  async function decryptAndFormatImage(pageItem, forceJpg) {
+  async function decryptAndFormatImage(pageItem) {
     const Utils = window.MangaUtils || globalThis.MangaUtils;
     let buffer = await Utils.fetchBuffer(pageItem.url, { "Referer": WIN.location.href });
 
@@ -267,34 +246,12 @@
     }
 
     const uint8 = new Uint8Array(buffer);
+    const ext = Utils.detectExt(buffer);
 
-    // 2. Nhận diện Magic Bytes gốc
-    let ext = 'jpg';
-    if (uint8[0] === 0x52 && uint8[1] === 0x49 && uint8[2] === 0x46 && uint8[3] === 0x46) ext = 'webp';
-    else if (uint8[0] === 0x89 && uint8[1] === 0x50 && uint8[2] === 0x4E && uint8[3] === 0x47) ext = 'png';
-    else if (uint8[0] === 0xFF && uint8[1] === 0xD8 && uint8[2] === 0xFF) ext = 'jpg';
-
-    const fileName = `${pageItem.pageNo}.${forceJpg ? 'jpg' : ext}`;
-    if (ext === 'jpg' || !forceJpg) return { fileName, data: uint8 };
-
-    // 3. Chuyển sang JPG nếu người dùng chọn
-    const img = await Utils.loadImage(uint8, `image/${ext}`);
-    const canvas = DOC.createElement('canvas');
-    canvas.width = img.naturalWidth || img.width;
-    canvas.height = img.naturalHeight || img.height;
-    
-    const ctx = canvas.getContext('2d', { alpha: false });
-    ctx.imageSmoothingEnabled = false;
-    ctx.mozImageSmoothingEnabled = false;
-    ctx.webkitImageSmoothingEnabled = false;
-    ctx.msImageSmoothingEnabled = false;
-
-    ctx.drawImage(img, 0, 0);
-
-    const jpgBlob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', CONFIG.JPEG_QUALITY));
-    canvas.width = 0; canvas.height = 0;
-
-    return { fileName, data: new Uint8Array(await jpgBlob.arrayBuffer()) };
+    return {
+      fileName: `${pageItem.pageNo}.${ext}`,
+      data: uint8
+    };
   }
 
   /* =========================================================================
@@ -330,7 +287,6 @@
       const totalPages = pages.length;
       if (!totalPages) throw new Error("Không có trang hợp lệ.");
 
-      const forceJpg = Boolean(state.convertJpeg) || (state.detectedSourceFormat === 'jpg');
       const ZipClass = window.PureZipWriter || globalThis.PureZipWriter;
       const Utils = window.MangaUtils || globalThis.MangaUtils;
       const zip = new ZipClass();
@@ -339,7 +295,7 @@
       zip.addFile(`${chapterId}.txt`, new Uint8Array(0));
       if (ui) ui.updateProgress({ completed: 0, total: totalPages, status: "Đang tải..." });
 
-      const tasks = pages.map(pageItem => () => decryptAndFormatImage(pageItem, forceJpg));
+      const tasks = pages.map(pageItem => () => decryptAndFormatImage(pageItem));
       const results = await Utils.runParallelQueue(tasks, CONFIG.MAX_CONCURRENT, (completed, total) => {
         if (ui) ui.updateProgress({ completed, total, status: "Đang tải..." });
       });
@@ -367,7 +323,7 @@
    * KHỞI CHẠY VÀ THEO DÕI SPA
    * ========================================================================= */
   async function boot() {
-    while (!DOC.body) await sleep(30);
+    while (!DOC.body) await sleep(20);
     const ui = getUI();
 
     if (!isEpisodeUrl()) {
@@ -375,53 +331,101 @@
       return;
     }
 
-    if (ui?.panel) ui.panel.style.display = "block";
-    if (ui) ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
+    if (ui?.panel) {
+      ui.panel.style.display = "block";
+      ui.setBusy(true);
+      ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
+    }
 
     const { titleId, chapterId } = getIdsFromUrl();
     if (!titleId || !chapterId) return;
 
     try {
-      let pages;
-      if (isUrasunday) {
-        pages = parseUrasundayPages(DOC.documentElement.innerHTML);
-      } else {
-        const configText = await fetchChapterConfig(titleId, chapterId);
-        pages = parseConfigString(configText, chapterId);
+      let pages = null;
+      let retries = 0;
+
+      while (retries < 25) {
+        try {
+          if (isUrasunday) {
+            pages = parseUrasundayPages(DOC.documentElement.innerHTML);
+          } else {
+            const configText = await fetchChapterConfig(titleId, chapterId);
+            pages = parseConfigString(configText, chapterId);
+          }
+          if (pages && pages.length > 0) break;
+        } catch (e) {}
+        await sleep(150);
+        retries++;
+      }
+
+      if (!pages || pages.length === 0) {
+        throw new Error("Không lấy được danh sách trang.");
       }
       state.chapterData = pages;
+
+      // SOI MAGIC BYTES TRỰC TIẾP TRANG 1 (GIẢI MÃ AES NẾU LÀ MANGAONE):
+      const firstPage = pages[0];
+      if (!firstPage?.url) throw new Error("URL trang 1 không hợp lệ."); // bên này dùng pages[0].url
+
+      const Utils = window.MangaUtils || globalThis.MangaUtils;
+      let testBuf = await Utils.fetchBuffer(firstPage.url, { "Referer": WIN.location.href });
+
+      if (firstPage.isEncrypted && firstPage.crypto?.key && firstPage.crypto?.iv) {
+        const cryptoKey = await WIN.crypto.subtle.importKey('raw', unhex(firstPage.crypto.key), { name: 'AES-CBC' }, false, ['decrypt']);
+        testBuf = await WIN.crypto.subtle.decrypt({ name: 'AES-CBC', iv: unhex(firstPage.crypto.iv) }, cryptoKey, testBuf);
+      }
+
+      const realExt = Utils.detectExt(testBuf);
+      if (!realExt) throw new Error("Không thể nhận diện Magic Bytes ảnh.");
 
       if (ui) {
         ui.updateProgress({
           completed: 0,
           total: pages.length,
-          status: "Sẵn sàng."
+          status: "Sẵn sàng.",
+          format: realExt
         });
+        ui.setBusy(false);
       }
     } catch (err) {
       console.error(`[${isUrasunday ? "urasunday" : "mangaone"}-dl] Boot error:`, err);
-      if (ui) ui.updateProgress({ status: "Sẵn sàng." });
+      if (ui) {
+        ui.updateProgress({ status: "Lỗi: " + (err?.message || "không thể tải trang.") });
+        ui.setBusy(true);
+      }
     }
   }
 
   // Hook SPA History
   const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
   if (typeof watchRoute === "function") {
-    watchRoute(() => {
+    watchRoute((newUrl) => {
+
+      if (!isEpisodeUrl()) {
+        const ui = getUI();
+        if (ui?.panel) ui.panel.style.display = "none";
+        state.chapterData = null;
+        state.lastChapterId = "";
+        state.lastUrl = "";
+        state.running = false;
+        return;
+      }
+
+      const { chapterId } = getIdsFromUrl();
+      if (state.lastChapterId && state.lastChapterId === chapterId) return;
+
+      state.lastUrl = newUrl;
+      state.lastChapterId = chapterId;
       state.chapterData = null;
       state.running = false;
+
       const ui = getUI();
       if (ui) {
-        ui.setBusy(false);
+        ui.setBusy(true);
         ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
       }
       boot();
     });
   }
-
-  if (DOC.readyState === "loading") {
-    DOC.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
-  }
+  boot();
 })();

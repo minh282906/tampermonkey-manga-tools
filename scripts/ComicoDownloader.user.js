@@ -35,8 +35,7 @@
    * CẤU HÌNH & HẰNG SỐ MẬT MÃ
    * ========================================================================= */
   const CONFIG = {
-    MAX_CONCURRENT: 6,
-    JPEG_QUALITY: 1.0
+    MAX_CONCURRENT: 6
   };
 
   // Khóa tĩnh giải mã URL đối xứng của Comico (IMPORTANT)
@@ -50,11 +49,11 @@
 
   const state = {
     running: false,
-    convertJpeg: localStorage.getItem("comico-dl:convert-jpeg") === '1',
     chapterData: null,
     ui: null,
     cachedWebKey: null,
-    lastUrl: ""
+    lastUrl: "",
+    lastChapterId: ""
   };
 
   /* =========================================================================
@@ -68,7 +67,7 @@
       const isPocket = WIN.location.hostname.includes('pocketcomics.com');
       const titleName = isPocket ? "Pocket Comics" : "Comico";
 
-      state.ui = createUI({
+      const uiConfig = {
         storagePrefix: "comico-dl",
         title: titleName,
         engine: "COMICO VIEWER",
@@ -80,18 +79,17 @@
         topOffset: "60px",
         defaultJpgText: "Xuất file JPG (ảnh gốc là JPG)",
         onDownload: startDownload,
-        onJpgChange: (checked) => {
-          state.convertJpeg = checked;
-          localStorage.setItem("comico-dl:convert-jpeg", checked ? '1' : '0');
-        }
-      });
+      }
+
+      state.ui = createUI(uiConfig);
+      state.ui.setBusy(true);
 
       if (state.ui?.panel) {
         const titleEl = state.ui.panel.querySelector('[style*="font: 800 13px"], [style*="font:800 13px"]');
         if (titleEl) {
           titleEl.innerHTML = `
-            <div style="all:initial;display:block;font:800 13px/1.2 system-ui,sans-serif;color:#F40008;letter-spacing:0.2px;">${titleName}</div>
-            <div style="all:initial;display:block;font:700 9px/1.2 system-ui,sans-serif;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;margin-top:2px;visibility:hidden;">COMICO VIEWER</div>
+            <div style="all:initial;display:block;font:800 13px/1.2 system-ui,sans-serif;color:${uiConfig.titleColor};letter-spacing:0.2px;">${titleName}</div>
+            <div style="all:initial;display:block;font:700 9px/1.2 system-ui,sans-serif;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;margin-top:2px;visibility:hidden;">${uiConfig.engine}</div>
           `;
         }
       }
@@ -272,7 +270,6 @@
     const chapterName = chapter?.name || "";
 
     const pages = [];
-    let detectedFormat = 'jpg';
 
     // 1. NHÁNH MAGAZINE COMIC (EPUB FIXED-LAYOUT QUA STANDARD.OPF)
     const epubData = chapter.epub || json?.data?.epub;
@@ -290,12 +287,6 @@
 
       items.forEach((item, idx) => {
         const href = item.getAttribute('href');
-        const mediaType = item.getAttribute('media-type') || '';
-        if (idx === 0) {
-          if (mediaType.includes('png')) detectedFormat = 'png';
-          else if (mediaType.includes('webp')) detectedFormat = 'webp';
-          else detectedFormat = 'jpg';
-        }
         if (href) {
           pages.push({
             pageNo: idx + 1,
@@ -309,11 +300,6 @@
       for (let idx = 0; idx < chapter.images.length; idx++) {
         const imgObj = chapter.images[idx];
         const decryptedUrl = await decryptAesUrl(imgObj.url);
-        if (idx === 0) {
-          if (decryptedUrl.includes('.png')) detectedFormat = 'png';
-          else if (decryptedUrl.includes('.webp')) detectedFormat = 'webp';
-          else detectedFormat = 'jpg';
-        }
         const param = imgObj.parameter ? `?${imgObj.parameter}` : '';
         pages.push({
           pageNo: idx + 1,
@@ -325,7 +311,6 @@
     return {
       seriesName,
       chapterName,
-      detectedFormat,
       pages
     };
   }
@@ -353,7 +338,6 @@
       const totalPages = pages.length;
       if (!totalPages) throw new Error("Không có trang hợp lệ để tải.");
 
-      const useJpeg = Boolean(state.convertJpeg);
       const ZipClass = window.PureZipWriter || globalThis.PureZipWriter;
       const Utils = window.MangaUtils || globalThis.MangaUtils;
       const zip = new ZipClass();
@@ -376,33 +360,9 @@
         if (!rawBuffer) rawBuffer = await Utils.fetchBuffer(pageObj.url);
         const ext = Utils.detectExt(rawBuffer);
 
-        // ZERO-COPY: Nếu không ép JPG hoặc ảnh vốn đã là JPG -> Ghi thẳng byte vào ZIP
-        if (!useJpeg || ext === 'jpg') {
-          return {
-            fileName: `${pageObj.pageNo}.${ext}`,
-            data: new Uint8Array(rawBuffer)
-          };
-        }
-
-        // Nếu ép JPG -> Chuyển đổi qua Canvas với Quality 1.0
-        const img = await Utils.loadImage(rawBuffer, `image/${ext}`);
-        const canvas = DOC.createElement('canvas');
-        canvas.width = img.naturalWidth || img.width;
-        canvas.height = img.naturalHeight || img.height;
-
-        const ctx = canvas.getContext('2d', { alpha: false });
-        ctx.imageSmoothingEnabled = false;
-        ctx.mozImageSmoothingEnabled = false;
-        ctx.webkitImageSmoothingEnabled = false;
-        ctx.msImageSmoothingEnabled = false;
-        ctx.drawImage(img, 0, 0);
-
-        const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', CONFIG.JPEG_QUALITY));
-        canvas.width = 0; canvas.height = 0;
-
         return {
-          fileName: `${pageObj.pageNo}.jpg`,
-          data: new Uint8Array(await blob.arrayBuffer())
+          fileName: `${pageObj.pageNo}.${ext}`,
+          data: new Uint8Array(rawBuffer)
         };
       });
 
@@ -434,7 +394,7 @@
    * KHỞI CHẠY VÀ THEO DÕI ĐIỀU HƯỚNG SPA
    * ========================================================================= */
   async function boot() {
-    while (!DOC.body) await sleep(30);
+    while (!DOC.body) await sleep(20);
     const ui = getUI();
 
     if (!isEpisodeUrl()) {
@@ -442,65 +402,95 @@
       return;
     }
 
-    if (ui?.panel) ui.panel.style.display = "block";
-    if (ui) ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
-
-    let data = null;
-    let retries = 0;
-
-    while (retries < 25) {
-      try {
-        data = await fetchComicoPages();
-        if (data && data.pages?.length > 0) break;
-      } catch (e) {}
-      await sleep(150);
-      retries++;
+    if (ui?.panel) {
+      ui.panel.style.display = "block";
+      ui.setBusy(true);
+      ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
     }
 
-    if (data && data.pages?.length > 0) {
+    try {
+      let data = null;
+      let retries = 0;
+
+      while (retries < 25) {
+        try {
+          data = await fetchComicoPages();
+          if (data && data.pages?.length > 0) break;
+        } catch (e) {}
+        await sleep(150);
+        retries++;
+      }
+
+      if (!data || !data.pages || !data.pages.length) {
+        throw new Error("Không lấy được danh sách trang.");
+      }
       state.chapterData = data;
 
-      // CẬP NHẬT UI ĐỊNH DẠNG: Khóa cứng nếu là JPG, mở cho chọn nếu là WebP/PNG
-      const fmt = data.detectedFormat || 'jpg';
-      if (ui?.updateFormatUI) {
-        ui.updateFormatUI(fmt);
+      // SOI MAGIC BYTES THỰC TẾ TRANG 1 (ZERO-TRUST):
+      const testUrl = data.pages[0]?.url; // bên này dùng data.pages[0].url
+      if (!testUrl) throw new Error("URL trang 1 không hợp lệ.");
+
+      const Utils = window.MangaUtils || globalThis.MangaUtils;
+      let testBuf = null;
+      try {
+        const res = await WIN.fetch(testUrl);
+        if (res.ok) testBuf = await res.arrayBuffer();
+      } catch (e) {}
+
+      if (!testBuf) {
+        testBuf = await Utils.fetchBuffer(testUrl);
       }
-      if (fmt === 'jpg') {
-        state.convertJpeg = true;
-      }
+
+      const realExt = Utils.detectExt(testBuf);
+      if (!realExt) throw new Error("Không thể nhận diện Magic Bytes ảnh.");
 
       if (ui) {
         ui.updateProgress({
           completed: 0,
           total: data.pages.length,
-          status: "Sẵn sàng."
+          status: "Sẵn sàng.",
+          format: realExt
         });
+        ui.setBusy(false);
       }
-    } else {
-      if (ui) ui.updateProgress({ status: "Sẵn sàng." });
+    } catch (err) {
+      console.error("[comico-dl] Boot error:", err);
+      if (ui) {
+        ui.updateProgress({ status: "Lỗi: " + (err?.message || "không thể tải trang.") });
+        ui.setBusy(true);
+      }
     }
   }
 
   const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
   if (typeof watchRoute === "function") {
     watchRoute((newUrl) => {
-      if (newUrl === state.lastUrl) return;
-      state.lastUrl = newUrl;
 
+      if (!isEpisodeUrl()) {
+        const ui = getUI();
+        if (ui?.panel) ui.panel.style.display = "none";
+        state.chapterData = null;
+        state.lastChapterId = "";
+        state.lastUrl = "";
+        state.running = false;
+        return;
+      }
+
+      const currentCid = getEpisodeId();
+      if (state.lastChapterId && state.lastChapterId === currentCid) return;
+
+      state.lastUrl = newUrl;
+      state.lastChapterId = currentCid;
       state.chapterData = null;
       state.running = false;
+
       const ui = getUI();
       if (ui) {
-        ui.setBusy(false);
+        ui.setBusy(true);
         ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
       }
       boot();
     });
   }
-
-  if (DOC.readyState === "loading") {
-    DOC.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
-  }
+  boot();
 })();

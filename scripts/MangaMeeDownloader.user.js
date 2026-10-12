@@ -29,8 +29,7 @@
    * CẤU HÌNH HỆ THỐNG
    * ========================================================================= */
   const CONFIG = {
-    MAX_CONCURRENT: 6,   // 6 luồng TCP Socket
-    JPEG_QUALITY: 1.0    // Chất lượng nếu người dùng chọn ép xuất JPG
+    MAX_CONCURRENT: 6   // 6 luồng TCP Socket
   };
 
   const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;
@@ -41,8 +40,6 @@
 
   const state = {
     running: false,
-    convertJpeg: localStorage.getItem("mangamee-dl:convert-jpeg") === '1',
-    detectedSourceFormat: 'webp',
     chapterData: null,
     ui: null,
     lastUrl: "",
@@ -110,7 +107,7 @@
     const createUI = window.createMangaDownloaderUI || globalThis.createMangaDownloaderUI;
 
     if (typeof createUI === "function" && DOC.body) {
-      state.ui = createUI({
+      const uiConfig = {
         storagePrefix: "mangamee-dl",
         title: "マンガMee",
         engine: "by SHUEISHA",
@@ -119,23 +116,19 @@
         titleColor: "#FF6E99",      
         btnBg: "#FF6E99",           
         btnColor: "#ffffff",       
-        topOffset: "95.17px",
-        defaultJpgText: "Xuất file JPG (ảnh gốc là WebP)",
+        topOffset: "188px",
         onDownload: startDownload,
-        onJpgChange: (checked) => {
-          state.convertJpeg = checked;
-          localStorage.setItem("mangamee-dl:convert-jpeg", checked ? '1' : '0');
-        }
-      });
-
-      state.ui.updateFormatUI(state.detectedSourceFormat);
+      }
+      
+      state.ui = createUI(uiConfig);
+      state.ui.setBusy(true);
 
       if (state.ui?.panel) {
         const titleEl = state.ui.panel.querySelector('[style*="font: 800 13px"], [style*="font:800 13px"]');
         if (titleEl) {
           titleEl.innerHTML = `
-            <div style="all:initial;display:block;font:800 13px/1.2 system-ui,sans-serif;color:#FF6E99;letter-spacing:0.3px;">マンガMee</div>
-            <div style="all:initial;display:block;font:700 9px/1.2 system-ui,sans-serif;color:#9ca3af;text-transform:uppercase;letter-spacing:0.8px;margin-top:2px;visibility:hidden;">by SHUEISHA</div>
+            <div style="all:initial;display:block;font:800 13px/1.2 system-ui,sans-serif;color:${uiConfig.titleColor};letter-spacing:0.3px;">${uiConfig.title}</div>
+            <div style="all:initial;display:block;font:700 9px/1.2 system-ui,sans-serif;color:#9ca3af;text-transform:uppercase;letter-spacing:0.8px;margin-top:2px;visibility:hidden;">${uiConfig.engine}</div>
           `;
         }
       }
@@ -289,8 +282,7 @@
 
     return {
       episodeId: episodeId || "chapter",
-      pages: pages,
-      format: 'webp'
+      pages: pages
     };
   }
 
@@ -319,11 +311,10 @@
         state.chapterData = data;
       }
 
-      const { pages, format } = data;
+      const { pages } = data;
       const totalPages = pages.length;
       if (!totalPages) throw new Error("Lỗi: Không có trang hợp lệ để tải.");
 
-      const useJpeg = Boolean(state.convertJpeg);
       const ZipClass = window.PureZipWriter || globalThis.PureZipWriter;
       const Utils = window.MangaUtils || globalThis.MangaUtils;
       const zip = new ZipClass();
@@ -337,28 +328,7 @@
         const decryptedBytes = decryptMangaMeeXor(encryptedBuffer, pageItem.key);
         const ext = Utils.detectExt(decryptedBytes.buffer);
 
-        // ZERO-COPY: Ghi thẳng mảng byte WebP sạch vào ZIP
-        if (!useJpeg || ext === 'jpg') {
-          return { fileName: `${pageItem.pageNo}.${ext}`, data: decryptedBytes };
-        }
-
-        // Chuyển sang JPG nếu người dùng tick chọn
-        const img = await Utils.loadImage(decryptedBytes, `image/${ext}`);
-        const canvas = DOC.createElement('canvas');
-        canvas.width = img.naturalWidth || img.width;
-        canvas.height = img.naturalHeight || img.height;
-
-        const ctx = canvas.getContext('2d', { alpha: false });
-        ctx.imageSmoothingEnabled = false;
-        ctx.mozImageSmoothingEnabled = false;
-        ctx.webkitImageSmoothingEnabled = false;
-        ctx.msImageSmoothingEnabled = false;
-        ctx.drawImage(img, 0, 0);
-
-        const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', CONFIG.JPEG_QUALITY));
-        canvas.width = 0; canvas.height = 0;
-
-        return { fileName: `${pageItem.pageNo}.jpg`, data: new Uint8Array(await blob.arrayBuffer()) };
+        return { fileName: `${pageItem.pageNo}.${ext}`, data: decryptedBytes };
       });
 
       const results = await Utils.runParallelQueue(tasks, CONFIG.MAX_CONCURRENT, (completed, total) => {
@@ -399,42 +369,58 @@
 
     if (ui?.panel) {
       ui.panel.style.display = "block";
+      ui.setBusy(true);
       ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
     }
 
-    let titleId = null, episodeId = null;
-    for (let i = 0; i < 25; i++) {
-      const ctx = getUrlContext();
-      titleId = ctx.titleId;
-      episodeId = ctx.episodeId;
-      if (titleId && (episodeId || capturedApiText)) break;
-      await sleep(150);
-    }
-
-    if (!titleId) {
-      if (ui) ui.updateProgress({ status: "Lỗi: Không tìm thấy ID truyện." });
-      return;
-    }
-
     try {
-      const data = await fetchMangaMeeManifest(titleId, episodeId);
-      if (data && data.pages?.length > 0) {
-        state.chapterData = data;
-        state.detectedSourceFormat = data.format;
 
-        if (ui?.updateFormatUI) ui.updateFormatUI(data.format);
-
-        await sleep(80);
-        if (ui) {
-          ui.updateProgress({
-            completed: 0,
-            total: data.pages.length,
-            status: "Sẵn sàng."
-          });
-        }
+      let titleId = null, episodeId = null;
+      for (let i = 0; i < 25; i++) {
+        const ctx = getUrlContext();
+        titleId = ctx.titleId;
+        episodeId = ctx.episodeId;
+        if (titleId && (episodeId || capturedApiText)) break;
+        await sleep(150);
       }
+
+      if (!titleId) {
+        if (ui) throw new Error("Không tìm thấy ID chương.");
+      }
+
+      const data = await fetchMangaMeeManifest(titleId, episodeId);
+      if (!data || !data.pages || !data.pages.length) {
+        throw new Error("Không lấy được danh sách trang.");
+      }
+      state.chapterData = data;
+
+       // SOI MAGIC BYTES THỰC TẾ TRANG 1 SAU KHI GIẢI MÃ XOR (ZERO-TRUST):
+      const firstPage = data.pages[0]; // bên này dùng data.pages[0].url
+      if (!firstPage?.url) throw new Error("URL trang 1 không hợp lệ.");
+
+      const Utils = window.MangaUtils || globalThis.MangaUtils;
+      const encBuf = await Utils.fetchBuffer(firstPage.url, { "Referer": "https://manga-mee.jp/" });
+      const decBytes = decryptMangaMeeXor(encBuf, firstPage.key);
+      const realExt = Utils.detectExt(decBytes.buffer);
+
+      if (!realExt) throw new Error("Không thể nhận diện Magic Bytes ảnh.");
+
+      if (ui) {
+        ui.updateProgress({
+          completed: 0,
+          total: data.pages.length,
+          status: "Sẵn sàng.",
+          format: realExt
+        });
+        ui.setBusy(false);
+      }
+
     } catch (e) {
-      if (ui) ui.updateProgress({ status: "Sẵn sàng." });
+      console.error("[mangamee-dl] Boot error:", e);
+      if (ui) {
+        ui.updateProgress({ status: "Lỗi: " + (e?.message || "không thể tải trang.") });
+        ui.setBusy(true);
+      }
     }
   }
 
@@ -446,7 +432,8 @@
         const ui = getUI();
         if (ui?.panel) ui.panel.style.display = "none";
         state.chapterData = null;
-        state.lastEpisodeId = null;
+        state.lastEpisodeId = "";
+        state.lastUrl = "";
         state.running = false;
         return;
       }
@@ -462,16 +449,11 @@
 
       const ui = getUI();
       if (ui) {
-        ui.setBusy(false);
+        ui.setBusy(true);
         ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
       }
       boot();
     });
   }
-
-  if (DOC.readyState === "loading") {
-    DOC.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
-  }
+  boot();
 })();

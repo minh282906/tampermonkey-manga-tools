@@ -29,8 +29,7 @@
    * CẤU HÌNH HỆ THỐNG
    * ========================================================================= */
   const CONFIG = {
-    MAX_CONCURRENT: 6,   // 6 luồng kịch trần TCP Socket
-    JPEG_QUALITY: 1.0    // Chất lượng nếu người dùng tick chọn ép xuất JPG
+    MAX_CONCURRENT: 6   // 6 luồng TCP Socket
   };
 
   const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;
@@ -41,11 +40,10 @@
 
   const state = {
     running: false,
-    convertJpeg: localStorage.getItem("zerosum-dl:convert-jpeg") === '1',
-    detectedSourceFormat: 'webp',
     chapterData: null,
     ui: null,
-    lastUrl: ""
+    lastUrl: "",
+    lastChapterId: ""
   };
 
   /* =========================================================================
@@ -55,11 +53,10 @@
   let capturedApiText = null;
 
   function handleViewerResponse(url, text) {
-    if (typeof text === 'string' && text.includes('contents.zerosumonline.com')) {
+    if (typeof text === 'string' && text.includes('chapter_page')) {
       const m = url.match(/chapter_id=(\d+)/);
       if (m) capturedChapterId = m[1];
       capturedApiText = text;
-      if (isEpisodeUrl() && !state.running) boot();
     }
   }
 
@@ -69,7 +66,7 @@
       const res = await origFetch.apply(this, args);
       try {
         const u = typeof args[0] === 'string' ? args[0] : (args[0]?.url || '');
-        if (u.includes('/api/v1/viewer')) {
+        if (u.includes('/api/v1/viewer') && !u.includes('viewer_last')) {
           res.clone().text().then(txt => handleViewerResponse(u, txt)).catch(() => {});
         }
       } catch (e) {}
@@ -86,7 +83,7 @@
     };
     WIN.XMLHttpRequest.prototype.send = function() {
       this.addEventListener('load', () => {
-        if (this._reqUrl && String(this._reqUrl).includes('/api/v1/viewer')) {
+        if (this._reqUrl && String(this._reqUrl).includes('/api/v1/viewer') && !String(this._reqUrl).includes('viewer_last')) {
           handleViewerResponse(this._reqUrl, this.responseText);
         }
       });
@@ -102,7 +99,7 @@
     const createUI = window.createMangaDownloaderUI || globalThis.createMangaDownloaderUI;
 
     if (typeof createUI === "function" && DOC.body) {
-      state.ui = createUI({
+      const uiConfig = {
         storagePrefix: "zerosum-dl",
         title: "ZERO-SUM ONLINE",
         engine: "ICHIJINSHA",
@@ -112,22 +109,18 @@
         btnBg: "#b078b4",           
         btnColor: "#ffffff",        
         topOffset: "57px",
-        defaultJpgText: "Xuất file JPG (ảnh gốc là WebP)",
-        onDownload: startDownload,
-        onJpgChange: (checked) => {
-          state.convertJpeg = checked;
-          localStorage.setItem("zerosum-dl:convert-jpeg", checked ? '1' : '0');
-        }
-      });
-
-      state.ui.updateFormatUI(state.detectedSourceFormat);
+        onDownload: startDownload
+      }
+      
+      state.ui = createUI(uiConfig);
+      state.ui.setBusy(true);
 
       if (state.ui?.panel) {
         const titleEl = state.ui.panel.querySelector('[style*="font: 800 13px"], [style*="font:800 13px"]');
         if (titleEl) {
           titleEl.innerHTML = `
-            <div style="all:initial;display:block;font:800 13px/1.2 system-ui,sans-serif;color:#a86fa8;letter-spacing:0.3px;">ZERO-SUM ONLINE</div>
-            <div style="all:initial;display:block;font:700 9px/1.2 system-ui,sans-serif;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;margin-top:2px;visibility:hidden;">ICHIJINSHA</div>
+            <div style="all:initial;display:block;font:800 13px/1.2 system-ui,sans-serif;color:${uiConfig.titleColor};letter-spacing:0.3px;">${uiConfig.title}</div>
+            <div style="all:initial;display:block;font:700 9px/1.2 system-ui,sans-serif;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;margin-top:2px;visibility:hidden;">${uiConfig.engine}</div>
           `;
         }
       }
@@ -164,7 +157,7 @@
         .filter(p => p && !/(?:ゼロサム|ZERO-SUM|ゼロサムオンライン|一迅社)/i.test(p));
 
       if (parts.length >= 2) {
-        const isChap = str => /^(?:第\s*)?[0-9０-９IVXLCDMivxlcdm一二三四五六七八九十百千万\.]+\s*(?:話|回|巻|章|節|部|エピソード|分冊版|単話)/i.test(str);
+        const isChap = str => /^(?:第\s*)?[0-9０-９IVXLCDMivxlcdm一二三四五六七八九十百千万\.]+\s*(?:話|回|巻|章|節|部|エピソード|分冊版|単話|幕)/i.test(str);
 
         let seriesTitle  = isChap(parts[0]) ? parts[1] : parts[0];
         let episodeTitle = isChap(parts[0]) ? parts[0] : parts[1];
@@ -218,21 +211,15 @@
   async function resolveChapterId() {
     if (capturedChapterId) return capturedChapterId;
 
-    let id = extractDecodedChapterIdFromDOM();
-    if (id) return id;
-
-    // Polling chờ DOM Next.js nạp dữ liệu
-    for (let i = 0; i < 25; i++) {
-      await sleep(150);
+   for (let i = 0; i < 25; i++) {
+      await sleep(100);
       if (capturedChapterId) return capturedChapterId;
-      id = extractDecodedChapterIdFromDOM();
-      if (id) return id;
     }
-    return null;
+
+    return extractDecodedChapterIdFromDOM();
   }
 
   async function fetchZerosumManifest(chapterId) {
-    const Utils = window.MangaUtils || globalThis.MangaUtils;
     let responseText = capturedApiText;
 
     // Nếu hook chưa bắt được gói tin tự nhiên thì gửi request API trực tiếp
@@ -258,13 +245,13 @@
     if (!responseText) throw new Error("Không nhận được dữ liệu từ API Viewer.");
 
     // 1. Quét toàn bộ link trang truyện chính: /chapter_page/{chapterId}/{page}.webp
-    const pageMatches = responseText.match(/https:\/\/contents\.zerosumonline\.com\/chapter_page\/\d+\/\d+\.webp/g) || [];
+    const pageMatches = responseText.match(/https:\/\/contents\.zerosumonline\.com\/chapter_page\/\d+\/\d+\.(?:webp|jpe?g|png|avif)/gi) || [];
     const uniquePageUrls = Array.from(new Set(pageMatches));
 
     // Sắp xếp số học chuẩn: 1.webp -> 2.webp -> ... -> 46.webp
     uniquePageUrls.sort((a, b) => {
-      const numA = parseInt(a.match(/\/(\d+)\.webp$/)?.[1] || 0, 10);
-      const numB = parseInt(b.match(/\/(\d+)\.webp$/)?.[1] || 0, 10);
+      const numA = parseInt(a.match(/\/(\d+)\.[a-z0-9]+(?=[?#]|$)/i)?.[1] || 0, 10);
+      const numB = parseInt(b.match(/\/(\d+)\.[a-z0-9]+(?=[?#]|$)/i)?.[1] || 0, 10);
       return numA - numB;
     });
 
@@ -273,26 +260,39 @@
     }
 
     // 2. Quét ảnh quảng cáo kết thúc chương (viewer_ad_ending) nếu có
-    const adMatches = responseText.match(/https:\/\/contents\.zerosumonline\.com\/viewer_ad_ending\/\d+\.webp/g) || [];
-    const adUrl = adMatches.length > 0 ? adMatches[0] : null;
+    const adMatches = responseText.match(/https:\/\/contents\.zerosumonline\.com\/viewer_ad_ending\/\d+\.(?:webp|jpe?g|png|avif)/gi) || [];
+    const uniqueAdUrls = Array.from(new Set(adMatches));
 
-    // Xây dựng danh sách tải: Trang chính đánh số 1..N, ảnh PR đặt tên PR.webp
+    // Xây dựng danh sách tải: Trang truyện chính 1..N
     const downloadQueue = uniquePageUrls.map((url, idx) => ({
       url: url,
       fileName: `${idx + 1}`
     }));
 
-    if (adUrl) {
+    // Bổ sung ảnh PR: 1 ảnh -> "PR", nhiều ảnh -> "PR_1", "PR_2"...
+    if (uniqueAdUrls.length === 1) {
       downloadQueue.push({
-        url: adUrl,
+        url: uniqueAdUrls[0],
         fileName: "PR"
       });
+    } else if (uniqueAdUrls.length > 1) {
+      uniqueAdUrls.forEach((url, idx) => {
+        downloadQueue.push({
+          url: url,
+          fileName: `PR_${idx + 1}`
+        });
+      });
     }
+
+    let detectedFormat = 'webp'; // fall back về webp
+    const firstClean = uniquePageUrls[0]?.split('?')[0].toLowerCase() || '';
+    if (firstClean.endsWith('.jpg') || firstClean.endsWith('.jpeg')) detectedFormat = 'jpg';
+    else if (firstClean.endsWith('.png')) detectedFormat = 'png';
 
     return {
       chapterId: chapterId,
       queue: downloadQueue,
-      format: 'webp'
+      format: detectedFormat
     };
   }
 
@@ -325,7 +325,6 @@
       const totalPages = queue.length;
       if (!totalPages) throw new Error("Không có trang hợp lệ để tải.");
 
-      const useJpeg = Boolean(state.convertJpeg);
       const ZipClass = window.PureZipWriter || globalThis.PureZipWriter;
       const Utils = window.MangaUtils || globalThis.MangaUtils;
       const zip = new ZipClass();
@@ -351,28 +350,7 @@
         const rawUint8 = new Uint8Array(rawBuffer);
         const ext = Utils.detectExt(rawBuffer);
 
-        // ZERO-COPY: Ghi thẳng mảng byte WebP sạch vào ZIP
-        if (!useJpeg || ext === 'jpg') {
-          return { fileName: `${item.fileName}.${ext}`, data: rawUint8 };
-        }
-
-        // Chuyển sang JPG nếu người dùng tick chọn
-        const img = await Utils.loadImage(rawBuffer, `image/${ext}`);
-        const canvas = DOC.createElement('canvas');
-        canvas.width = img.naturalWidth || img.width;
-        canvas.height = img.naturalHeight || img.height;
-
-        const ctx = canvas.getContext('2d', { alpha: false });
-        ctx.imageSmoothingEnabled = false;
-        ctx.mozImageSmoothingEnabled = false;
-        ctx.webkitImageSmoothingEnabled = false;
-        ctx.msImageSmoothingEnabled = false;
-        ctx.drawImage(img, 0, 0);
-
-        const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', CONFIG.JPEG_QUALITY));
-        canvas.width = 0; canvas.height = 0;
-
-        return { fileName: `${item.fileName}.jpg`, data: new Uint8Array(await blob.arrayBuffer()) };
+        return { fileName: `${item.fileName}.${ext}`, data: rawUint8 };
       });
 
       const results = await Utils.runParallelQueue(tasks, CONFIG.MAX_CONCURRENT, (completed, total) => {
@@ -413,42 +391,72 @@
 
     if (ui?.panel) {
       ui.panel.style.display = "block";
+      ui.setBusy(true);
       ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
     }
 
-    const chapterId = await resolveChapterId();
-    if (!chapterId) {
-      if (ui) ui.updateProgress({ status: "Lỗi: Không tìm thấy ID chương." });
-      return;
-    }
-
     try {
+
+      // Tìm ID chương
+      const chapterId = await resolveChapterId();
+      if (!chapterId) throw new Error("Không tìm thấy ID chương.");
+
+      // Lấy manifest ảnh
       const data = await fetchZerosumManifest(chapterId);
-      if (data && data.queue?.length > 0) {
-        state.chapterData = data;
-        state.detectedSourceFormat = data.format;
+      if (!data || !data.queue?.length) {
+        throw new Error("Không lấy được danh sách trang.");
+      }
+      state.chapterData = data;
 
-        // Cập nhật UI: Mở checkbox cho người dùng tùy chọn convert sang JPG
-        if (ui?.updateFormatUI) ui.updateFormatUI(data.format);
+      // Kiểm tra Magic Bytes thực tế của trang 1 (Zero-Trust URL)
+      const Utils = window.MangaUtils || globalThis.MangaUtils;
+      const testUrl = data.queue?.[0]?.url; // bên này dùng data.queue[0].url
+      if (!testUrl) throw new Error("URL trang 1 không hợp lệ.");
 
-        if (ui) {
-          ui.updateProgress({
-            completed: 0,
-            total: data.queue.length,
-            status: "Sẵn sàng."
-          });
-        }
+      const testBuf = await Utils.fetchBuffer(testUrl, { "Referer": WIN.location.href });
+      const realExt = Utils.detectExt(testBuf);
+      if (!realExt) {
+        throw new Error("Không thể nhận diện Magic Bytes ảnh.");
+      }
+
+      if (ui) {
+        ui.updateProgress({
+          completed: 0,
+          total: data.queue.length,
+          status: "Sẵn sàng.",
+          format: realExt
+        });
+        ui.setBusy(false);
       }
     } catch (e) {
-      if (ui) ui.updateProgress({ status: "Sẵn sàng." });
+      console.error("[zerosum-dl] Boot error:", e);
+      if (ui) {
+        ui.updateProgress({ status: "Lỗi: " + (e?.message || "không thể tải trang.") });
+        ui.setBusy(true);
+      }
     }
   }
 
   const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
   if (typeof watchRoute === "function") {
     watchRoute((newUrl) => {
-      if (newUrl === state.lastUrl) return;
+      if (!isEpisodeUrl()) {
+        const ui = getUI();
+        if (ui?.panel) ui.panel.style.display = "none";
+        state.chapterData = null;
+        capturedChapterId = null;
+        capturedApiText = null;
+        state.lastChapterId = "";
+        state.lastUrl = "";
+        state.running = false;
+        return;
+      }
+      const m = WIN.location.pathname.match(/\/chapter\/([^\/?#]+)/i);
+      const currentCid = m ? m[1] : WIN.location.pathname;
+      if (state.lastChapterId && state.lastChapterId === currentCid) return;
+
       state.lastUrl = newUrl;
+      state.lastChapterId = currentCid;
       state.chapterData = null;
       capturedChapterId = null;
       capturedApiText = null;
@@ -456,16 +464,11 @@
 
       const ui = getUI();
       if (ui) {
-        ui.setBusy(false);
+        ui.setBusy(true);
         ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
       }
       boot();
     });
   }
-
-  if (DOC.readyState === "loading") {
-    DOC.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
-  }
+  boot();
 })();

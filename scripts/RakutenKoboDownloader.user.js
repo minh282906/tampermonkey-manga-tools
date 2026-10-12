@@ -35,7 +35,6 @@
   const CONFIG = {
     CHUNK_SIZE: 5 * 1024 * 1024, // Dải chunk 5MB tối ưu I/O mạng
     CHUNK_DELAY_MS: 250,         // Delay 250ms chống Cloudflare rate-limit
-    JPEG_QUALITY: 1.0
   };
 
   const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;
@@ -44,12 +43,30 @@
 
   if (WIN.top !== WIN.self) return;
 
+  /* =========================================================================
+   * BẪY BẮT BLOB TẠI DOCUMENT-START (TÓM MAGIC BYTES TRƯỚC KHI BỊ REVOKE)
+   * ========================================================================= */
+  let capturedBlobExt = null;
+  try {
+    const origCreateObjectURL = WIN.URL.createObjectURL;
+    WIN.URL.createObjectURL = function(blob) {
+      if (blob instanceof Blob && !capturedBlobExt && blob.size > 2000) {
+        blob.slice(0, 16).arrayBuffer().then(buf => {
+          const Utils = window.MangaUtils || globalThis.MangaUtils;
+          const ext = Utils?.detectExt(buf);
+          if (ext) capturedBlobExt = ext;
+        }).catch(() => {});
+      }
+      return origCreateObjectURL.apply(this, arguments);
+    };
+  } catch(e) {}
+
   const state = {
     running: false,
-    convertJpeg: localStorage.getItem("kobo-dl:convert-jpeg") === '1',
     bookMetadata: null,
     totalImages: 0,
-    ui: null
+    ui: null,
+    lastProductId: ""
   };
 
   /* =========================================================================
@@ -64,22 +81,17 @@
         storagePrefix: "kobo-dl",
         title: "Rakuten Kobo",
         engine: "RAKUTEN",
-        themeColor: "#bf0000",              // Đỏ thương hiệu Rakuten Kobo
-        themeBg: "#ffffff",                 // Nền trắng sáng
-        titleColor: "#bf0000",              // Chữ đỏ đậm
+        themeColor: "#bf0000",              
+        themeBg: "#ffffff",                 
+        titleColor: "#bf0000", 
         btnBg: "#bf0000",
         btnColor: "#ffffff",
         topOffset: "55px",
-        defaultJpgText: "Xuất file JPG (ảnh gốc là JPG)",
         onDownload: startDownload,
-        onJpgChange: (checked) => {
-          state.convertJpeg = checked;
-          localStorage.setItem("kobo-dl:convert-jpeg", checked ? '1' : '0');
-        }
       };
 
       state.ui = createUI(uiConfig);
-      state.ui.updateFormatUI('jpg');
+      state.ui.setBusy(true);
 
       if (state.ui?.panel) {
         const titleEl = state.ui.panel.querySelector('[style*="font: 800 13px"], [style*="font:800 13px"]');
@@ -95,7 +107,7 @@
   }
 
   /* =========================================================================
-   * 2. BỘ HỖ TRỢ XỬ LÝ CHUỖI & TÊN FILE THEO GOLDEN RULE 1 & 2
+   * 2. BỘ HỖ TRỢ XỬ LÝ CHUỖI & TÊN FILE
    * ========================================================================= */
   function isReaderUrl() {
     return WIN.location.hostname.includes('readnow.kobo.com') || WIN.location.pathname.length > 20;
@@ -321,7 +333,7 @@
       cur += 46 + nameLen + extraLen + commentLen;
     }
 
-    // 3. GOLDEN RULE 2: GHIM BÌA TRUYỆN (COVER) LÊN ĐẦU, SAU ĐÓ XẾP THEO THỨ TỰ TỰ NHIÊN
+    // 3. GHIM BÌA TRUYỆN (COVER) LÊN ĐẦU, SAU ĐÓ XẾP THEO THỨ TỰ TỰ NHIÊN
     imageFiles.sort((a, b) => {
       const aIsCover = /cover/i.test(a.path);
       const bIsCover = /cover/i.test(b.path);
@@ -329,7 +341,6 @@
       if (!aIsCover && bIsCover) return 1;
       return a.path.localeCompare(b.path, undefined, { numeric: true, sensitivity: 'base' });
     });
-
     return imageFiles;
   }
 
@@ -381,7 +392,7 @@
       const ZipClass = window.PureZipWriter || globalThis.PureZipWriter;
       const zip = new ZipClass();
 
-      // GOLDEN RULE 2: Luôn có 1 file .txt rỗng mang tên ID định danh ở thư mục gốc
+      // Luôn có 1 file .txt rỗng mang tên ID định danh ở thư mục gốc
       zip.addFile(`${productId}.txt`, new Uint8Array(0));
 
       if (ui) ui.updateProgress({ completed: 0, total: totalPages, status: "Đang tải..." });
@@ -423,7 +434,7 @@
 
         // Nhận diện đuôi file thực tế qua Magic Bytes (FF D8 là JPG)
         const Utils = window.MangaUtils || globalThis.MangaUtils;
-        const ext = Utils?.detectExt(decryptedBytes.buffer) || 'jpg';
+        const ext = Utils?.detectExt(decryptedBytes.buffer);
 
         zip.addFile(`${i + 1}.${ext}`, decryptedBytes);
 
@@ -463,48 +474,83 @@
 
     if (ui?.panel) {
       ui.panel.style.display = "block";
+      ui.setBusy(true);
       ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
     }
 
-    const productId = getProductId();
-
     try {
-      state.bookMetadata = await fetchBookMetadata(productId);
-    } catch(e) {}
+      const productId = getProductId();
+      if (!productId) throw new Error("Không tìm thấy Product ID.");
 
-    // Chờ Kobo dựng xong danh sách trang trong DOM để lấy số trang thật của cuốn truyện này
-    let realTotal = 0;
-    for (let r = 0; r < 35; r++) {
-      realTotal = DOC.querySelectorAll('#ReadingOrderView .ReadingItem, [id^="p_"], #p-cover').length;
-      if (realTotal > 0) break;
-      await sleep(150);
-    }
+      try {
+        state.bookMetadata = await fetchBookMetadata(productId);
+      } catch(e) {}
 
-    if (realTotal > 0) {
+      // Chờ Kobo dựng xong danh sách trang trong DOM để lấy số trang thật của cuốn truyện này
+      let realTotal = 0;
+      for (let r = 0; r < 50; r++) {
+        if (!realTotal) {
+          realTotal = DOC.querySelectorAll('#ReadingOrderView .ReadingItem, [id^="p_"], #p-cover').length;
+        }
+        
+        // CHỈ THOÁT KHI CẢ SỐ TRANG LẪN BẪY MAGIC BYTES ĐỀU ĐÃ SẴN SÀNG:
+        if (realTotal > 0 && capturedBlobExt) break;        
+        await sleep(150);
+      }
+
+      if (realTotal <= 0) throw new Error("Không thể đếm số trang từ viewer.");
       state.totalImages = realTotal;
-      if (ui) ui.updateProgress({ completed: 0, total: realTotal, status: "Sẵn sàng." });
-    } else {
-      if (ui) ui.updateProgress({ status: "Sẵn sàng." });
+
+      const realExt = capturedBlobExt;
+      if (!realExt) throw new Error("Chưa nhận diện được Magic Bytes ảnh từ RAM.");
+
+      if (ui) {
+          ui.updateProgress({
+            completed: 0,
+            total: realTotal,
+            status: "Sẵn sàng.",
+            format: realExt
+          });
+          ui.setBusy(false);
+        }
+    } catch (err) {
+      console.error("[kobo-dl] Boot error:", err);
+      if (ui) {
+        ui.updateProgress({ status: "Lỗi: " + (err?.message || "không thể tải trang.") });
+        ui.setBusy(true);
+      }
     }
   }
 
   const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
   if (typeof watchRoute === "function") {
-    watchRoute(() => {
-      state.running = false;
+    watchRoute((newUrl) => {
+
+      if (!isReaderUrl()) {
+        const ui = getUI();
+        if (ui?.panel) ui.panel.style.display = "none";
+        state.bookMetadata = null;
+        state.lastProductId = "";
+        state.lastUrl = "";
+        state.running = false;
+        return;
+      }
+
+      const currentProductId = getProductId();
+      if (state.lastProductId && state.lastProductId === currentProductId) return;
+
+      state.lastUrl = newUrl;
+      state.lastProductId = currentProductId;
       state.bookMetadata = null;
+      state.running = false;
+
       const ui = getUI();
       if (ui) {
-        ui.setBusy(false);
+        ui.setBusy(true);
         ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
       }
       boot();
     });
   }
-
-  if (DOC.readyState === "loading") {
-    DOC.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
-  }
+  boot();
 })();

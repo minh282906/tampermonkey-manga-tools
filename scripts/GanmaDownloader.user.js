@@ -28,8 +28,7 @@
    * CẤU HÌNH HỆ THỐNG
    * ========================================================================= */
   const CONFIG = {
-    MAX_CONCURRENT: 6,   // 6 luồng CloudFront
-    JPEG_QUALITY: 1.0
+    MAX_CONCURRENT: 6   // 6 luồng CloudFront
   };
 
   const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;
@@ -40,11 +39,10 @@
 
   const state = {
     running: false,
-    convertJpeg: localStorage.getItem("ganma-dl:convert-jpeg") === '1',
-    detectedSourceFormat: 'jpg',
     chapterData: null,
     ui: null,
-    lastUrl: ""
+    lastUrl: "",
+    lastStoryId: ""
   };
 
   /* =========================================================================
@@ -55,7 +53,8 @@
     const createUI = window.createMangaDownloaderUI || globalThis.createMangaDownloaderUI;
 
     if (typeof createUI === "function" && DOC.body) {
-      state.ui = createUI({
+      
+      const uiConfig = {
         storagePrefix: "ganma-dl",
         title: "GANMA!",
         engine: "COMICSMART",
@@ -65,23 +64,18 @@
         btnBg: "#F8B500",          
         btnColor: "#ffffff",     
         topOffset: "44px",
+        onDownload: startDownload
+      }
 
-        defaultJpgText: "Xuất file JPG (ảnh gốc là JPG)",
-        onDownload: startDownload,
-        onJpgChange: (checked) => {
-          state.convertJpeg = checked;
-          localStorage.setItem("ganma-dl:convert-jpeg", checked ? '1' : '0');
-        }
-      });
-
-      state.ui.updateFormatUI(state.detectedSourceFormat);
+      state.ui = createUI(uiConfig);
+      state.ui.setBusy(true);
 
       if (state.ui?.panel) {
         const titleEl = state.ui.panel.querySelector('[style*="font: 800 13px"], [style*="font:800 13px"]');
         if (titleEl) {
           titleEl.innerHTML = `
-            <div style="all:initial;display:block;font:800 13px/1.2 system-ui,sans-serif;color:#F8B500;letter-spacing:0.2px;">GANMA!</div>
-            <div style="all:initial;display:block;font:700 9px/1.2 system-ui,sans-serif;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;margin-top:2px;visibility:hidden;">COMICSMART</div>
+            <div style="all:initial;display:block;font:800 13px/1.2 system-ui,sans-serif;color:${uiConfig.titleColor};letter-spacing:0.2px;">${uiConfig.title}</div>
+            <div style="all:initial;display:block;font:700 9px/1.2 system-ui,sans-serif;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;margin-top:2px;visibility:hidden;">${uiConfig.engine}</div>
           `;
         }
       }
@@ -121,7 +115,7 @@
         .filter(p => p && !/(?:無料|ウェブトゥーン|読むなら|GANMA|ガンマ)/i.test(p));
 
       if (parts.length >= 2) {
-        const isChap = str => /^(?:第\s*)?[0-9０-９IVXLCDMivxlcdm一二三四五六七八九十百千万\.]+\s*(?:話|回|巻|章|節|部|エピソード|分冊版|単話)/i.test(str);
+        const isChap = str => /^(?:第\s*)?[0-9０-９IVXLCDMivxlcdm一二三四五六七八九十百千万\.]+\s*(?:話|回|巻|章|節|部|エピソード|分冊版|単話|幕)/i.test(str);
 
         const seriesTitle  = isChap(parts[0]) ? parts[1] : parts[0];
         let episodeTitle = isChap(parts[0]) ? parts[0] : parts[1];
@@ -258,16 +252,9 @@
 
     if (urls.length === 0) return null;
 
-    // Nhận diện định dạng thực tế từ URL
-    let detectedFormat = 'jpg';
-    const firstClean = urls[0].split('?')[0].toLowerCase();
-    if (firstClean.endsWith('.webp')) detectedFormat = 'webp';
-    else if (firstClean.endsWith('.png')) detectedFormat = 'png';
-
     return { 
       urls, 
-      afterwords: afterwordUrls,
-      format: detectedFormat 
+      afterwords: afterwordUrls
     };
   }
 
@@ -293,7 +280,6 @@
       if (!data || !data.urls?.length) throw new Error("Không tìm thấy danh sách ảnh chương.");
 
       const { urls, afterwords, format } = data;
-      const useJpeg = Boolean(state.convertJpeg);
 
       // 1. Tạo danh sách tải: Trang truyện chính đánh số 1, 2, 3...
       const downloadQueue = [];
@@ -337,28 +323,7 @@
         const rawUint8 = new Uint8Array(rawBuffer);
         const ext = Utils.detectExt(rawBuffer);
 
-        // ZERO-COPY: Ghi thẳng mảng byte ảnh Master vào ZIP
-        if (!useJpeg || ext === 'jpg') {
-          return { fileName: `${item.baseName}.${ext}`, data: rawUint8 };
-        }
-
-        // Chuyển sang JPG nếu người dùng tick chọn
-        const img = await Utils.loadImage(rawBuffer, `image/${ext}`);
-        const canvas = DOC.createElement('canvas');
-        canvas.width = img.naturalWidth || img.width;
-        canvas.height = img.naturalHeight || img.height;
-
-        const ctx = canvas.getContext('2d', { alpha: false });
-        ctx.imageSmoothingEnabled = false;
-        ctx.mozImageSmoothingEnabled = false;
-        ctx.webkitImageSmoothingEnabled = false;
-        ctx.msImageSmoothingEnabled = false;
-        ctx.drawImage(img, 0, 0);
-
-        const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', CONFIG.JPEG_QUALITY));
-        canvas.width = 0; canvas.height = 0;
-
-        return { fileName: `${item.baseName}.jpg`, data: new Uint8Array(await blob.arrayBuffer()) };
+        return { fileName: `${item.baseName}.${ext}`, data: rawUint8 };
       });
 
       const results = await Utils.runParallelQueue(tasks, CONFIG.MAX_CONCURRENT, (completed, total) => {
@@ -399,34 +364,45 @@
 
     if (ui?.panel) {
       ui.panel.style.display = "block";
+      ui.setBusy(true);
       ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
     }
+    try {
+      let data = null;
+      let retries = 0;
 
-    let data = null;
-    let retries = 0;
-
-    while (retries < 25) {
-      try {
-        data = await fetchGanmaManifest();
-        if (data && data.urls?.length > 0) break;
-      } catch (e) {}
-      await sleep(150);
-      retries++;
-    }
-
-    if (data && data.urls?.length > 0) {
-      state.chapterData = data;
-      state.detectedSourceFormat = data.format;
-
-      // Nếu gốc là JPG -> ép convertJpeg = true
-      if (data.format === 'jpg') {
-        state.convertJpeg = true;
+      while (retries < 25) {
+        try {
+          data = await fetchGanmaManifest();
+          if (data && data.urls?.length > 0) break;
+        } catch (e) {}
+        await sleep(150);
+        retries++;
       }
 
-      // Tự động cập nhật UI:
-      // - Nếu gốc JPG: Khóa tick [x] "Xuất file JPG (ảnh gốc là JPG)"
-      // - Nếu gốc WebP: Mở tick [ ] "Xuất file JPG (ảnh gốc là WebP)" cho người dùng tự chọn
-      if (ui?.updateFormatUI) ui.updateFormatUI(data.format);
+      if (!data || !data.urls?.length) {
+        throw new Error("Không lấy được danh sách trang.");
+      }
+      state.chapterData = data;
+
+      const testUrl = data.urls[0]; // bên này dùng data.urls[0]
+      if (!testUrl) throw new Error("URL trang 1 không hợp lệ.");
+
+      const Utils = window.MangaUtils || globalThis.MangaUtils;
+      let testBuf = null;
+      try {
+        const res = await WIN.fetch(testUrl);
+        if (res.ok) testBuf = await res.arrayBuffer();
+      } catch (e) {}
+
+      if (!testBuf) {
+        testBuf = await Utils.fetchBuffer(testUrl, { "Referer": "https://ganma.jp/" });
+      }
+
+      const realExt = Utils.detectExt(testBuf);
+      if (!realExt) {
+        throw new Error("Không thể nhận diện Magic Bytes ảnh.");
+      }
 
       const totalCount = data.urls.length + (data.afterwords?.length || 0);
 
@@ -434,17 +410,34 @@
         ui.updateProgress({
           completed: 0,
           total: totalCount,
-          status: "Sẵn sàng."
+          status: "Sẵn sàng.",
+          format: realExt
         });
+        ui.setBusy(false);
       }
-    } else {
-      if (ui) ui.updateProgress({ status: "Sẵn sàng." });
+    } catch (e) {
+        console.error("[ganma-dl] Boot error:", e);
+        if (ui) {
+          ui.updateProgress({ status: "Lỗi: " + (e?.message || "không thể tải trang.") });
+          ui.setBusy(true);
+      }
     }
   }
 
   const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
   if (typeof watchRoute === "function") {
     watchRoute((newUrl) => {
+      
+      if (!isEpisodeUrl()) {
+        const ui = getUI();
+        if (ui?.panel) ui.panel.style.display = "none";
+        state.chapterData = null;
+        state.lastStoryId = "";
+        state.lastUrl = "";
+        state.running = false;
+        return;
+      }
+
       const currentStoryId = getStoryId();
       if (state.lastStoryId && state.lastStoryId === currentStoryId) return;
 
@@ -455,16 +448,11 @@
       
       const ui = getUI();
       if (ui) {
-        ui.setBusy(false);
+        ui.setBusy(true);
         ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
       }
       boot();
     });
   }
-
-  if (DOC.readyState === "loading") {
-    DOC.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
-  }
+  boot();
 })();

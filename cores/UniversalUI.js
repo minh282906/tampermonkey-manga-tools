@@ -98,6 +98,8 @@
     titleEl.textContent = title;
     titleEl.style.cssText = `all:initial;display:block;color:${titleColor};font:800 13px system-ui;margin-bottom:5px;text-align:center;padding-left:14px;`;
 
+    let isBtnDisabled = false; // Cờ khóa click nội bộ (chống giật con trỏ chuột Chrome)
+
     const btn = DOC.createElement("button");
     btn.type = "button";
     btn.textContent = "Download";
@@ -105,9 +107,15 @@
       "all:initial", "display:block", "box-sizing:border-box", "width:100%", "padding:7px 0",
       `border:${btnBorder}`, "border-radius:6px", `background:${btnBg}`, `color:${btnTextColor}`,
       "font:800 14px/1.2 system-ui,sans-serif", "text-align:center", "cursor:pointer",
-      `box-shadow:${btnShadow}`
+      `box-shadow:${btnShadow}`, "pointer-events:auto"
     ].join(';');
-    btn.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); onDownload(); });
+
+    btn.addEventListener("click", e => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (isBtnDisabled) return;
+      onDownload();
+    });
 
     const label = DOC.createElement("label");
     // Giữ min-height: 16px để khung bảng không bị sụt giật chiều cao lúc chưa có chữ
@@ -217,31 +225,61 @@
       setBusy: function(state) {
         if (state === 'error') {
           // TRẠNG THÁI BÁO LỖI: Khóa nút, biểu tượng cấm bấm, không có con trỏ xoay
-          btn.disabled = true;
+          isBtnDisabled = true;
           btn.style.opacity = "0.45";
           btn.style.cursor = "not-allowed";
         } else if (state) {
           // TRẠNG THÁI ĐANG TẢI / BẬN: Khóa nút, con trỏ xoay progress
-          btn.disabled = true;
+          isBtnDisabled = true;
           btn.style.opacity = "0.72";
           btn.style.cursor = "progress";
         } else {
           // TRẠNG THÁI SẴN SÀNG: Mở khóa nút, con trỏ trỏ chuột bình thường
-          btn.disabled = false;
+          isBtnDisabled = true;
           btn.style.opacity = "1";
           btn.style.cursor = "pointer";
         }
       },
-      updateFormatUI: function(format) {
-        isZeroCopy = true;
-        const extUpper = String(format || 'JPG').toUpperCase();
-        // 1. Ẩn ô checkbox đi
-        jpgInput.style.display = "none";
-        jpgInput.disabled = true;
+      updateProgress: function(data = {}) {
+        const total = Number.isFinite(data.total) ? data.total : 0;
+        const completed = Number.isFinite(data.completed) ? data.completed : 0;
+        const pct = total > 0 ? Math.max(0, Math.min(100, Math.round(completed / total * 100))) : 0;
+        countText.textContent = total ? `${Math.min(completed, total)}/${total}` : "0/0";
+        percentText.textContent = `${pct}%`;
+        fill.style.transform = `scaleX(${total > 0 ? pct / 100 : 0})`;
+        if (data.status) statusText.textContent = data.status;
 
-        spanJpg.style.cursor = "default";
-        spanJpg.textContent = `Ảnh gốc là ${extUpper}`;
-      }
+        // TỰ ĐỘNG KHÓA NÚT DẠNG LỖI (NOT-ALLOWED) NẾU STATUS CÓ CHỮ "Lỗi":
+        if (data.status && data.status.startsWith("Lỗi")) {
+          isBtnDisabled = true;
+          btn.style.opacity = "0.45";
+          btn.style.cursor = "not-allowed";
+        }
+
+        // 1. KHI RESET VỀ "Đang kiểm tra...": XÓA SẠCH DÒNG FORMAT
+        if (data.status && data.status.includes("Đang kiểm tra")) {
+          jpgInput.style.display = "none";
+          spanJpg.textContent = "";
+          isZeroCopy = false;
+        }
+
+        // 2. KHI "Sẵn sàng.": NẾU CÓ TRUYỀN format -> TỰ ĐỘNG CHUYỂN SANG CHẾ ĐỘ ZERO-COPY
+        if (data.format) {
+          isZeroCopy = true;
+          const extUpper = String(data.format).toUpperCase();
+          jpgInput.style.display = "none";
+          jpgInput.disabled = true;
+          spanJpg.style.cursor = "default";
+          spanJpg.textContent = `Ảnh gốc là ${extUpper}`;
+        }
+
+        // KHI SẴN SÀNG: NẾU LÀ SCRAMBLE (KHÔNG CÓ format TRUYỀN VÀO): HIỆN CHECKBOX MẶC ĐỊNH
+        else if (data.status && data.status.includes("Sẵn sàng") && !isZeroCopy) {
+          jpgInput.style.display = "";
+          spanJpg.style.cursor = "pointer";
+          spanJpg.textContent = "Xuất file JPG (mặc định PNG)";
+        }
+      },
     };
   }
 

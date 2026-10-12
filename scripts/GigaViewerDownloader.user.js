@@ -100,34 +100,34 @@
    * ========================================================================= */
   const SITE_THEMES = {
     // 1. Các tạp chí con trên Comic Days
-    "andsofa.com":          { name: "&Sofa",          top: "108px", color: "#656a73", bg: "#ffffff", text: "#18181b", match: ["andsofa", "アンドソファ"] },
-    "morningtwo.com":       { name: "Morning Two",    top: "100px", color: "#2cb3ab", bg: "#ffffff", text: "#1e8780", match: ["morningtwo", "モーニング"] },
-    "getsumagakichi.com":   { name: "月マガ基地",      top: "96px" , color: "#ffffff", bg: "#000000", text: "#ffffff", match: ["getsumagakichi", "gmagakichi", "月マガ基地"] },
-    "bibliosirius.com":     { name: "Biblio Sirius",  top: "165px", color: "#723E2B", bg: "#F7DEAC", text: "#5a180c", match: ["bibliosirius", "ビブリオシリウス"] },
+    "andsofa.com":          { name: "&Sofa",            top: "108px", color: "#656a73", bg: "#ffffff", text: "#18181b", match: ["andsofa", "アンドソファ"] },
+    "morningtwo.com":       { name: "Morning Two",      top: "100px", color: "#2cb3ab", bg: "#ffffff", text: "#1e8780", match: ["morningtwo", "モーニング"] },
+    "getsumagakichi.com":   { name: "月マガ基地",        top: "96px" , color: "#ffffff", bg: "#000000", text: "#ffffff", match: ["getsumagakichi", "gmagakichi", "月マガ基地"] },
+    "bibliosirius.com":     { name: "Biblio Sirius",    top: "165px", color: "#723E2B", bg: "#F7DEAC", text: "#5a180c", match: ["bibliosirius", "ビブリオシリウス"] },
 
     // 2. Tạp chí con trên Kurage Bunch
-    "comicbunch-kai.com":   { name: "Bunch Kai",      top: "96px" , color: "#EFA20B", bg: "#ffffff", text: "#b4740e", match: ["comicbunch", "バンチkai", "コミックバンチ"] },
+    "comicbunch-kai.com":   { name: "Bunch Kai",        top: "96px" , color: "#EFA20B", bg: "#ffffff", text: "#b4740e", match: ["comicbunch", "バンチkai", "コミックバンチ"] },
 
     // 3. Toàn bộ các trang GigaViewer chính
-    "shonenjumpplus.com":   { name: "Jump+",          top: "60px" , color: "#E53835", bg: "#18181b", text: "#ffffff" },
-    "tonarinoyj.jp":        { name: "Tonari no YJ",   top: "80px" , color: "#4E4645", bg: "#ffffff", text: "#18181b" },
-    "sunday-webry.com":     { name: "Sunday Webry",   top: "80px" , color: "#de544e", bg: "#ffffff", text: "#de544e" },
-    "comic-days.com":       { name: "Comic Days",     top: "76px" , color: "#e0564c", bg: "#ffffff", text: "#e0564c" },
-    "kuragebunch.com":      { name: "Kurage Bunch",   top: "120px", color: "#b8bf22", bg: "#ffffff", text: "#7a820c" },
-    "magcomi.com":          { name: "MAGCOMI",        top: "96px" , color: "#d92b7e", bg: "#ffffff", text: "#d92b7e" },
-    "comic-gardo.com":      { name: "Comic Gardo",    top: "91px" , color: "#38bdf8", bg: "#030712", text: "#7dd3fc" },
-    "comic-zenon.com":      { name: "Zenon+",         top: "80px" , color: "#d75c4b", bg: "#ffffff", text: "#d75c4b" },
-    "comic-action.com":     { name: "Web Action",     top: "90px" , color: "#e8decb", bg: "#1c1917", text: "#f5efeb" },
-    "comic-trail.com":      { name: "Comic Trail",    top: "78px" , color: "#b238e7", bg: "#ffffff", text: "#14b8a6" },
-    "feelweb.jp":           { name: "FEEL WEB",       top: "79px" , color: "#18181b", bg: "#ffffff", text: "#18181b" },
-    "comic-earthstar.com":  { name: "Earth Star",     top: "91px" , color: "#1d4ed8", bg: "#ffffff", text: "#1d4ed8" },
-    "comicborder.com":      { name: "Comic Border",   top: "52px" , color: "#d97706", bg: "#ffffff", text: "#d97706" },
-    "comic-ogyaaa.com":     { name: "OGYAAA!!",       top: "131px", color: "#18181b", bg: "#ffffff", text: "#18181b" },
-    "comic-seasons.com":    { name: "Seasons",        top: "90px" , color: "#70b5f9", bg: "#eaf5e3", text: "#4a92e6" },
-    "comic-y-ours.com":     { name: "COMIC Y-OURS",   top: "90px" , color: "#5c8699", bg: "#18181b", text: "#8bb2c4" },
-    "ichicomi.com":         { name: "Ichicomi",       top: "68px" , color: "#0284c7", bg: "#082f49", text: "#7dd3fc" },
-    "mangatime-square.com": { name: "TimeSquare",     top: "100px", color: "#A3E900", bg: "#ffffff", text: "#A3E900" },
-    "ourfeel.jp":           { name: "OUR FEEL",       top: "150px", color: "#18181b", bg: "#f6f3f2", text: "#18181b" }
+    "shonenjumpplus.com":   { name: "Jump+",            top: "60px" , color: "#E53835", bg: "#18181b", text: "#ffffff" },
+    "tonarinoyj.jp":        { name: "Tonari no YJ",     top: "80px" , color: "#4E4645", bg: "#ffffff", text: "#18181b" },
+    "sunday-webry.com":     { name: "Sunday Webry",     top: "80px" , color: "#de544e", bg: "#ffffff", text: "#de544e" },
+    "comic-days.com":       { name: "Comic Days",       top: "76px" , color: "#e0564c", bg: "#ffffff", text: "#e0564c" },
+    "kuragebunch.com":      { name: "Kurage Bunch",     top: "120px", color: "#b8bf22", bg: "#ffffff", text: "#7a820c" },
+    "magcomi.com":          { name: "MAGCOMI",          top: "96px" , color: "#d92b7e", bg: "#ffffff", text: "#d92b7e" },
+    "comic-gardo.com":      { name: "Comic Gardo",      top: "91px" , color: "#38bdf8", bg: "#030712", text: "#7dd3fc" },
+    "comic-zenon.com":      { name: "Zenon+",           top: "80px" , color: "#d75c4b", bg: "#ffffff", text: "#d75c4b" },
+    "comic-action.com":     { name: "Web Action",       top: "90px" , color: "#e8decb", bg: "#1c1917", text: "#f5efeb" },
+    "comic-trail.com":      { name: "Comic Trail",      top: "78px" , color: "#b238e7", bg: "#ffffff", text: "#14b8a6" },
+    "feelweb.jp":           { name: "FEEL WEB",         top: "79px" , color: "#18181b", bg: "#ffffff", text: "#18181b" },
+    "comic-earthstar.com":  { name: "Comic Earth Star", top: "91px" , color: "#1d4ed8", bg: "#ffffff", text: "#1d4ed8" },
+    "comicborder.com":      { name: "Comic Border",     top: "52px" , color: "#d97706", bg: "#ffffff", text: "#d97706" },
+    "comic-ogyaaa.com":     { name: "OGYAAA!!",         top: "131px", color: "#18181b", bg: "#ffffff", text: "#18181b" },
+    "comic-seasons.com":    { name: "Seasons",          top: "90px" , color: "#70b5f9", bg: "#eaf5e3", text: "#4a92e6" },
+    "comic-y-ours.com":     { name: "COMIC Y-OURS",     top: "90px" , color: "#5c8699", bg: "#18181b", text: "#8bb2c4" },
+    "ichicomi.com":         { name: "Ichicomi",         top: "68px" , color: "#0284c7", bg: "#082f49", text: "#7dd3fc" },
+    "mangatime-square.com": { name: "TimeSquare",       top: "100px", color: "#A3E900", bg: "#ffffff", text: "#A3E900" },
+    "ourfeel.jp":           { name: "OUR FEEL",         top: "150px", color: "#18181b", bg: "#f6f3f2", text: "#18181b" }
   };
 
   function resolveSiteTheme() {
@@ -139,7 +139,7 @@
         return item;
       }
     }
-    return { name: "GigaViewer", top: "70px", color: "#eb544b", bg: "#1c0d0e", text: "#fca5a5" };
+    return { name: "GigaViewer",   top: "70px", color: "#eb544b", bg: "#1c0d0e", text: "#fca5a5" };
   }
 
   function getUI() {

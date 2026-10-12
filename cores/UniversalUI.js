@@ -214,10 +214,23 @@
           spanJpg.textContent = "Xuất file JPG (mặc định PNG)";
         }
       },
-      setBusy: function(isBusy) {
-        btn.disabled = Boolean(isBusy);
-        btn.style.opacity = isBusy ? "0.72" : '1';
-        btn.style.cursor = isBusy ? "progress" : "pointer";
+      setBusy: function(state) {
+        if (state === 'error') {
+          // TRẠNG THÁI BÁO LỖI: Khóa nút, biểu tượng cấm bấm, không có con trỏ xoay
+          btn.disabled = true;
+          btn.style.opacity = "0.45";
+          btn.style.cursor = "not-allowed";
+        } else if (state) {
+          // TRẠNG THÁI ĐANG TẢI / BẬN: Khóa nút, con trỏ xoay progress
+          btn.disabled = true;
+          btn.style.opacity = "0.72";
+          btn.style.cursor = "progress";
+        } else {
+          // TRẠNG THÁI SẴN SÀNG: Mở khóa nút, con trỏ trỏ chuột bình thường
+          btn.disabled = false;
+          btn.style.opacity = "1";
+          btn.style.cursor = "pointer";
+        }
       },
       updateFormatUI: function(format) {
         isZeroCopy = true;

@@ -107,7 +107,8 @@
     convertJpeg: localStorage.getItem("comici-dl:convert-jpeg") === '1',
     chapterData: null,
     ui: null,
-    lastViewerId: null
+    lastUrl: "",
+    lastEpisodeId: ""
   };
 
   /* =========================================================================
@@ -160,9 +161,11 @@
     const createUI = window.createMangaDownloaderUI || globalThis.createMangaDownloaderUI;
     if (typeof createUI === "function" && DOC.body) {
       const theme = resolveSiteTheme();
-      state.ui = createUI({
+      
+      const uiConfig = {
         storagePrefix: "comici-dl",
         title: theme.name,
+        engine: "COMICI+",
         themeColor: theme.color,
         themeBg: theme.bg,
         titleColor: theme.text,
@@ -173,7 +176,10 @@
           state.convertJpeg = checked;
           localStorage.setItem("comici-dl:convert-jpeg", checked ? '1' : '0');
         }
-      });
+      }
+
+      state.ui = createUI(uiConfig);
+      state.ui.setBusy(true); 
 
       // Tùy biến Header 2 tầng căn trái chuẩn mực
       if (state.ui?.panel) {
@@ -181,7 +187,7 @@
         if (titleEl) {
           titleEl.innerHTML = `
             <div style="all:initial;display:block;font:800 13px/1.2 system-ui,sans-serif;color:${theme.text};letter-spacing:0.2px;">${theme.name}</div>
-            <div style="all:initial;display:block;font:700 9px/1.2 system-ui,sans-serif;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;margin-top:1px;">COMICI+</div>
+            <div style="all:initial;display:block;font:700 9px/1.2 system-ui,sans-serif;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;margin-top:1px;">${uiConfig.engine}</div>
           `;
         }
       }
@@ -208,11 +214,13 @@
 
   function getEpisodeId() {
     try {
-      const sessionEl = DOC.getElementById('sessionId');
-      if (sessionEl?.textContent?.trim()) return sessionEl.textContent.trim();
 
       const match = WIN.location.pathname.match(/\/(?:episodes?|articles?)\/([a-zA-Z0-9_-]+)/);
       if (match && match[1]) return match[1];
+      
+      const sessionEl = DOC.getElementById('sessionId');
+      if (sessionEl?.textContent?.trim()) return sessionEl.textContent.trim();
+
     } catch (e) {}
     return "Comici_Episode";
   }
@@ -620,78 +628,118 @@
    * KHỞI CHẠY VÀ THEO DÕI SPA
    * ========================================================================= */
   async function boot() {
-    while (!DOC.body) await sleep(30);
+    while (!DOC.body) await sleep(20);
 
     const ui = getUI();
 
     if (!isEpisodeUrl()) {
       if (ui?.panel) ui.panel.style.display = "none";
-      if (ui) ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
       return;
     }
 
-    if (ui?.panel) ui.panel.style.display = "block";
-    if (ui) ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
-
-    let data = null;
-    let retries = 0;
-
-    while (retries < 25) {
-      try {
-        const viewerEl = DOC.getElementById('comici-viewer') || DOC.querySelector('[data-comici-viewer-id]');
-        if (viewerEl) {
-          const ctx = preprocessViewerContext(viewerEl);
-          
-          // NẾU LÀ CHUYỂN CHAP: Đợi Vue cập nhật ID mới, không lấy lại ID cũ của chap trước
-          if (ctx.viewerId && ctx.viewerId === state.lastViewerId && retries < 15) {
-            await sleep(150);
-            retries++;
-            continue;
-          }
-
-          data = await fetchComiciPages();
-          if (data && data.pages?.length > 0) {
-            state.lastViewerId = ctx.viewerId; // Lưu lại ID của chap hiện tại
-            break;
-          }
-        }
-      } catch (e) {}
-      await sleep(150);
-      retries++;
+    if (ui?.panel) {
+      ui.panel.style.display = "block";
+      ui.setBusy(true);
+      ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
     }
 
-    if (data && data.pages?.length > 0) {
+    const targetEpId = getEpisodeId();
+
+    try {
+      let data = null;
+      let retries = 0;
+      let targetViewerId = null;
+
+      while (retries < 12) {
+        // Tự hủy ngay nếu người dùng đã bấm sang chap khác
+        if (targetEpId !== getEpisodeId()) return;
+
+        try {
+          const viewerEl = DOC.getElementById('comici-viewer') || DOC.querySelector('[data-comici-viewer-id]');
+          if (viewerEl) {
+            const vId = viewerEl.getAttribute('data-comici-viewer-id') || viewerEl.dataset?.comiciViewerId;
+
+            // vId chỉ hợp lệ nếu nó KHÔNG PHẢI là viewerId của chap trước đó
+            const isStale = Boolean(state.lastLoaded && state.lastLoaded.epId !== targetEpId && vId === state.lastLoaded.viewerId);
+
+            if (vId && !isStale) {
+              targetViewerId = vId;
+              break;
+            }
+          }
+        } catch (e) {}
+
+        await sleep(100);
+        retries++;
+      }
+
+      if (targetEpId !== getEpisodeId()) return;
+
+      // Hết 1.2s mà không có ID mới -> Chap khóa
+      if (!targetViewerId) {
+        throw new Error("Chương này chưa mở hoặc cần trả phí.");
+      }
+
+      data = await fetchComiciPages();
+
+      if (targetEpId !== getEpisodeId()) return;
+
+      if (!data || !data.pages?.length) {
+        throw new Error("Chương này chưa mở hoặc cần trả phí.");
+      }
+
       state.chapterData = data;
+      state.lastLoaded = { epId: targetEpId, viewerId: targetViewerId }; // Ghi nhớ cặp chuẩn
+
       if (ui) {
         ui.updateProgress({
           completed: 0,
           total: data.pages.length,
           status: "Sẵn sàng."
         });
+        ui.setBusy(false);
       }
-    } else {
-      if (ui) ui.updateProgress({ status: "Sẵn sàng." });
+    } catch (err) {
+      if (targetEpId !== getEpisodeId()) return;
+
+      console.error("[comici-dl] Boot error:", err);
+      if (ui) {
+        ui.updateProgress({ status: "Lỗi: " + (err?.message || "Không thể tải trang.") });
+        ui.setBusy(true);
+      }
     }
   }
 
   // Khởi động SPA Route Watcher
   const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
   if (typeof watchRoute === "function") {
-    watchRoute(() => {
+    watchRoute((newUrl) => {
+
+      if (!isEpisodeUrl()) {
+        const ui = getUI();
+        if (ui?.panel) ui.panel.style.display = "none";
+        state.chapterData = null;
+        state.lastEpisodeId = "";
+        state.lastUrl = "";
+        state.running = false;
+        return;
+      }
+
+      const currentEpId = getEpisodeId();
+      if (state.lastEpisodeId && state.lastEpisodeId === currentEpId) return;
+
+      state.lastUrl = newUrl;
+      state.lastEpisodeId = currentEpId;
       state.chapterData = null;
       state.running = false;
+
       const ui = getUI();
       if (ui) {
-        ui.setBusy(false);
+        ui.setBusy(true);
         ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
       }
       boot();
     });
   }
-
-  if (DOC.readyState === "loading") {
-    DOC.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
-  }
+  boot();
 })();

@@ -6,6 +6,8 @@
 // @author       anonymous & AI
 // @match        https://viewer.bookwalker.jp/*/viewer.html*
 // @match        https://viewer-trial.bookwalker.jp/*/viewer.html*
+// @match        https://viewer-subscription.bookwalker.jp/*/viewer.html*
+// @match        https://viewer-subscription.bookwalker.jp/*
 // @match        https://comic-store-viewer.pixiv.net/static/viewer*
 // @match        https://book.dmm.com/*
 // @match        https://book.dmm.co.jp/*
@@ -997,7 +999,10 @@
 
     if (!pagesList.length) return;
 
-    const siteTitle = isBookWalker ? "PUBLUS INSPECTOR (BOOKWALKER)" : "PUBLUS INSPECTOR (PIXIVCOMIC)";
+    const isSub = WIN.location.hostname.includes("subscription");
+    const siteTitle = isBookWalker 
+      ? (isSub ? "PUBLUS INSPECTOR (BW SUBSCRIPTION)" : "PUBLUS INSPECTOR (BOOKWALKER)") 
+      : "PUBLUS INSPECTOR (PIXIVCOMIC)";
 
     createUI({
       title: siteTitle,

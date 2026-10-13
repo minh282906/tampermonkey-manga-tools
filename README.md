@@ -37,6 +37,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 | **PixivComic Downloader**  | (`comic.pixiv.net`)                                                                                                                                                 | 🟢 Hoạt động | [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/PixivComicDownloader.user.js)  |
 | **ZeroSum Online Downloader**       | Zero Sum Online (`zerosumonline.com`)                                                                                                                    | 🟢 Hoạt động |    [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/ZerosumDownloader.user.js)    |
 | **MangaOne Downloader**    | Manga ONE và Ura Sunday<br />(`manga-one.com`, `urasunday.com`)                                                                                                     | 🟢 Hoạt động |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/MangaOneDownloader.user.js)   |
+| **Cycomi Downloader**       | Cycomics (`cycomi.com`)                                                                                                                    | 🟢 Hoạt động |    [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/CycomiDownloader.user.js)    |
 | **Mangano Downloader**    | Mangano (`manga-no.com`)                                                                                         git            | 🟢 Hoạt động |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/MangaNoDownloader.user.js)   |
 | **Souffle Downloader**    | Souffle (`souffle.life`)                                                                                                     | 🟢 Hoạt động |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/SouffleDownloader.user.js)   |
 | **Jumptoon Downloader**  | (`jumptoon.com`)                                                                                                                                           | 🟢 Hoạt động | [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/JumptoonDownloader.user.js)  |
@@ -193,6 +194,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 - Comico (`comico.jp`)
 - Corona EX (`to-corona-ex.com`)
 - COMIC FUZ (`comic-fuz.com`)
+- Cycomics (`cycomi.com`)
 - YanJan! (`ynjn.jp`)
 - JUMP TOON (`jumptoon.com`)
 - Jump TOON NEXT!(`jumptoon-next.com`)

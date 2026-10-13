@@ -37,6 +37,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 | **PixivComic Downloader**  | (`comic.pixiv.net`)                                                                                                                                                 | 🟢 Hoạt động | [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/PixivComicDownloader.user.js)  |
 | **ZeroSum Online Downloader**       | Zero Sum Online (`zerosumonline.com`)                                                                                                                    | 🟢 Hoạt động |    [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/ZerosumDownloader.user.js)    |
 | **MangaOne Downloader**    | Manga ONE và Ura Sunday<br />(`manga-one.com`, `urasunday.com`)                                                                                                     | 🟢 Hoạt động |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/MangaOneDownloader.user.js)   |
+| **FlowerComics Downloader**    | フラコミlike! (`flowercomics.jp`)                                                                                                     | 🟢 Hoạt động |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/FlowerComicsDownloader.user.js)   |
 | **Cycomi Downloader**       | Cycomics (`cycomi.com`)                                                                                                                    | 🟢 Hoạt động |    [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/CycomiDownloader.user.js)    |
 | **Mangano Downloader**    | Mangano (`manga-no.com`)                                                                                         git            | 🟢 Hoạt động |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/MangaNoDownloader.user.js)   |
 | **Souffle Downloader**    | Souffle (`souffle.life`)                                                                                                     | 🟢 Hoạt động |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/SouffleDownloader.user.js)   |
@@ -204,6 +205,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 - Amazon Kindle Manga (`amazon.co.jp`)
 - Mecha Comic (`mechacomic.jp`)
 - MangaONE và Ura Sunday (`manga-one.com`, `urasunday.com`)
+- フラコミlike! (`flowercomics.jp`)
 - Zero Sum Online (`zerosumonline.com`)
 - Mangano (`manga-no.com`)
 - マンガMee (`manga-mee.jp`)

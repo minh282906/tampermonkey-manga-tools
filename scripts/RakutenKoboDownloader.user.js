@@ -7,6 +7,7 @@
 // @author       anonymous & AI
 // @match        https://readnow.kobo.com/*
 // @match        https://*.kobo.com/*
+// @match        https://preview-readingservices.kobo.com/*
 // @run-at       document-start
 // @grant        unsafeWindow
 // @grant        GM_xmlhttpRequest
@@ -14,6 +15,8 @@
 // @connect      readnow.kobo.com
 // @connect      getbook.kobo.com
 // @connect      readingservices.kobo.com
+// @connect      preview-readingservices.kobo.com
+
 //
 // --- TỰ ĐỘNG TẢI VÀ UPDATE PHIÊN BẢN
 // @updateURL    https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/RakutenKoboDownloader.user.js
@@ -41,7 +44,7 @@
   const DOC = WIN.document;
   const sleep = ms => new Promise(resolve => WIN.setTimeout(resolve, ms));
 
-  if (WIN.top !== WIN.self) return;
+  if (WIN.top !== WIN.self && !WIN.location.hostname.includes('preview-readingservices.kobo.com')) return;
 
   /* =========================================================================
    * BẪY BẮT BLOB TẠI DOCUMENT-START (TÓM MAGIC BYTES TRƯỚC KHI BỊ REVOKE)
@@ -110,30 +113,43 @@
    * 2. BỘ HỖ TRỢ XỬ LÝ CHUỖI & TÊN FILE
    * ========================================================================= */
   function isReaderUrl() {
-    return WIN.location.hostname.includes('readnow.kobo.com') || WIN.location.pathname.length > 20;
+    const host = WIN.location.hostname;
+    return host === 'readnow.kobo.com' || host === 'preview-readingservices.kobo.com';
   }
 
   function getProductId() {
-    const match = WIN.location.pathname.match(/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i);
-    return match ? match[1] : "kobo_book";
+    const match = WIN.location.href.match(/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i);
+    if (match) return match[1];
+
+    // 2. Dạng UUID 32 ký tự liền khối của bản Preview
+    const match32 = WIN.location.href.match(/([a-f0-9]{32})/i);
+    if (match32) return match32[1];
+
+    return "kobo_book";
   }
 
+  let capturedSessionId = null;
+
   function getCleanSessionId() {
+    if (capturedSessionId) return capturedSessionId;
+    
     try {
-      // Đọc trực tiếp document.cookie của tab (vượt qua rào cản sandbox của unsafeWindow)
       const cookieStr = String((typeof document !== 'undefined' ? document.cookie : '') + '; ' + (DOC?.cookie || ''));
-      
       const match = cookieStr.match(/sessionId=([a-f0-9-]+)/i)
-                 || cookieStr.match(/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i);
+                || cookieStr.match(/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i);
 
       if (match && match[1]) {
         return match[1].replace(/-/g, '').trim().toLowerCase();
       }
-
       if (WIN.__kobo_clean_session_id) return WIN.__kobo_clean_session_id;
     } catch (e) {
       console.error("[kobo-dl] Lỗi đọc cookie session:", e);
     }
+
+    if (WIN.location.hostname.includes('preview-readingservices.kobo.com')) {
+      return "0".repeat(32);
+    }
+
     return null;
   }
 
@@ -185,7 +201,14 @@
    * 3. API READCONTENT & NẠP WASM TỰ ĐỘNG
    * ========================================================================= */
   async function fetchBookMetadata(productId) {
-    const apiUrl = `https://readingservices.kobo.com/ReadContent/${productId}`;
+    
+    const isPreview = WIN.location.hostname.includes('preview-readingservices.kobo.com');
+    const query = isPreview ? '?et=preview' : '';
+    const cleanId = productId.replace(/-/g, '');
+    const apiUrl = isPreview
+      ? `https://preview-readingservices.kobo.com/ReadContent/${cleanId}${query}`
+      : `https://readingservices.kobo.com/ReadContent/${productId}`;
+    
     return new Promise((resolve, reject) => {
       GM_xmlhttpRequest({
         method: "GET",
@@ -196,7 +219,15 @@
           if (res.status >= 200 && res.status < 300 && res.response) {
             resolve(res.response);
           } else {
-            reject(new Error(`Lỗi tải Metadata (HTTP ${res.status})`));
+            // Dự phòng gọi endpoint gốc
+            GM_xmlhttpRequest({
+              method: "GET",
+              url: `https://readingservices.kobo.com/ReadContent/${productId}${query}`,
+              headers: { "Accept": "application/json", "Referer": WIN.location.href },
+              responseType: "json",
+              onload: (r2) => (r2.status >= 200 && r2.status < 300 && r2.response) ? resolve(r2.response) : reject(new Error(`Lỗi tải Metadata (HTTP ${r2.status})`)),
+              onerror: reject
+            });
           }
         },
         onerror: reject,
@@ -352,7 +383,7 @@
     const ui = getUI();
 
     state.running = true;
-    if (ui) ui.setBusy(true);
+    if (ui) ui.setBusy(true); // khi mới chạy, khóa (loading)
 
     try {
       const totalPagesEst = state.totalImages || DOC.querySelectorAll('#ReadingOrderView .ReadingItem, [id^="p_"], #p-cover').length || 180;
@@ -450,13 +481,17 @@
       const zipName = `${getCleanTitle(meta)}.zip`;
       zip.download(zipName);
 
-      if (ui) ui.updateProgress({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
+      if (ui) {
+        ui.updateProgress({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
+        ui.setBusy(false); // mở khóa sau khi hoàn tất
+      }
     } catch (err) {
-      if (ui) ui.updateProgress({ status: "Lỗi: " + (err?.message || err) });
+      if (ui) {
+        ui.updateProgress({ status: "Lỗi: " + (err?.message || err) });
+      }
       console.error("[kobo-dl] Download error:", err);
     } finally {
       state.running = false;
-      if (ui) ui.setBusy(false);
     }
   }
 
@@ -488,7 +523,7 @@
 
       // Chờ Kobo dựng xong danh sách trang trong DOM để lấy số trang thật của cuốn truyện này
       let realTotal = 0;
-      for (let r = 0; r < 50; r++) {
+      for (let r = 0; r < 100; r++) {
         if (!realTotal) {
           realTotal = DOC.querySelectorAll('#ReadingOrderView .ReadingItem, [id^="p_"], #p-cover').length;
         }
@@ -517,7 +552,6 @@
       console.error("[kobo-dl] Boot error:", err);
       if (ui) {
         ui.updateProgress({ status: "Lỗi: " + (err?.message || "không thể tải trang.") });
-        ui.setBusy(true);
       }
     }
   }

@@ -386,7 +386,6 @@
       console.error("[comico-dl] Error:", err);
     } finally {
       state.running = false;
-      if (ui) ui.setBusy(false);
     }
   }
 

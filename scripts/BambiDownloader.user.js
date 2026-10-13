@@ -550,7 +550,6 @@
       if (ui) ui.updateProgress({ status: `Lỗi: ${e?.message || e}` });
     } finally {
       state.running = false;
-      if (ui) ui.setBusy(false);
     }
   }
 

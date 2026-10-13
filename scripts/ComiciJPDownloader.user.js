@@ -179,7 +179,6 @@
       if (ui) ui.updateProgress({ status: "Lỗi: " + (err?.message || err) });
     } finally {
       state.running = false;
-      if (ui) ui.setBusy(false);
     }
   }
 

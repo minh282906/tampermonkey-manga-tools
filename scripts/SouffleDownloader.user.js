@@ -247,7 +247,6 @@
       console.error("[souffle-dl] Download error:", err);
     } finally {
       state.running = false;
-      if (ui) ui.setBusy(false);
     }
   }
 

@@ -1802,7 +1802,6 @@
       console.error("[publus-dl] Download failed", err);
     } finally {
       state.running = false;
-      if (ui) ui.setBusy(false);
     }
   }
 

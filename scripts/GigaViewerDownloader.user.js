@@ -102,7 +102,7 @@
     // 1. Các tạp chí con trên Comic Days
     "andsofa.com":          { name: "&Sofa",            top: "108px", color: "#656a73", bg: "#ffffff", text: "#18181b", match: ["andsofa", "アンドソファ"] },
     "morningtwo.com":       { name: "Morning Two",      top: "100px", color: "#2cb3ab", bg: "#ffffff", text: "#1e8780", match: ["morningtwo", "モーニング"] },
-    "getsumagakichi.com":   { name: "月マガ基地",        top: "96px" , color: "#ffffff", bg: "#000000", text: "#ffffff", match: ["getsumagakichi", "gmagakichi", "月マガ基地"] },
+    "getsumagakichi.com":   { name: "月マガ基地",        top: "96px" , color: "#ffffff", bg: "#000000", text: "#ffffff", tabBg: "#ffffff", tabColor: "#000000", match: ["getsumagakichi", "gmagakichi", "月マガ基地"] },
     "bibliosirius.com":     { name: "Biblio Sirius",    top: "165px", color: "#723E2B", bg: "#F7DEAC", text: "#5a180c", match: ["bibliosirius", "ビブリオシリウス"] },
 
     // 2. Tạp chí con trên Kurage Bunch
@@ -155,6 +155,8 @@
         themeColor: theme.color,
         themeBg: theme.bg,
         titleColor: theme.text,
+        tabBg: theme.tabBg, 
+        tabColor: theme.tabColor,
         topOffset: theme.top,
         defaultJpgText: "Xuất file JPG (mặc định PNG)",
         onDownload: startDownload,
@@ -515,7 +517,10 @@
       const zipName = `${getCleanTitle(data.title, data.seriesTitle)}.zip`;
       zip.download(zipName);
 
-      if (ui) ui.updateProgress({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
+      if (ui) {
+        ui.updateProgress({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
+        ui.setBusy(false);
+      }
     } catch (err) {
       if (ui) ui.updateProgress({ status: "Lỗi: " + (err?.message || err) });
       console.error("[giga-dl] Error:", err);

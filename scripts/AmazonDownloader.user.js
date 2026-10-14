@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Amazon Kindle Manga Downloader
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
-// @version      3.0.0
+// @version      1.0.0
 // @icon         https://www.amazon.co.jp/favicon.ico
 // @description  Tải manga trên Amazon Kindle Web Reader.
 // @author       anonymous & AI
@@ -13,7 +13,8 @@
 // @grant        unsafeWindow
 // @grant        GM_xmlhttpRequest
 // @connect      *
-// --- TỰ ĐỘNG TẢI VÀ UPDATE PHIÊN BẢN
+//
+// --- TỰ ĐỘNG TẢI VÀ UPDATE PHIÊN BẢN ---
 // @updateURL    https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/AmazonDownloader.user.js
 // @downloadURL  https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/AmazonDownloader.user.js
 //
@@ -28,12 +29,11 @@
   'use strict';
 
   /* =========================================================================
-   * CẤU HÌNH HỆ THỐNG AMAZON KINDLE
+   * CẤU HÌNH HỆ THỐNG
    * ========================================================================= */
   const CONFIG = {
-    RENDER_WAIT_MS: 480, // Thời gian chờ Kindle vẽ xong trang ảnh (ms)
-    MIN_IMAGE_DIM: 300,  // Kích thước tối thiểu (px) để lọc bỏ icon UI
-    JPEG_QUALITY: 1.0    // Chất lượng xuất JPG nếu chọn
+    NAV_BATCH_SIZE: 6,     // Số trang gom cụm trong mỗi lệnh createNavigationOptions
+    OPERATION_TIMEOUT: 60000 // Timeout tối đa chờ giải mã 1 trang (ms)
   };
 
   const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;
@@ -44,9 +44,13 @@
 
   const state = {
     running: false,
-    convertJpeg: localStorage.getItem("amazon-dl:convert-jpeg") === '1',
-    lastVerifiedPageWidth: 0,
-    ui: null
+    ui: null,
+    runtime: null,
+    bookMetadata: null,
+    totalImages: 0,
+    detectedFormat: null,
+    lastAsin: "",
+    lastUrl: ""
   };
 
   /* =========================================================================
@@ -59,28 +63,26 @@
     if (typeof createUI === "function" && DOC.body) {
       const uiConfig = {
         storagePrefix: "amazon-dl",
-        title: "Kindle",
-        engine: "AMAZON",
-        themeColor: "#f97316",
+        title: "Amazon",
+        engine: "KINDLE WEB READER",
+        themeColor: "#ED6C2D",
         themeBg: "#1c1917",
         titleColor: "#fdba74",
+        btnBg: "#ED6C2D",
+        btnColor: "#ffffff",
         topOffset: "97px",
-        defaultJpgText: "Xuất file JPG (mặc định PNG)",
-        onDownload: startDownload,
-        onJpgChange: (checked) => {
-          state.convertJpeg = checked;
-          localStorage.setItem("amazon-dl:convert-jpeg", checked ? '1' : '0');
-        }
+        onDownload: startDownload
       };
 
       state.ui = createUI(uiConfig);
+      state.ui.setBusy(true);
 
       if (state.ui?.panel) {
         const titleEl = state.ui.panel.querySelector('[style*="font: 800 13px"], [style*="font:800 13px"]');
         if (titleEl) {
           titleEl.innerHTML = `
             <div style="all:initial;display:block;font:800 13px/1.2 system-ui,sans-serif;color:${uiConfig.titleColor};letter-spacing:0.2px;">${uiConfig.title}</div>
-            <div style="all:initial;display:block;font:700 9px/1.2 system-ui,sans-serif;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;margin-top:1px;visibility:hidden;">${uiConfig.engine}</div>
+            <div style="all:initial;display:block;font:700 9px/1.2 system-ui,sans-serif;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;margin-top:2px;">${uiConfig.engine}</div>
           `;
         }
       }
@@ -89,18 +91,21 @@
   }
 
   /* =========================================================================
-   * 2. BỘ HỖ TRỢ XỬ LÝ CHUỖI & TÊN FILE CHUẨN
+   * 2. BỘ HỖ TRỢ XỬ LÝ CHUỖI, URL & METADATA
    * ========================================================================= */
   function getAsin() {
     try {
       const match = WIN.location.pathname.match(/\/manga\/([A-Z0-9]{10})/i);
       if (match && match[1]) return match[1];
+      const url = new URL(WIN.location.href);
+      const qAsin = url.searchParams.get("asin");
+      if (qAsin && /^[A-Z0-9]{10}$/i.test(qAsin)) return qAsin;
     } catch (e) {}
     return "AMAZON_MANGA";
   }
 
   function isEpisodeUrl() {
-    return /\/manga\/[A-Z0-9]{10}/i.test(WIN.location.pathname);
+    return /\/manga\/[A-Z0-9]{10}/i.test(WIN.location.pathname) || WIN.location.search.includes("asin=");
   }
 
   function cleanString(str) {
@@ -108,687 +113,273 @@
     return str
       .replace(/[\r\n\t]+/g, ' ')
       .replace(/\s{2,}/g, ' ')
-      .replace(/【[^】]*】/g, '')
+      .replace(/【(?!(?:フルカラー版|カラー版|完全版|特装版))[^】]*】/gi, '')
       .replace(/[\\/*?:"<>|]/g, '')
       .trim();
   }
 
-  function getCleanTitle() {
+  function getCleanTitle(metadata) {
     try {
-      const titleEl = DOC.getElementById('readerChromeTitle') || DOC.querySelector('.kw-rd-chrome-book-title');
-      if (titleEl && titleEl.textContent) {
-        let t = cleanString(titleEl.textContent);
-        if (t) return t;
+      let bookTitle = metadata?.bookTitle || "";
+      if (!bookTitle) {
+        const titleEl = DOC.getElementById('readerChromeTitle') || DOC.querySelector('.kw-rd-chrome-book-title');
+        if (titleEl && titleEl.textContent) bookTitle = titleEl.textContent;
       }
+      if (!bookTitle) {
+        let t = DOC.title || "";
+        t = t.replace(/^Kindle\s*-\s*/i, '');
+        bookTitle = t.split(/[|｜]/)[0].trim();
+      }
+
+      bookTitle = cleanString(bookTitle);
+
+      // Tách tự động tên truyện và số tập/chương: 第...巻, 第...話, Vol..., Chapter...
+      const m = bookTitle.match(/^(.*?)(?:[\s\u3000]+)((?:第\s*[0-9０-９一二三四五六七八九十百千万]+[巻話回].*)|(?:Vol|Volume|Chapter|Ch)\.?\s*\d+.*)$/i);
+      if (m) {
+        const s = cleanString(m[1]);
+        const e = cleanString(m[2]);
+        if (s && e) return `${s} - ${e}`;
+      }
+
+      if (bookTitle) return bookTitle;
     } catch (e) {}
 
-    try {
-      let title = DOC.title || "";
-      title = title.replace(/^Kindle\s*-\s*/i, '');
-      title = title.split('｜')[0].split('|')[0].trim();
-      let t = cleanString(title);
-      if (t) return t;
-    } catch (e) {}
-
-    return `Amazon_${getAsin()}`;
-  }
-
-  function getPageInfo() {
-    let current = 0;
-    let total = 0;
-
-    const curEl = DOC.getElementById('pageInfoCurrentPage');
-    const totEl = DOC.getElementById('pageInfoTotalPage');
-
-    if (totEl?.textContent) {
-      total = parseInt(totEl.textContent.trim(), 10) || 0;
-    }
-    if (curEl?.textContent) {
-      current = parseInt(curEl.textContent.trim(), 10) || 0;
-    }
-
-    if (!total || !current) {
-      const slider = DOC.getElementById('sliderBar');
-      if (slider) {
-        if (!total && slider.max) total = parseInt(slider.max, 10) || 0;
-        if (!current && slider.value) current = parseInt(slider.value, 10) || 0;
-      }
-    }
-
-    return { current: current || 1, total: total || 0 };
-  }
-
-  function setInteractionLock(locked) {
-    let mask = DOC.getElementById('amazon-dl-mask');
-    if (locked) {
-      if (!mask) {
-        mask = DOC.createElement('div');
-        mask.id = 'amazon-dl-mask';
-        mask.style.cssText = "position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,0.05);cursor:wait;pointer-events:auto;";
-        DOC.body.appendChild(mask);
-      }
-    } else {
-      if (mask) mask.remove();
-    }
-  }
-
-  let wasFullscreen = false;
-  async function handleFullscreenStart() {
-    wasFullscreen = Boolean(DOC.fullscreenElement);
-    if (!wasFullscreen && typeof DOC.documentElement.requestFullscreen === "function") {
-      try {
-        await DOC.documentElement.requestFullscreen();
-        await sleep(500);
-      } catch (e) {}
-    }
-  }
-
-  async function handleFullscreenEnd() {
-    if (!wasFullscreen && DOC.fullscreenElement && typeof DOC.exitFullscreen === "function") {
-      try {
-        await DOC.exitFullscreen();
-        await sleep(250);
-      } catch (e) {}
-    }
-  }
-
-  function sendKey(keyName, keyCode) {
-    const opts = { key: keyName, code: keyName, keyCode: keyCode, which: keyCode, bubbles: true, cancelable: true, composed: true };
-    const targets = [DOC.activeElement, DOC.body, WIN, DOC.getElementById('bookContainer'), DOC.getElementById('readerContainer')].filter(Boolean);
-    for (const target of targets) {
-      target.dispatchEvent(new KeyboardEvent('keydown', opts));
-      target.dispatchEvent(new KeyboardEvent('keyup', opts));
-    }
-  }
-
-  function triggerSliderJump(slider, targetValue) {
-    if (!slider) return;
-    try {
-      const tracker = slider._valueTracker;
-      if (tracker) tracker.setValue(targetValue);
-
-      const nativeSetter = Object.getOwnPropertyDescriptor(WIN.HTMLInputElement.prototype, 'value').set;
-      nativeSetter.call(slider, targetValue);
-
-      const opts = { bubbles: true, cancelable: true, view: WIN };
-      slider.dispatchEvent(new MouseEvent('pointerdown', opts));
-      slider.dispatchEvent(new MouseEvent('mousedown', opts));
-      slider.dispatchEvent(new Event('input', opts));
-      slider.dispatchEvent(new Event('change', opts));
-      slider.dispatchEvent(new MouseEvent('pointerup', opts));
-      slider.dispatchEvent(new MouseEvent('mouseup', opts));
-    } catch (e) {}
-  }
-
-  function dispatchFullClick(el) {
-    if (!el) return;
-    const opts = { bubbles: true, cancelable: true, view: WIN };
-    el.dispatchEvent(new MouseEvent('pointerdown', opts));
-    el.dispatchEvent(new MouseEvent('mousedown', opts));
-    el.dispatchEvent(new MouseEvent('pointerup', opts));
-    el.dispatchEvent(new MouseEvent('mouseup', opts));
-    el.click();
-  }
-
-  async function ensureAtPage1() {
-    const ui = getUI();
-    if (ui) ui.updateProgress({ status: "Đang về trang đầu..." });
-    setInteractionLock(false);
-
-    let retries = 0;
-    while (retries < 35) {
-      const curInfo = getPageInfo();
-      if (curInfo.current === 1) {
-        if (ui) ui.updateProgress({ status: "Đang tải..." });
-        await sleep(600);
-        setInteractionLock(true);
-        return true;
-      }
-
-      const slider = DOC.getElementById('sliderBar');
-      if (slider && retries === 0) {
-        triggerSliderJump(slider, 1);
-        await sleep(400);
-      }
-
-      const rightChevron = DOC.querySelector('.kr-chevron-container-right');
-      if (rightChevron) {
-        dispatchFullClick(rightChevron);
-      } else {
-        sendKey("ArrowRight", 39);
-      }
-
-      await sleep(200);
-      retries++;
-    }
-    setInteractionLock(true);
-    return getPageInfo().current === 1;
-  }
-
-  async function stepToNextPage() {
-    const startPage = getPageInfo().current;
-
-    const leftChevron = DOC.querySelector('.kr-chevron-container-left');
-    if (leftChevron) {
-      dispatchFullClick(leftChevron);
-    } else {
-      sendKey("ArrowLeft", 37);
-    }
-
-    let startTime = Date.now();
-    while (Date.now() - startTime < 400) {
-      if (getPageInfo().current !== startPage) return true;
-      await sleep(30);
-    }
-
-    sendKey("ArrowLeft", 37);
-
-    startTime = Date.now();
-    while (Date.now() - startTime < 400) {
-      if (getPageInfo().current !== startPage) return true;
-      await sleep(30);
-    }
-
-    return false;
-  }
-
-  async function jumpToPage(targetPage) {
-    const slider = DOC.getElementById('sliderBar');
-    if (slider) {
-      triggerSliderJump(slider, targetPage);
-    }
-
-    let startTime = Date.now();
-    while (Date.now() - startTime < 800) {
-      if (getPageInfo().current === targetPage) return true;
-      await sleep(40);
-    }
-    return false;
-  }
-
-  function calculateBufferHash(uint8Array) {
-    let hash = 0;
-    const len = uint8Array.length;
-    const step = Math.max(1, Math.floor(len / 1000));
-    for (let i = 0; i < len; i += step) {
-      hash = ((hash << 5) - hash) + uint8Array[i];
-      hash |= 0;
-    }
-    return `${len}_${hash}`;
+    return `Kindle_${getAsin()}`;
   }
 
   /* =========================================================================
-   * 3. THUẬT TOÁN DÒ VẠCH PHÂN CHIA TƯƠNG PHẢN & XÉN MÉP NGOÀI
+   * 3. REACT FIBER TRAVERSAL (BẮT RUNTIME KARAMEL TRONG 0MS)
    * ========================================================================= */
-  function isColumnPureBlack(x, w, h, data) {
-    for (let y = Math.floor(h * 0.05); y < Math.floor(h * 0.95); y += 3) {
-      const idx = (y * w + x) * 4;
-      const r = data[idx];
-      const g = data[idx + 1];
-      const b = data[idx + 2];
-      const a = data[idx + 3];
-      if ((r > 2 || g > 2 || b > 2) && a > 10) {
-        return false;
+  function findRuntime() {
+    const root = DOC.getElementById('mainContainer') || DOC.getElementById('root');
+    if (!root) return null;
+
+    const fiberKey = Object.keys(root).find(name => name.startsWith('__reactContainer') || name.startsWith('__reactFiber'));
+    const fiber = root?._reactRootContainer?._internalRoot?.current || root?.[fiberKey]?.stateNode?.current || root?.[fiberKey];
+
+    if (!fiber) return null;
+
+    const pending = [fiber];
+    for (let count = 0; pending.length && count < 10000; count++) {
+      const node = pending.pop();
+      if (!node) continue;
+      if (node.sibling) pending.push(node.sibling);
+      if (node.child) pending.push(node.child);
+
+      let hook = node.memoizedState;
+      for (let index = 0; hook && index < 150; index++, hook = hook.next) {
+        const reader = hook.memoizedState?.current;
+        const factory = reader?.options?.bookProviderFactory;
+        const controller = reader?.client?.options?.rendererController;
+
+        if (reader && typeof factory?.get === 'function' &&
+            typeof controller?.getRenderSettings === 'function' &&
+            typeof controller?.createNavigationOptions === 'function' &&
+            typeof reader.client?.getMetadata === 'function') {
+          return { reader, factory, controller };
+        }
       }
     }
-    return true;
+    return null;
   }
 
-  function findContrastSeamX(canvas, searchRadius = 25, minContrast = 25) {
-    const w = canvas.width;
-    const h = canvas.height;
-    const midX = Math.floor(w / 2);
-    const ctx = canvas.getContext('2d');
-    const startSearch = Math.max(1, midX - searchRadius);
-    const endSearch = Math.min(w - 2, midX + searchRadius);
-
+  function getEstimatedTotalPages(runtime) {
     try {
-      const imgData = ctx.getImageData(startSearch - 1, 0, endSearch - startSearch + 3, h);
-      const data = imgData.data;
-      const dataW = endSearch - startSearch + 3;
-
-      let bestX = midX;
-      let maxScore = 0;
-
-      for (let x = startSearch; x <= endSearch; x++) {
-        let totalDiff = 0;
-        let count = 0;
-
-        for (let y = Math.floor(h * 0.05); y < Math.floor(h * 0.95); y += 4) {
-          const localX1 = x - startSearch + 1;
-          const localX2 = localX1 + 1;
-
-          const idx1 = (y * dataW + localX1) * 4;
-          const idx2 = (y * dataW + localX2) * 4;
-
-          const lum1 = 0.299 * data[idx1] + 0.587 * data[idx1 + 1] + 0.114 * data[idx1 + 2];
-          const lum2 = 0.299 * data[idx2] + 0.587 * data[idx2 + 1] + 0.114 * data[idx2 + 2];
-
-          totalDiff += Math.abs(lum1 - lum2);
-          count++;
+      const client = runtime?.reader?.client;
+      if (client?.getManifest?.()?.bookType === 'FixedFormat') {
+        const locations = client.getLocationMap?.()?.locations;
+        if (Array.isArray(locations) && locations.length > 0) {
+          return locations.length;
         }
-
-        const avgScore = count > 0 ? totalDiff / count : 0;
-        if (avgScore > maxScore) {
-          maxScore = avgScore;
-          bestX = x;
-        }
-      }
-
-      if (maxScore >= minContrast) {
-        return bestX + 1;
       }
     } catch (e) {}
-
-    return midX;
-  }
-
-  function cropLeftHalf(leftCanvas, h) {
-    const w = leftCanvas.width;
-    const ctx = leftCanvas.getContext('2d');
-    const imgData = ctx.getImageData(0, 0, w, h);
-    const data = imgData.data;
-
-    let firstNonBlackX = -1;
-    for (let x = 0; x < w; x++) {
-      if (!isColumnPureBlack(x, w, h, data)) {
-        firstNonBlackX = x;
-        break;
-      }
-    }
-
-    let cropStartX = 0;
-    let isValid = false;
-
-    if (firstNonBlackX !== -1) {
-      const candidateX = firstNonBlackX + 1;
-      const pageW = w - candidateX;
-      if (pageW >= Math.floor(w * 0.4) && pageW <= w) {
-        cropStartX = candidateX;
-        isValid = true;
-      }
-    }
-
-    if (!isValid) {
-      if (state.lastVerifiedPageWidth && state.lastVerifiedPageWidth <= w) {
-        cropStartX = w - state.lastVerifiedPageWidth;
-      } else {
-        cropStartX = 0;
-      }
-    } else {
-      state.lastVerifiedPageWidth = w - cropStartX;
-    }
-
-    const outW = w - cropStartX;
-    const outCanvas = DOC.createElement('canvas');
-    outCanvas.width = outW;
-    outCanvas.height = h;
-    const outCtx = outCanvas.getContext('2d', { alpha: false });
-    outCtx.imageSmoothingEnabled = false;
-    outCtx.mozImageSmoothingEnabled = false;
-    outCtx.webkitImageSmoothingEnabled = false;
-    outCtx.msImageSmoothingEnabled = false;
-    outCtx.drawImage(leftCanvas, cropStartX, 0, outW, h, 0, 0, outW, h);
-    return outCanvas;
-  }
-
-  function cropRightHalf(rightCanvas, h) {
-    const w = rightCanvas.width;
-    const ctx = rightCanvas.getContext('2d');
-    const imgData = ctx.getImageData(0, 0, w, h);
-    const data = imgData.data;
-
-    let lastNonBlackX = -1;
-    for (let x = w - 1; x >= 0; x--) {
-      if (!isColumnPureBlack(x, w, h, data)) {
-        lastNonBlackX = x;
-        break;
-      }
-    }
-
-    let cropEndX = w - 1;
-    let isValid = false;
-
-    if (lastNonBlackX !== -1) {
-      const candidateX = lastNonBlackX - 1;
-      const pageW = candidateX + 1;
-      if (pageW >= Math.floor(w * 0.4) && pageW <= w) {
-        cropEndX = candidateX;
-        isValid = true;
-      }
-    }
-
-    if (!isValid) {
-      if (state.lastVerifiedPageWidth && state.lastVerifiedPageWidth <= w) {
-        cropEndX = state.lastVerifiedPageWidth - 1;
-      } else {
-        cropEndX = w - 1;
-      }
-    } else {
-      state.lastVerifiedPageWidth = Math.max(state.lastVerifiedPageWidth || 0, cropEndX + 1);
-    }
-
-    const outW = cropEndX + 1;
-    const outCanvas = DOC.createElement('canvas');
-    outCanvas.width = outW;
-    outCanvas.height = h;
-    const outCtx = outCanvas.getContext('2d', { alpha: false });
-    outCtx.imageSmoothingEnabled = false;
-    outCtx.mozImageSmoothingEnabled = false;
-    outCtx.webkitImageSmoothingEnabled = false;
-    outCtx.msImageSmoothingEnabled = false;
-    outCtx.drawImage(rightCanvas, 0, 0, outW, h, 0, 0, outW, h);
-    return outCanvas;
-  }
-
-  function cropSingleCoverPage(srcCanvas, h) {
-    const w = srcCanvas.width;
-    const ctx = srcCanvas.getContext('2d');
-    const imgData = ctx.getImageData(0, 0, w, h);
-    const data = imgData.data;
-
-    let firstNonBlackX = 0;
-    for (let x = 0; x < w; x++) {
-      if (!isColumnPureBlack(x, w, h, data)) {
-        firstNonBlackX = x;
-        break;
-      }
-    }
-
-    let lastNonBlackX = w - 1;
-    for (let x = w - 1; x >= firstNonBlackX; x--) {
-      if (!isColumnPureBlack(x, w, h, data)) {
-        lastNonBlackX = x;
-        break;
-      }
-    }
-
-    const startX = Math.min(w - 1, firstNonBlackX + 1);
-    const endX = Math.max(startX, lastNonBlackX - 1);
-    const outW = endX - startX + 1;
-
-    if (outW < CONFIG.MIN_IMAGE_DIM) return srcCanvas;
-
-    const outCanvas = DOC.createElement('canvas');
-    outCanvas.width = outW;
-    outCanvas.height = h;
-    const outCtx = outCanvas.getContext('2d', { alpha: false });
-    outCtx.imageSmoothingEnabled = false;
-    outCtx.mozImageSmoothingEnabled = false;
-    outCtx.webkitImageSmoothingEnabled = false;
-    outCtx.msImageSmoothingEnabled = false;
-    outCtx.drawImage(srcCanvas, startX, 0, outW, h, 0, 0, outW, h);
-    return outCanvas;
-  }
-
-  async function processAndSplitCanvas(srcCanvas, useJpeg) {
-    const w = srcCanvas.width;
-    const h = srcCanvas.height;
-    const results = [];
-    const mimeType = useJpeg ? 'image/jpeg' : 'image/png';
-    const quality = useJpeg ? CONFIG.JPEG_QUALITY : undefined;
-
-    const ctx = srcCanvas.getContext('2d');
-    const imgData = ctx.getImageData(0, 0, w, h);
-    const data = imgData.data;
-    let minX = 0, maxX = w - 1;
-    for (let x = 0; x < w; x++) {
-      if (!isColumnPureBlack(x, w, h, data)) { minX = x; break; }
-    }
-    for (let x = w - 1; x >= minX; x--) {
-      if (!isColumnPureBlack(x, w, h, data)) { maxX = x; break; }
-    }
-    const contentW = maxX - minX + 1;
-    const contentRatio = contentW / h;
-
-    if (contentRatio >= 1.05) {
-      // 1. TRANG ĐÔI: Dò seam tương phản và xén mép riêng từng nửa
-      const splitX = findContrastSeamX(srcCanvas, 25, 25);
-
-      const leftRawCanvas = DOC.createElement('canvas');
-      leftRawCanvas.width = splitX;
-      leftRawCanvas.height = h;
-      const lCtx = leftRawCanvas.getContext('2d', { alpha: false });
-      lCtx.imageSmoothingEnabled = false;
-      lCtx.mozImageSmoothingEnabled = false;
-      lCtx.webkitImageSmoothingEnabled = false;
-      lCtx.msImageSmoothingEnabled = false;
-      lCtx.drawImage(srcCanvas, 0, 0, splitX, h, 0, 0, splitX, h);
-
-      const rightRawCanvas = DOC.createElement('canvas');
-      rightRawCanvas.width = w - splitX;
-      rightRawCanvas.height = h;
-      const rCtx = rightRawCanvas.getContext('2d', { alpha: false });
-      rCtx.imageSmoothingEnabled = false;
-      rCtx.mozImageSmoothingEnabled = false;
-      rCtx.webkitImageSmoothingEnabled = false;
-      rCtx.msImageSmoothingEnabled = false;
-      rCtx.drawImage(srcCanvas, splitX, 0, w - splitX, h, 0, 0, w - splitX, h);
-
-      const rightFinalCanvas = cropRightHalf(rightRawCanvas, h);
-      const leftFinalCanvas = cropLeftHalf(leftRawCanvas, h);
-
-      const rightBlob = await new Promise(res => rightFinalCanvas.toBlob(res, mimeType, quality));
-      const leftBlob = await new Promise(res => leftFinalCanvas.toBlob(res, mimeType, quality));
-
-      if (rightBlob) {
-        results.push({
-          uint8Array: new Uint8Array(await rightBlob.arrayBuffer()),
-          ext: useJpeg ? 'jpg' : 'png'
-        });
-      }
-      if (leftBlob) {
-        results.push({
-          uint8Array: new Uint8Array(await leftBlob.arrayBuffer()),
-          ext: useJpeg ? 'jpg' : 'png'
-        });
-      }
-    } else {
-      // 2. TRANG ĐƠN (Bìa): Xén 2 mép ngoài, không cắt đôi
-      const singleFinalCanvas = cropSingleCoverPage(srcCanvas, h);
-      const blob = await new Promise(res => singleFinalCanvas.toBlob(res, mimeType, quality));
-      if (blob) {
-        results.push({
-          uint8Array: new Uint8Array(await blob.arrayBuffer()),
-          ext: useJpeg ? 'jpg' : 'png'
-        });
-      }
-    }
-
-    return results;
-  }
-
-  async function captureActivePageElements(useJpeg) {
-    const container = DOC.getElementById('bookContainer') || DOC.getElementById('readerContainer') || DOC.body;
-    if (!container) return [];
-
-    const elements = Array.from(container.querySelectorAll('.kg-full-page-img img, img[src^="blob:"], #bookContainer canvas, .kw-rd-view canvas'));
-    const visibleElements = [];
-
-    const viewW = WIN.innerWidth;
-    const viewH = WIN.innerHeight;
-
-    for (const el of elements) {
-      if (el.closest('.sponsored, [class*="recommend"], [class*="ad-"], #kr-end-actions-container')) continue;
-
-      const rect = el.getBoundingClientRect();
-      const w = el.naturalWidth || el.width || rect.width;
-      const h = el.naturalHeight || el.height || rect.height;
-
-      if (w < CONFIG.MIN_IMAGE_DIM || h < CONFIG.MIN_IMAGE_DIM) continue;
-
-      if (rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.top < viewH && rect.right > 0 && rect.left < viewW) {
-        const style = WIN.getComputedStyle(el);
-        if (style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0') {
-          visibleElements.push({ el, rect, w, h });
-        }
-      }
-    }
-
-    visibleElements.sort((a, b) => b.rect.left - a.rect.left);
-
-    const capturedBlobs = [];
-    for (const item of visibleElements) {
-      try {
-        if (item.el.tagName.toLowerCase() === 'img') {
-          if (!item.el.complete || item.el.naturalWidth === 0) {
-            await new Promise(res => {
-              item.el.onload = res;
-              item.el.onerror = res;
-              setTimeout(res, 250);
-            });
-          }
-        }
-
-        const rawCanvas = DOC.createElement('canvas');
-        const elemW = item.el.naturalWidth || item.el.width || item.w;
-        const elemH = item.el.naturalHeight || item.el.height || item.h;
-        rawCanvas.width = elemW;
-        rawCanvas.height = elemH;
-
-        const ctx = rawCanvas.getContext('2d', { alpha: false });
-        ctx.imageSmoothingEnabled = false;
-        ctx.mozImageSmoothingEnabled = false;
-        ctx.webkitImageSmoothingEnabled = false;
-        ctx.msImageSmoothingEnabled = false;
-        ctx.fillStyle = '#000000';
-        ctx.fillRect(0, 0, elemW, elemH);
-        ctx.drawImage(item.el, 0, 0, elemW, elemH);
-
-        const splitPages = await processAndSplitCanvas(rawCanvas, useJpeg);
-        for (const sp of splitPages) {
-          capturedBlobs.push(sp);
-        }
-      } catch (e) {
-        console.error("[amazon-dl] Error processing canvas:", e);
-      }
-    }
-
-    return capturedBlobs;
+    return null;
   }
 
   /* =========================================================================
-   * 4. TIẾN TRÌNH TẢI CHÍNH (AUTO FULLSCREEN + ĐÓNG GÓI ZIP)
+   * 4. BÓC TÁCH MẢNG ID ẢNH (BREADTH-FIRST SEARCH GIỮ NGUYÊN THỨ TỰ TRANG)
+   * ========================================================================= */
+  function extractImageReferences(page) {
+    const refs = [];
+    const queue = [page];
+
+    while (queue.length) {
+      const node = queue.shift();
+      if (!node || typeof node !== 'object') continue;
+
+      if (typeof node.imageReference === 'string') {
+        if (/^resource\/[a-z0-9_.-]+$/i.test(node.imageReference)) {
+          refs.push(node.imageReference);
+        }
+      }
+
+      if (Array.isArray(node.children)) {
+        queue.push(...node.children);
+      }
+    }
+    return refs;
+  }
+
+  function withTimeout(promise, ms, errorMsg) {
+    let timer;
+    const timeoutPromise = new Promise((_, reject) => {
+      timer = WIN.setTimeout(() => reject(new Error(errorMsg)), ms);
+    });
+    return Promise.race([promise, timeoutPromise]).finally(() => WIN.clearTimeout(timer));
+  }
+
+  /* =========================================================================
+   * 5. TIẾN TRÌNH TẢI CHÍNH (IN-MEMORY NATIVE DECRYPT & ZERO-COPY ZIP)
    * ========================================================================= */
   async function startDownload() {
     if (state.running) return;
     const ui = getUI();
 
-    const initialInfo = getPageInfo();
-    const initialPage = initialInfo.current || 1;
-    const totalPages = initialInfo.total;
-
-    if (!totalPages) {
-      if (ui) ui.updateProgress({ status: "Lỗi: Không lấy được số trang." });
+    const runtime = state.runtime || findRuntime();
+    if (!runtime) {
+      if (ui) ui.updateProgress({ status: "Lỗi: Không tìm thấy Kindle reader runtime." });
       return;
     }
 
     state.running = true;
     if (ui) ui.setBusy(true);
 
-    // 1. Tự động chuyển Fullscreen để đạt độ phân giải tối đa
-    await handleFullscreenStart();
-
-    const useJpeg = Boolean(state.convertJpeg);
-    const ZipClass = window.PureZipWriter || globalThis.PureZipWriter;
-    const zip = new ZipClass();
-    const hashesSet = new Set();
-    let savedCount = 0;
-
     try {
-      const asin = getAsin();
+      const { reader, factory, controller } = runtime;
+      const { asin, revision } = reader.options;
+      const metadata = await withTimeout(Promise.resolve(reader.client.getMetadata()), 15000, "Timeout đọc Metadata.");
+
+      const firstPos = metadata.firstPositionId;
+      const lastPos = metadata.lastPositionId;
+      if (!Number.isSafeInteger(firstPos) || !Number.isSafeInteger(lastPos) || firstPos < 0 || lastPos < firstPos) {
+        throw new Error("Reader không cung cấp phạm vi vị trí hợp lệ.");
+      }
+
+      const totalEstimated = state.totalImages || getEstimatedTotalPages(runtime) || (lastPos - firstPos + 1);
+      if (ui) ui.updateProgress({ completed: 0, total: totalEstimated, status: "Đang tải..." });
+
+      const ZipClass = window.PureZipWriter || globalThis.PureZipWriter;
+      const Utils = window.MangaUtils || globalThis.MangaUtils;
+      const zip = new ZipClass();
+
+      // Đính kèm file định danh ASIN
       zip.addFile(`${asin}.txt`, new Uint8Array(0));
 
-      // 2. Quay về trang đầu
-      await ensureAtPage1();
+      const settings = { ...controller.getRenderSettings() };
+      const seenRefs = new Set();
+      let cursor = firstPos;
+      let completed = 0;
 
-      hashesSet.clear();
-      savedCount = 0;
-      state.lastVerifiedPageWidth = 0;
-      await sleep(CONFIG.RENDER_WAIT_MS + 200);
+      while (cursor <= lastPos) {
+        const navigation = controller.createNavigationOptions(cursor, 0, 'Forward', CONFIG.NAV_BATCH_SIZE);
+        let providers = null;
 
-      if (ui) ui.updateProgress({ completed: 0, total: totalPages, status: "Đang tải..." });
-
-      let attempts = 0;
-      const maxAttempts = totalPages * 3;
-
-      while (state.running && attempts < maxAttempts) {
-        attempts++;
-        const curInfo = getPageInfo();
-
-        const pageImages = await captureActivePageElements(useJpeg);
-
-        for (const imgObj of pageImages) {
-          const hash = calculateBufferHash(imgObj.uint8Array);
-          if (!hashesSet.has(hash)) {
-            hashesSet.add(hash);
-            savedCount++;
-            zip.addFile(`${savedCount}.${imgObj.ext}`, imgObj.uint8Array);
-          }
+        try {
+          providers = await withTimeout(
+            factory.get(asin, revision, navigation, settings),
+            CONFIG.OPERATION_TIMEOUT,
+            `Timeout tải gói tin tại vị trí ${cursor}.`
+          );
+        } catch (err) {
+          throw new Error(`Không tải được dữ liệu tại vị trí ${cursor}: ${err?.message}`);
         }
 
-        if (ui) {
-          ui.updateProgress({
-            completed: Math.min(curInfo.current, totalPages),
-            total: totalPages,
-            status: "Đang tải..."
-          });
-        }
-
-        if (curInfo.current >= totalPages) {
+        if (!Array.isArray(providers) || !providers.length) {
           break;
         }
 
-        const hasNext = await stepToNextPage();
-        if (!hasNext && curInfo.current >= totalPages - 1) {
-          const lastImages = await captureActivePageElements(useJpeg);
-          for (const imgObj of lastImages) {
-            const hash = calculateBufferHash(imgObj.uint8Array);
-            if (!hashesSet.has(hash)) {
-              hashesSet.add(hash);
-              savedCount++;
-              zip.addFile(`${savedCount}.${imgObj.ext}`, imgObj.uint8Array);
+        // Đọc cấu trúc từng trang trong batch
+        const pagesData = await Promise.all(providers.map(async (provider) => ({
+          provider,
+          page: await withTimeout(provider.getPage(), 20000, "Timeout đọc thông tin trang.")
+        })));
+
+        // Sắp xếp tăng dần theo startPositionId để bảo tồn 100% thứ tự đọc
+        pagesData.sort((a, b) => (Number(a.page?.startPositionId) || 0) - (Number(b.page?.startPositionId) || 0));
+
+        let end = cursor - 1;
+
+        for (const { provider, page } of pagesData) {
+          const refs = extractImageReferences(page);
+
+          for (const ref of refs) {
+            if (seenRefs.has(ref)) continue;
+            seenRefs.add(ref);
+
+            // GỌI NATIVE DECRYPTION: Kindle runtime tự tải CDN và tự giải mã qua imageDecipher trong RAM
+            const blob = await withTimeout(
+              provider.getImage(ref),
+              CONFIG.OPERATION_TIMEOUT,
+              `Timeout giải mã ảnh ${ref}.`
+            );
+
+            if (!blob || blob.size === 0) {
+              throw new Error(`Ảnh giải mã ${ref} bị rỗng.`);
+            }
+
+            const arrayBuffer = await blob.arrayBuffer();
+            const uint8 = new Uint8Array(arrayBuffer);
+
+            // Nhận diện đuôi mở rộng thực tế qua Magic Bytes (JPEG, PNG, WEBP)
+            const ext = Utils.detectExt(arrayBuffer);
+
+            completed++;
+            zip.addFile(`${completed}.${ext}`, uint8);
+
+            if (ui) {
+              const displayTotal = Math.max(completed, totalEstimated);
+              ui.updateProgress({
+                completed,
+                total: displayTotal,
+                status: "Đang tải..."
+              });
             }
           }
-          break;
+
+          if (Number.isSafeInteger(page?.endPositionId)) {
+            end = Math.max(end, page.endPositionId);
+          }
         }
 
-        await sleep(CONFIG.RENDER_WAIT_MS);
+        if (end < cursor) {
+          // Tránh vòng lặp vô tận nếu reader không tịnh tiến được vị trí
+          cursor += 1;
+        } else {
+          cursor = end + 1;
+        }
       }
 
-      if (savedCount === 0) {
-        throw new Error("Không thể bóc tách trang truyện.");
+      if (completed === 0) {
+        throw new Error("Không giải mã được bất kỳ ảnh nào trong cuốn sách.");
       }
 
-      if (ui) ui.updateProgress({ completed: totalPages, total: totalPages, status: "Đang đóng gói file ZIP..." });
-      await sleep(60);
+      if (ui) ui.updateProgress({ completed, total: completed, status: "Đang đóng gói file ZIP..." });
+      await sleep(50);
 
-      const zipName = `${getCleanTitle()}.zip`;
-      zip.download(zipName);
+      // Đặt tên ZIP chuẩn: [Tên Truyện] - [Tên Tập].zip
+      const finalTitle = getCleanTitle(metadata);
+      zip.download(`${finalTitle}.zip`);
 
-      if (ui) ui.updateProgress({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
-
+      if (ui) {
+        ui.updateProgress({ completed, total: completed, status: "Hoàn tất." });
+        ui.setBusy(false);
+      }
     } catch (err) {
-      if (ui) ui.updateProgress({ status: "Lỗi: " + (err?.message || String(err)) });
-      console.error("[amazon-dl] Download failed:", err);
+      console.error("[amazon-dl] Download error:", err);
+      if (ui) {
+        ui.updateProgress({ status: "Lỗi: " + (err?.message || err) });
+        ui.setBusy(true);
+      }
     } finally {
-      try {
-        await jumpToPage(initialPage);
-      } catch (e) {}
-
-      setInteractionLock(false);
-      await handleFullscreenEnd();
-
       state.running = false;
-      if (ui) ui.setBusy(false);
     }
   }
 
   /* =========================================================================
-   * 5. KHỞI CHẠY VÀ THEO DÕI SPA
+   * 6. KHỞI CHẠY & THEO DÕI ĐIỀU HƯỚNG SPA
    * ========================================================================= */
   async function boot() {
-    while (!DOC.body) await sleep(100);
+    while (!DOC.body) await sleep(20);
     const ui = getUI();
 
     if (!isEpisodeUrl()) {
@@ -796,46 +387,115 @@
       return;
     }
 
-    if (ui?.panel) ui.panel.style.display = "block";
-    if (ui) ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
-
-    let retries = 0;
-    while (retries < 50) {
-      const info = getPageInfo();
-      if (info.total > 0) {
-        if (ui) {
-          ui.updateProgress({
-            completed: 0,
-            total: info.total,
-            status: "Sẵn sàng."
-          });
-        }
-        return;
-      }
-      await sleep(200);
-      retries++;
+    if (ui?.panel) {
+      ui.panel.style.display = "block";
+      ui.setBusy(true);
+      ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
     }
 
-    if (ui) ui.updateProgress({ status: "Sẵn sàng." });
+    try {
+      // 1. Polling tìm React Fiber Runtime & KIÊN NHẪN CHỜ ĐỢT RENDER ĐẦU TIÊN
+      let runtime = null;
+      let metadata = null;
+
+      for (let i = 0; i < 60; i++) {
+        runtime = findRuntime();
+        if (runtime?.reader?.client) {
+          try {
+            // Thử lấy metadata, nếu Kindle chưa render xong nó sẽ văng lỗi vào catch và tiếp tục đợi
+            metadata = await runtime.reader.client.getMetadata();
+            if (metadata && metadata.firstPositionId !== undefined) {
+              break; // ĐÃ RENDER XONG VÀ CÓ METADATA!
+            }
+          } catch (metaErr) {
+            // Nuốt lỗi "Metadata is not available before rendering" khi web đang dựng trang
+          }
+        }
+        await sleep(300);
+      }
+
+      if (!runtime || !metadata) {
+        throw new Error("Chưa nhận diện được Kindle reader. Vui lòng chờ sách nạp xong.");
+      }
+
+      state.runtime = runtime;
+      state.bookMetadata = metadata;
+      const { reader, factory, controller } = runtime;
+      const { asin, revision } = reader.options;
+
+      // 2. Đếm số trang dự kiến
+      const totalEstimated = getEstimatedTotalPages(runtime) || (metadata.lastPositionId ? (metadata.lastPositionId - metadata.firstPositionId + 1) : 0);
+      state.totalImages = totalEstimated;
+
+      // 3. SOI MAGIC BYTES TRANG 1 QUA IN-MEMORY NATIVE CALL:
+      const settings = { ...controller.getRenderSettings() };
+      const navFirst = controller.createNavigationOptions(metadata.firstPositionId, 0, 'Forward', 1);
+      const providers = await withTimeout(factory.get(asin, revision, navFirst, settings), 15000, "Timeout nạp trang 1.");
+
+      let realExt = null;
+      if (Array.isArray(providers) && providers.length > 0) {
+        const page1 = await providers[0].getPage();
+        const refs = extractImageReferences(page1);
+        if (refs.length > 0) {
+          const testBlob = await providers[0].getImage(refs[0]);
+          if (testBlob && testBlob.size > 0) {
+            const Utils = window.MangaUtils || globalThis.MangaUtils;
+            const buf = await testBlob.slice(0, 32).arrayBuffer();
+            realExt = Utils.detectExt(buf);
+          }
+        }
+      }
+      state.detectedFormat = realExt;
+
+      if (ui) {
+        ui.updateProgress({
+          completed: 0,
+          total: totalEstimated || 1,
+          status: "Sẵn sàng.",
+          format: realExt
+        });
+        ui.setBusy(false);
+      }
+    } catch (err) {
+      console.error("[amazon-dl] Boot error:", err);
+      if (ui) {
+        ui.updateProgress({ status: "Lỗi: " + (err?.message || "Không thể tải trang.") });
+        ui.setBusy(true);
+      }
+    }
   }
 
   const watchRoute = window.initRouteWatcher || globalThis.initRouteWatcher;
   if (typeof watchRoute === "function") {
-    watchRoute(() => {
+    watchRoute((newUrl) => {
+      if (!isEpisodeUrl()) {
+        const ui = getUI();
+        if (ui?.panel) ui.panel.style.display = "none";
+        state.runtime = null;
+        state.bookMetadata = null;
+        state.lastAsin = "";
+        state.lastUrl = "";
+        state.running = false;
+        return;
+      }
+
+      const currentAsin = getAsin();
+      if (state.lastAsin && state.lastAsin === currentAsin) return;
+
+      state.lastUrl = newUrl;
+      state.lastAsin = currentAsin;
+      state.runtime = null;
+      state.bookMetadata = null;
       state.running = false;
-      state.lastVerifiedPageWidth = 0;
+
       const ui = getUI();
       if (ui) {
-        ui.setBusy(false);
+        ui.setBusy(true);
         ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
       }
       boot();
     });
   }
 
-  if (DOC.readyState === "loading") {
-    DOC.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
-  }
+  boot();
 })();

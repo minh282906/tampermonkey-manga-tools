@@ -119,7 +119,6 @@
       ctx.webkitImageSmoothingEnabled = false;
       ctx.msImageSmoothingEnabled = false;
 
-      // Bước 1: Vẽ toàn bộ bức ảnh gốc lót nền để giữ nguyên vẹn viền thừa 0-7px
       ctx.drawImage(img, 0, 0);
 
       const dim = computeGridBlockDimensions(width, height, gridSize, ver);

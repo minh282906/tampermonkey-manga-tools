@@ -1614,7 +1614,10 @@
         }
 
         zip.download(`${getCleanTitle()}.zip`);
-        if (ui) ui.updateProgress({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
+        if (ui) {
+          ui.updateProgress({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
+          ui.setBusy(false);
+        }
         return;
       }
 
@@ -1732,7 +1735,10 @@
         const finalZipName = data.title ? `${data.title}.zip` : `${getCleanTitle()}.zip`;
         zip.download(finalZipName);
 
-        if (ui) ui.updateProgress({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
+        if (ui) {
+          ui.updateProgress({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
+          ui.setBusy(false);
+        }
         return;
       }
 
@@ -1784,7 +1790,10 @@
         await sleep(50);
 
         zip.download(`${getCleanTitle()}.zip`);
-        if (ui) ui.updateProgress({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
+        if (ui) {
+          ui.updateProgress({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
+          ui.setBusy(false);
+        }
       } finally {
         if (workerIframe) {
           try {

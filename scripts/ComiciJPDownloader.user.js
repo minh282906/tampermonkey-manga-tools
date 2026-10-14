@@ -174,7 +174,10 @@
       }
 
       zip.download(`${getCleanTitle()}.zip`);
-      if (ui) ui.updateProgress({ completed: total, total, status: "Hoàn tất." });
+      if (ui) {
+        ui.updateProgress({ completed: totalPages, total, status: "Hoàn tất." });
+        ui.setBusy(false);
+      }
     } catch (err) {
       if (ui) ui.updateProgress({ status: "Lỗi: " + (err?.message || err) });
     } finally {

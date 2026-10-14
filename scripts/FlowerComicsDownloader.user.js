@@ -359,7 +359,10 @@
       const finalFileName = `${cleanString(title)}.zip`;
       zip.download(finalFileName);
 
-      if (ui) ui.updateProgress({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
+      if (ui) {
+        ui.updateProgress({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
+        ui.setBusy(false);
+      }
     } catch (err) {
       if (ui) ui.updateProgress({ status: "Lỗi: " + (err?.message || err) });
       console.error("[flowercomics-dl] Download error:", err);

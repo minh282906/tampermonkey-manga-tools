@@ -544,7 +544,10 @@
       const zipName = `${adapter.getTitle(episodeId)}.zip`;
       zip.download(zipName);
 
-      if (ui) ui.updateProgress({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
+      if (ui) {
+        ui.updateProgress({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
+        ui.setBusy(false);
+      }
     } catch (e) {
       console.error("[bambi-dl] Download failed:", e);
       if (ui) ui.updateProgress({ status: `Lỗi: ${e?.message || e}` });

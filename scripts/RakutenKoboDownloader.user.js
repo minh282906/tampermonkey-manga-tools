@@ -483,7 +483,7 @@
 
       if (ui) {
         ui.updateProgress({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
-        ui.setBusy(false); // mở khóa sau khi hoàn tất
+        ui.setBusy(false);
       }
     } catch (err) {
       if (ui) {

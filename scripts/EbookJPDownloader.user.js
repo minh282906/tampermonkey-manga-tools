@@ -651,7 +651,10 @@
 
       zip.download(`${mangaTitle}.zip`);
 
-      if (ui) ui.updateProgress({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
+      if (ui) {
+        ui.updateProgress({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
+        ui.setBusy(false);
+      }
     } catch (err) {
       if (ui) ui.updateProgress({ status: "Lỗi: " + (err?.message || String(err)) });
       console.error("[ej-dl] Lỗi tải truyện:", err);

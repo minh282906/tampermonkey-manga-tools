@@ -761,7 +761,10 @@
       }
 
       zip.download(`${getCleanTitle(data.seriesTitle, data.episodeTitle)}.zip`);
-      if (ui) ui.updateProgress({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
+      if (ui) {
+        ui.updateProgress({ completed: totalPages, total: totalPages, status: "Hoàn tất." });
+        ui.setBusy(false);
+      }
     } catch (err) {
       if (ui) ui.updateProgress({ status: "Lỗi: " + (err?.message || err) });
       console.error("[sqex-dl] Error:", err);

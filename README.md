@@ -46,13 +46,13 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 | **Jumptoon Downloader**       | (`jumptoon.com`)                                                                                                                                                    | 🟢 Hoạt động |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/JumptoonDownloader.user.js)   |
 | **Jumptoon NEXT Downloader**  | (`jumptoon-next.com`)                                                                                                                                               | 🟢 Hoạt động | [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/JumptoonNextDownloader.user.js) |
 | **JumpRookie Downloader**     | (`rookie.shonenjump.com`)                                                                                                                                           | 🟢 Hoạt động |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/JumpRookieDownloader.user.js)  |
-| **Comici Downloader**         | (`comici.jp`)                                                                                                                                                       | 🟢 Hoạt động |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/ComiciJPDownloader.user.js)   |
+| **GorakuWeb Downloader**      | (`gorakuweb.com`)                                                                                                                                                    | 🟢 Hoạt động |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/GorakuWebDownloader.user.js)    |
+| **Comici Downloader**         | (`comici.jp`)                                                                                                                                                       | ❌ Web đã đóng |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/ComiciJPDownloader.user.js)   |
 | **MechaComic Downloader**     | (`mechacomic.jp`)                                                                                                                                                   | 🟢 Hoạt động |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/MechaComicDownloader.user.js)  |
 | **Alphapolis Downloader**     | (`alphapolis.co.jp`)                                                                                                                                                | 🟢 Hoạt động |    [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/PixivDownloader.user.js)     |
 | **MangaMeets Downloader**     | MangaMeets (`manga-meets.jp`)                                                                                                                                       | 🟢 Hoạt động |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/MangaMeetsDownloader.user.js)  |
 | **MangaMee Downloader**       | マンガMee (`manga-mee.jp`)                                                                                                                                          | 🟢 Hoạt động |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/MangaMeeDownloader.user.js)   |
 | **Amazon Downloader**         | (`amazon.co.jp`)                                                                                                                                                    | 🟢 Hoạt động |    [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/AmazonDownloader.user.js)    |
-
 | **OwlComic Downloader**      | (`owl-comic.jp`)                                                                                                                                                    | 🟢 Hoạt động |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/OwlComicDownloader.user.js)    |
 
 ---
@@ -213,6 +213,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 - COMIC FUZ (`comic-fuz.com`)
 - Cycomics (`cycomi.com`)
 - YanJan! (`ynjn.jp`)
+- Goraku Web! (`gorakuweb.com`)
 - JUMP TOON (`jumptoon.com`)
 - Jump TOON NEXT!(`jumptoon-next.com`)
 - Jump Rookie (`rookie.shonenjump.com`)

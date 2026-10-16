@@ -10,7 +10,7 @@
       const g = parseInt(hex.slice(2, 4), 16);
       const b = parseInt(hex.slice(4, 6), 16);
       const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-      return luminance > 0.6 ? '#18181b' : '#ffffff'; // Nền sáng -> Chữ Đen, Nền tối -> Chữ Trắng
+      return luminance > 0.6 ? '#18181b' : '#ffffff';
     }
     return '#ffffff';
   }
@@ -23,7 +23,6 @@
       themeBg = "#18181b",           // Màu nền panel
       titleColor = options.titleColor || (getContrastColor(options.themeBg || "#18181b") === '#18181b' ? '#0f172a' : '#ffffff'),
       topOffset = "70px",            // Vị trí top
-      defaultJpgText = "Xuất file JPG (mặc định PNG)",
       onDownload = () => {},
       onJpgChange = (checked) => {}
     } = options;

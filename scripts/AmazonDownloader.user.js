@@ -6,9 +6,15 @@
 // @description  Tải manga trên Amazon Kindle Web Reader.
 // @author       anonymous & AI
 // @match        https://read.amazon.co.jp/manga/*
+// @match        https://read.amazon.co.jp/sample/*
 // @match        https://read.amazon.com/manga/*
+// @match        https://read.amazon.com/sample/*
 // @match        https://read.amazon.de/manga/*
+// @match        https://read.amazon.de/sample/*
 // @match        https://read.amazon.co.uk/manga/*
+// @match        https://read.amazon.co.uk/sample/*
+// @match        https://www.amazon.co.jp/*
+// @match        https://www.amazon.com/*
 // @run-at       document-start
 // @grant        unsafeWindow
 // @grant        GM_xmlhttpRequest
@@ -40,7 +46,23 @@
   const DOC = WIN.document;
   const sleep = ms => new Promise(resolve => WIN.setTimeout(resolve, ms));
 
-  if (WIN.top !== WIN.self) return;
+  // 1. Nếu đang ở Trang Mẹ (www.amazon) -> Đứng chờ nhận file ZIP từ Iframe để tải xuống ổ cứng!
+  if (WIN.top === WIN.self && !WIN.location.hostname.includes('read.amazon')) {    
+    WIN.addEventListener('message', (e) => {
+      if (e.data?.action === 'AMAZON_KINDLE_DOWNLOAD' && e.data.buffer) {
+        const blob = new Blob([e.data.buffer], { type: 'application/zip' });
+        const url = URL.createObjectURL(blob);
+        const a = DOC.createElement('a');
+        a.href = url;
+        a.download = e.data.fileName;
+        (DOC.body || DOC.documentElement).appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+      }
+    });
+    return; // Dừng lại ở trang mẹ, không hiện UI rác!
+  }
 
   const state = {
     running: false,
@@ -61,6 +83,11 @@
     const createUI = window.createMangaDownloaderUI || globalThis.createMangaDownloaderUI;
 
     if (typeof createUI === "function" && DOC.body) {
+
+      const isSample = WIN.location.pathname.includes('/sample/');
+      const topOffset = isSample ? "110px" : "97px";
+
+
       const uiConfig = {
         storagePrefix: "amazon-dl",
         title: "Amazon",
@@ -70,7 +97,7 @@
         titleColor: "#fdba74",
         btnBg: "#ED6C2D",
         btnColor: "#ffffff",
-        topOffset: "97px",
+        topOffset: topOffset,
         onDownload: startDownload
       };
 
@@ -95,7 +122,7 @@
    * ========================================================================= */
   function getAsin() {
     try {
-      const match = WIN.location.pathname.match(/\/manga\/([A-Z0-9]{10})/i);
+      const match = WIN.location.pathname.match(/\/(?:manga|sample)\/([A-Z0-9]{10})/i);
       if (match && match[1]) return match[1];
       const url = new URL(WIN.location.href);
       const qAsin = url.searchParams.get("asin");
@@ -105,7 +132,7 @@
   }
 
   function isEpisodeUrl() {
-    return /\/manga\/[A-Z0-9]{10}/i.test(WIN.location.pathname) || WIN.location.search.includes("asin=");
+    return /\/(?:manga|sample)\/[A-Z0-9]{10}/i.test(WIN.location.pathname) || WIN.location.search.includes("asin=");
   }
 
   function cleanString(str) {
@@ -151,32 +178,44 @@
    * 3. REACT FIBER TRAVERSAL (BẮT RUNTIME KARAMEL TRONG 0MS)
    * ========================================================================= */
   function findRuntime() {
-    const root = DOC.getElementById('mainContainer') || DOC.getElementById('root');
-    if (!root) return null;
+    // Ưu tiên quét các thẻ thực sự chứa React Fiber của Karamel
+    const candidates = [
+      DOC.getElementById('reader'),
+      DOC.getElementById('renderer-container'),
+      DOC.querySelector('.litb-reading-area'),
+      DOC.getElementById('mainContainer'),
+      DOC.getElementById('root')
+    ].filter(Boolean);
 
-    const fiberKey = Object.keys(root).find(name => name.startsWith('__reactContainer') || name.startsWith('__reactFiber'));
-    const fiber = root?._reactRootContainer?._internalRoot?.current || root?.[fiberKey]?.stateNode?.current || root?.[fiberKey];
+    for (const root of candidates) {
+      const fiberKey = Object.keys(root).find(name => name.startsWith('__reactContainer') || name.startsWith('__reactFiber'));
+      if (!fiberKey) continue; // Bỏ qua nếu thẻ này không có React Fiber, tìm tiếp thẻ khác!
 
-    if (!fiber) return null;
+      const fiber = root?._reactRootContainer?._internalRoot?.current 
+                 || root?.[fiberKey]?.stateNode?.current 
+                 || root?.[fiberKey];
 
-    const pending = [fiber];
-    for (let count = 0; pending.length && count < 10000; count++) {
-      const node = pending.pop();
-      if (!node) continue;
-      if (node.sibling) pending.push(node.sibling);
-      if (node.child) pending.push(node.child);
+      if (!fiber) continue;
 
-      let hook = node.memoizedState;
-      for (let index = 0; hook && index < 150; index++, hook = hook.next) {
-        const reader = hook.memoizedState?.current;
-        const factory = reader?.options?.bookProviderFactory;
-        const controller = reader?.client?.options?.rendererController;
+      const pending = [fiber];
+      for (let count = 0; pending.length && count < 10000; count++) {
+        const node = pending.pop();
+        if (!node) continue;
+        if (node.sibling) pending.push(node.sibling);
+        if (node.child) pending.push(node.child);
 
-        if (reader && typeof factory?.get === 'function' &&
-            typeof controller?.getRenderSettings === 'function' &&
-            typeof controller?.createNavigationOptions === 'function' &&
-            typeof reader.client?.getMetadata === 'function') {
-          return { reader, factory, controller };
+        let hook = node.memoizedState;
+        for (let index = 0; hook && index < 150; index++, hook = hook.next) {
+          const reader = hook.memoizedState?.current;
+          const factory = reader?.options?.bookProviderFactory;
+          const controller = reader?.client?.options?.rendererController;
+
+          if (reader && typeof factory?.get === 'function' &&
+              typeof controller?.getRenderSettings === 'function' &&
+              typeof controller?.createNavigationOptions === 'function' &&
+              typeof reader.client?.getMetadata === 'function') {
+            return { reader, factory, controller };
+          }
         }
       }
     }
@@ -189,7 +228,9 @@
       if (client?.getManifest?.()?.bookType === 'FixedFormat') {
         const locations = client.getLocationMap?.()?.locations;
         if (Array.isArray(locations) && locations.length > 0) {
-          return locations.length;
+          const isSample = WIN.location.pathname.includes('/sample/');
+          // Sample: trừ 1 trang HTML mua hàng ở cuối -> hiện đúng 37! Purchased: giữ nguyên!
+          return isSample ? (locations.length - 1) : locations.length;
         }
       }
     } catch (e) {}
@@ -358,7 +399,24 @@
 
       // Đặt tên ZIP chuẩn: [Tên Truyện] - [Tên Tập].zip
       const finalTitle = getCleanTitle(metadata);
-      zip.download(`${finalTitle}.zip`);
+      const zipName = `${finalTitle}.zip`;
+      const blob = zip.generateBlob();
+
+      // Nếu đang trong Iframe đọc thử -> Chuyển sang mảng byte và bắn sang trang mẹ www.amazon
+      if (WIN.top !== WIN.self) {
+        try {
+          const buf = await blob.arrayBuffer();
+          WIN.parent.postMessage({
+            action: 'AMAZON_KINDLE_DOWNLOAD',
+            buffer: buf,
+            fileName: zipName
+          }, '*');
+        } catch (postErr) {
+        }
+      } else {
+        // Bản Purchased toàn màn hình -> tải trực tiếp
+        zip.download(zipName);
+      }
 
       if (ui) {
         ui.updateProgress({ completed, total: completed, status: "Hoàn tất." });

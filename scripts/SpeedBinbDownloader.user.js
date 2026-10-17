@@ -639,35 +639,37 @@
       config.title = data.Title || contentJson.title || contentJson.Title || ttxTitle || "";
       config.subTitle = data.SubTitle || contentJson.subTitle || "";
 
-      // 1. KÉO TIÊU ĐỀ TỪ TRANG SERIES NẾU BỊ ĐỂ RỖNG (HỖ TRỢ TOÀN DIỆN CHO WEBTOON)
+      // 🎯 GỌI CHUẨN XÁC API /api/series/books VỪA BÓC TÁCH TỪ APP.JS
       if (!config.title || config.title === cid || config.title.includes("speed.html")) {
         try {
           const urlParams = new URL(WIN.location.href).searchParams;
-          const seriesId = urlParams.get('series') || (DOC.referrer && DOC.referrer.match(/\/series\/(\d+)/)?.[1]);
-          if (seriesId) {
-            const seriesBuf = await Utils.fetchBuffer(`https://voltage-comics.com/series/${seriesId}`);
-            const seriesHtml = new TextDecoder().decode(seriesBuf);
-            
-            // Quét đa tầng: h1, h2, meta og:title, title trang
-            const titleMatch = seriesHtml.match(/<h1[^>]*>([^<]+)<\/h1>/i) 
-                            || seriesHtml.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)
-                            || seriesHtml.match(/<[^>]*class=["'][^"']*(?:work-title|series-title|title)[^"']*["'][^>]*>([^<]+)<\//i)
-                            || seriesHtml.match(/<title>([^<|｜]+)[|｜]/i);
-            if (titleMatch) config.title = titleMatch[1].trim();
+          const sId = urlParams.get('series') || (DOC.referrer && DOC.referrer.match(/\/series\/(\d+)/)?.[1]);
+          if (sId) {
+            const apiRes = await fetch("https://voltage-comics.com/api/series/books", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ series: parseInt(sId, 10), book: 0, volume: 0 })
+            }).then(r => r.json());
 
-            // Quét tên tập tương ứng với CID từ danh sách tập trong trang series
-            const epRegex = new RegExp(`cid=${cid}[^>]*>[\\s\\S]*?([0-9０-９]+[\\s\\S]*?)(?:<|free|無料)`, 'i');
-            const epM = seriesHtml.match(epRegex);
-            if (epM) config.subTitle = epM[1].trim();
+            const sInfo = apiRes?.data?.series_info || {};
+            const realTitle = sInfo.title || sInfo.series_name || sInfo.name;
+            if (realTitle) config.title = realTitle;
+
+            // Bóc tên tập từ mảng books nếu có
+            const books = apiRes?.data?.books || [];
+            const curBook = books.find(b => b.cid === cid || String(b.book_id) === String(urlParams.get('book'))) || books[0];
+            if (curBook?.title || curBook?.book_name) {
+              config.subTitle = curBook.title || curBook.book_name;
+            }
           }
         } catch(e) {}
       }
 
-      // 2. PHÂN GIẢI SỐ TẬP TỪ CID NẾU CHƯA CÓ (CHỈ DÀNH CHO DẠNG _001 HOẶC _01)
+      // Tự động phân giải số tập từ đuôi CID (_001 -> （1）)
       if (!config.subTitle || config.subTitle === cid) {
         const numM = cid.match(/_0*(\d{1,3})(?:_free)?$/);
-        if (numM && parseInt(numM[1], 10) < 300) { // Loại bỏ các mã ID như 490
-          config.subTitle = `（${numM[1]}）`;
+        if (numM && parseInt(numM[1], 10) < 300) {
+          config.subTitle = `（${parseInt(numM[1], 10)}）`;
         }
       }
 
@@ -697,20 +699,17 @@
       let raw = config.title || "";
       raw = raw.split(/[|｜]/)[0].trim();
       raw = raw.replace(/[-－–—\s]*(?:ボルテージ|Voltage|ぼるコミ).*$/gi, '').trim();
-      // Gọt sạch tag rác [ボル恋TOON], [ボル恋comic]...
+      // Gọt sạch nhãn [ボル恋TOON], [ボル恋comic]...
       raw = raw.replace(/\[(?:ボル恋TOON|ボル恋comic|タテヨミ|単話|分冊版|コミック)[^\]]*\]/gi, '').trim();
 
-      // Lọc bỏ số ID rác kiểu （490） dính ở đuôi tiêu đề
+      // Lọc bỏ số ID rác kiểu （490）
       raw = raw.replace(/_?[（\(]\d{3,}[）\)]/g, '').trim();
 
       let series = raw;
       let episode = cleanString(config.subTitle || "");
-
-      // Lọc bỏ số ID rác ở episode nếu có
       episode = episode.replace(/_?[（\(]\d{3,}[）\)]/g, '').trim();
 
       if (!episode) {
-        // Tách số tập ở đuôi tên truyện nếu có
         const match = raw.match(/^(.*?)(?:[\s_]+|[・･])((?:第\s*)?[0-9０-９]+(?:\.[0-9]+)?\s*(?:話|巻|章)?|[（\(][0-9０-９]+[）\)])$/);
         if (match) {
           series = match[1];
@@ -730,7 +729,7 @@
 
       if (series && episode) {
         if (episode.startsWith('（')) {
-          return `${series}${episode}`; // Ghép liền: TênTruyện（1）
+          return `${series}${episode}`;
         }
         return `${series} - ${episode}`;
       }

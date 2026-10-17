@@ -16,6 +16,8 @@
 // @match        https://pash-up.jp/*/viewer.html*
 // @match        https://comic-boost.com/viewer/viewer.html*
 // @match        https://animestore.docomo.ne.jp/animestore/comic_viewer/viewer.html*
+// @match        https://dbook.docomo.ne.jp/view/*
+// @match        https://web-viewer.manga-bang.com/viewer.html*
 // @grant        unsafeWindow
 // @grant        GM_xmlhttpRequest
 // @connect      *
@@ -40,7 +42,9 @@
   const isComicNettai = () => location.hostname.includes('comicnettai.com');
   const isPashUp      = () => location.hostname.includes('pash-up.jp');
   const isComicBoost  = () => location.hostname.includes('comic-boost.com');
-  const isDocomo      = () => location.hostname.includes('docomo.ne.jp');
+  const isDocomo      = () => location.hostname.includes('animestore.docomo.ne.jp');
+  const isDbook     = () => location.hostname.includes('dbook.docomo.ne.jp');
+  const isMangaBang = () => location.hostname.includes('manga-bang.com');
 
   function getInspectorCid() {
     try {
@@ -504,6 +508,39 @@
     };
   }
 
+  async function fetchDirect9LayerManifest(cid, siteName, defaultTitle = "") {
+    const Tools = window.PublusTools || globalThis.PublusTools;
+    let configUrl = "";
+    for (let i = 0; i < 35; i++) {
+      const entry = WIN.performance?.getEntriesByType?.('resource')?.find(r => r.name.includes('configuration_pack.json'));
+      if (entry && entry.name) {
+        configUrl = entry.name;
+        break;
+      }
+      await sleep(100);
+    }
+
+    if (!configUrl) return null;
+
+    const cdnBase = configUrl.substring(0, configUrl.indexOf('configuration_pack.json'));
+    const authQuery = configUrl.includes('?') ? configUrl.substring(configUrl.indexOf('?') + 1) : "";
+    const queryPart = authQuery ? `?${authQuery}` : "";
+
+    const configRes = await WIN.fetch(configUrl);
+    const configJson = await configRes.json();
+    const { config, key1, key2, key3 } = Tools.decryptConfigurationPack(configJson.data);
+
+    let title = "";
+    const urlCti = new URL(WIN.location.href).searchParams.get('cti');
+    if (urlCti) title = decodeURIComponent(urlCti);
+    if (!title) title = defaultTitle || DOC.title.split(/[|｜]/)[0].trim() || `${siteName}_${cid}`;
+
+    return {
+      title,
+      pages: buildInspectorPublusPages(config, key1, key2, key3, cdnBase, queryPart, Tools)
+    };
+  }
+
   /* =========================================================================
    * 2. NHÁNH DMM & FANZA BOOKS (ĐỌC RECT.X TỪ API & GIẢI MÃ 64PX)
    * ========================================================================= */
@@ -813,16 +850,22 @@
     const createUI = window.createInspectorUI || globalThis.createInspectorUI;
 
     // ==========================================
-    // NHÁNH MỚI: 4 SÀN 32PX (PASH UP, BOOST, NETTAI, DOCOMO)
+    // NHÁNH MỚI: CÁC SÀN 32PX DIRECT GETBLOCKS
     // ==========================================
-    if (isPashUp() || isComicBoost() || isComicNettai() || isDocomo()) {
+    if (isPashUp() || isComicBoost() || isComicNettai() || isDocomo() || isDbook() || isMangaBang()) {
       const cid = getInspectorCid();
       let siteData = null;
       let retries = 0;
 
       while (retries < 25) {
         try {
-          siteData = await fetchClassicInspectorPages(cid);
+          if (isDbook()) {
+            siteData = await fetchDirect9LayerManifest(cid, "dBook");
+          } else if (isMangaBang()) {
+            siteData = await fetchDirect9LayerManifest(cid, "MangaBang", "マンガBANG!");
+          } else {
+            siteData = await fetchClassicInspectorPages(cid);
+          }
           if (siteData?.pages?.length) break;
         } catch (e) {}
         await sleep(150);
@@ -836,6 +879,8 @@
       if (isComicBoost())  inspectorTitle = "PUBLUS INSPECTOR (COMIC BOOST)";
       if (isDocomo())      inspectorTitle = "PUBLUS INSPECTOR (D ANIME STORE)";
       if (isComicNettai()) inspectorTitle = "PUBLUS INSPECTOR (COMIC NETTAI)";
+      if (isDbook())       inspectorTitle = "PUBLUS INSPECTOR (dブック)";
+      if (isMangaBang())   inspectorTitle = "マンガBANG!";
 
       createUI({
         title: inspectorTitle,

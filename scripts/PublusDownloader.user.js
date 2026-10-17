@@ -16,6 +16,8 @@
 // @match        https://pash-up.jp/*/viewer.html*
 // @match        https://comic-boost.com/viewer/viewer.html*
 // @match        https://animestore.docomo.ne.jp/animestore/comic_viewer/viewer.html*
+// @match        https://dbook.docomo.ne.jp/view/*
+// @match        https://web-viewer.manga-bang.com/viewer.html*
 // @run-at       document-start
 // @grant        unsafeWindow
 // @grant        GM_xmlhttpRequest
@@ -37,6 +39,10 @@
 // @connect      *.comic-boost.com
 // @connect      animestore.docomo.ne.jp
 // @connect      *.docomo.ne.jp
+// @connect      dbook.docomo.ne.jp
+// @connect      web-viewer.manga-bang.com
+// @connect      manga-bang.com
+// @connect      store-arc.manga-bang.com
 //
 // --- TỰ ĐỘNG TẢI VÀ UPDATE PHIÊN BẢN
 // @updateURL    https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/PublusDownloader.user.js
@@ -127,6 +133,18 @@
       btnBg: "#EB5427", btnColor: "#ffffff", btnBorder: "0", 
       tabBg: "#EB5427", tabColor: "#ffffff", tabBorder: "none", top: "44px" 
     },
+    // dBook Docomo (dbook.docomo.ne.jp)
+    "dbook.docomo.ne.jp": { 
+      name: "dブック", color: "#3BB75E", bg: "#ffffff", text: "#3BB75E", 
+      btnBg: "#3BB75E", btnColor: "#ffffff", btnBorder: "0", 
+      tabBg: "#3BB75E", tabColor: "#ffffff", tabBorder: "none", top: "44px" 
+    },
+    // Manga-Bang (web-viewer.manga-bang.com)
+    "manga-bang.com": { 
+      name: "マンガBANG!", color: "#000000", bg: "#ffffff", text: "#000000", 
+      btnBg: "#000000", btnColor: "#ffffff", btnBorder: "0", 
+      tabBg: "#000000", tabColor: "#ffffff", tabBorder: "none", top: "44px" 
+    },
   };
 
   function isBookWalker() {
@@ -154,7 +172,15 @@
   }
 
   function isDocomo() {
-    return WIN.location.hostname.includes('docomo.ne.jp');
+    return WIN.location.hostname.includes("animestore.docomo.ne.jp");
+  }
+
+  function isDbook() {
+    return WIN.location.hostname.includes("dbook.docomo.ne.jp");
+  }
+
+  function isMangaBang() {
+    return WIN.location.hostname.includes("manga-bang.com");
   }
 
   // Xử lý webtoon
@@ -198,12 +224,14 @@
       t.top = getDmmTopOffset(t.top);
       return t;
     }
-    if (host.includes("pixiv.net"))       return SITE_THEMES["pixiv.net"];
-    if (host.includes("bookwalker.jp"))   return SITE_THEMES["bookwalker.jp"];
-    if (host.includes("comicnettai.com")) return SITE_THEMES["comicnettai.com"];
-    if (host.includes("pash-up.jp"))      return SITE_THEMES["pash-up.jp"];
-    if (host.includes("comic-boost.com")) return SITE_THEMES["comic-boost.com"];
-    if (host.includes("docomo.ne.jp"))    return SITE_THEMES["docomo.ne.jp"];
+    if (host.includes("dbook.docomo.ne.jp")) return SITE_THEMES["dbook.docomo.ne.jp"];
+    if (host.includes("manga-bang.com"))     return SITE_THEMES["manga-bang.com"];
+    if (host.includes("pixiv.net"))          return SITE_THEMES["pixiv.net"];
+    if (host.includes("bookwalker.jp"))      return SITE_THEMES["bookwalker.jp"];
+    if (host.includes("comicnettai.com"))    return SITE_THEMES["comicnettai.com"];
+    if (host.includes("pash-up.jp"))         return SITE_THEMES["pash-up.jp"];
+    if (host.includes("comic-boost.com"))    return SITE_THEMES["comic-boost.com"];
+    if (host.includes("docomo.ne.jp"))       return SITE_THEMES["docomo.ne.jp"];
 
     return { name: "PUBLUS Reader", color: "#0284c7", bg: "#ffffff", text: "#0284c7", top: "44px" };
   }
@@ -268,6 +296,8 @@
     const path = WIN.location.pathname;
     const search = WIN.location.search;
 
+    if (isDbook()) return path.includes('/view/') && search.includes('cid=');
+    if (isMangaBang()) return path.includes('viewer.html') && search.includes('cid=');
     if (isComicNettai() || isPashUp() || isComicBoost() || isDocomo()) {
       return path.includes('viewer.html') && search.includes('cid=');
     }
@@ -339,6 +369,58 @@
     return `Publus_${getEpisodeId()}`;
   }
 
+  async function fetchDirect9LayerManifest(cid, siteName, defaultTitle = "") {
+    const Tools = window.PublusTools || globalThis.PublusTools;
+    let configUrl = "";
+    for (let i = 0; i < 35; i++) {
+      const entry = WIN.performance?.getEntriesByType?.('resource')?.find(r => r.name.includes('configuration_pack.json'));
+      if (entry && entry.name) {
+        configUrl = entry.name;
+        break;
+      }
+      await sleep(100);
+    }
+
+    if (!configUrl) throw new Error(`Chưa bắt được gói tin cấu hình ${siteName}.`);
+
+    const cdnBase = configUrl.substring(0, configUrl.indexOf('configuration_pack.json'));
+    const authQuery = configUrl.includes('?') ? configUrl.substring(configUrl.indexOf('?') + 1) : "";
+    const queryPart = authQuery ? `?${authQuery}` : "";
+
+    const configRes = await WIN.fetch(configUrl);
+    const configJson = await configRes.json();
+    const { config, key1, key2, key3 } = Tools.decryptConfigurationPack(configJson.data);
+
+    // Tiêu đề: Ưu tiên bóc cti trên URL (cho dBook), nếu không có thì bóc DOM (cho Manga-Bang)
+    let title = "";
+    const urlCti = new URL(WIN.location.href).searchParams.get('cti');
+    if (urlCti) title = cleanString(decodeURIComponent(urlCti));
+
+    if (!title) {
+      const domTitle = DOC.querySelector('#pagetitle .titleText, #pagetitle, h1, .title, .p-viewer__title')?.textContent?.trim();
+      if (domTitle) {
+        let raw = cleanString(domTitle);
+        // Gọt sạch các cụm tag khuyến mãi 【...】
+        raw = raw.replace(/【(?!(?:フルカラー版|カラー版|完全版|特装版))[^】]*】/gi, '').trim();
+        // Tách vế tên truyện và số tập ở đuôi để chèn dấu " - "
+        const match = raw.match(/^(.*?)\s+((?:第\s*)?[0-9０-９IVXLCDMivxlcdm一二三四五六七八九十百千万]+.*)$/i);
+        if (match) {
+          title = `${cleanString(match[1])} - ${cleanString(match[2])}`;
+        } else {
+          title = cleanString(raw);
+        }
+      }
+    }
+
+    if (!title) title = defaultTitle || cleanString(DOC.title.split(/[|｜]/)[0]) || `${siteName}_${cid}`;
+
+    return {
+      title,
+      cid,
+      pages: buildPublusPages(config, key1, key2, key3, cdnBase, queryPart, Tools)
+    };
+  }
+
   /* =========================================================================
    * HELPER DUYỆT TRANG DÙNG CHUNG CHO PUBLUS 32PX
    * ========================================================================= */
@@ -349,9 +431,11 @@
     let pageIndex = 0;
 
     for (let i = 0; i < rawContents.length; i++) {
-      const item = rawContents[i];
-      const fileInfo = config[item.file];
-      if (!fileInfo || fileInfo.Linear === 0) continue;
+        const item = rawContents[i];
+        const fileInfo = config[item.file] || config[item.file?.replace('../', '')];
+        if (!fileInfo) continue;
+        // Với các sàn khác vẫn tôn trọng Linear === 0, riêng Manga-Bang thì lấy đủ toàn bộ trang
+        if (!isMangaBang() && fileInfo.Linear === 0) continue;
 
       const pageList = fileInfo.FileLinkInfo?.PageLinkInfoList || [];
       const pageCount = fileInfo.FileLinkInfo?.PageCount || pageList.length;
@@ -927,6 +1011,8 @@
 
   // Hàm gọi riêng các nhánh
   async function fetchSiteManifest(cid) {
+    if (isDbook())       return await fetchDirect9LayerManifest(cid, "dBook");
+    if (isMangaBang())   return await fetchDirect9LayerManifest(cid, "MangaBang", "マンガBANG!");
     if (isPashUp())      return await fetchPashUpManifest(cid);
     if (isComicBoost())  return await fetchComicBoostManifest(cid);
     if (isDocomo())      return await fetchDocomoManifest(cid);
@@ -1589,7 +1675,8 @@
         const pages = data.pages;
         const totalPages = pages.length;
 
-        zip.addFile(`${data.cid}.txt`, new Uint8Array(0));
+        const safeCid = String(data.cid || cid || 'publus').replace(/[\\/*?:"<>|]/g, '_');
+        zip.addFile(`${safeCid}.txt`, new Uint8Array(0));
         if (ui) ui.updateProgress({ completed: 0, total: totalPages, status: "Đang tải..." });
 
         const tasks = pages.map(pageObj => async () => {
@@ -1628,7 +1715,8 @@
         const pages = data.pages;
         const totalPages = pages.length;
 
-        zip.addFile(`${data.cid}.txt`, new Uint8Array(0));
+        const safeCid = String(data.cid || cid || 'publus').replace(/[\\/*?:"<>|]/g, '_');
+        zip.addFile(`${safeCid}.txt`, new Uint8Array(0));
         if (ui) ui.updateProgress({ completed: 0, total: totalPages, status: "Đang tải..." });
 
         let currentAuthQuery = null;
@@ -1642,26 +1730,32 @@
                 fetchUrl = pageObj.url.split('?')[0] + '?' + currentAuthQuery;
               }
 
-              const res = await WIN.fetch(fetchUrl, {
-                method: "GET",
-                mode: "cors",
-                credentials: "omit",
-                referrer: ""
-              });
+              let rawBuffer;
+              if (isMangaBang()) {
+                rawBuffer = await Utils.fetchBuffer(fetchUrl);
+              } else {
+                  const res = await WIN.fetch(fetchUrl, {
+                  method: "GET",
+                  mode: "cors",
+                  credentials: "omit",
+                  referrer: ""
+                });
 
-              // Tự gia hạn token nếu bị 403 giữa chừng (đặc thù BookWalker TTL ngắn)
-              if (res.status === 403 && (isBookWalker() || isPixivStore())) {
-                const freshData = isBookWalker() ? await fetchBookWalkerManifest(cid) : await fetchPixivStoreManifest(cid);
-                if (freshData?.pages?.[0]?.url) {
-                  currentAuthQuery = freshData.pages[0].url.split('?')[1];
-                  retryCount++;
-                  await sleep(300);
-                  continue;
+                // Tự gia hạn token nếu bị 403 giữa chừng (đặc thù BookWalker TTL ngắn)
+                if (res.status === 403 && (isBookWalker() || isPixivStore())) {
+                  const freshData = isBookWalker() ? await fetchBookWalkerManifest(cid) : await fetchPixivStoreManifest(cid);
+                  if (freshData?.pages?.[0]?.url) {
+                    currentAuthQuery = freshData.pages[0].url.split('?')[1];
+                    retryCount++;
+                    await sleep(300);
+                    continue;
+                  }
                 }
+
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                rawBuffer = await res.arrayBuffer();
               }
 
-              if (!res.ok) throw new Error(`HTTP ${res.status}`);
-              const rawBuffer = await res.arrayBuffer();
               const realExt = Utils.detectExt(rawBuffer);
               const uint8 = new Uint8Array(rawBuffer);
 

@@ -1228,8 +1228,8 @@
   // 11. HANDY COMIC (sp.handycomic.jp - BookLive Group)
   const HandyComicAdapter = {
     id: "handycomic",
-    name: "Handy Comic",
-    theme: { color: "#E6007E", bg: "#ffffff", text: "#E6007E", top: "43.2px" },
+    name: "ブッコミ",
+    theme: { color: "#E52A89", bg: "#ffffff", text: "#E52A89", top: "43.2px" },
 
     isMatch: (url) => url.includes("handycomic.jp") && (
       url.includes("/bviewer") ||

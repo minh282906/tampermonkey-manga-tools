@@ -183,7 +183,7 @@
    * HELPER FUNCTIONS & XỬ LÝ TIÊU ĐỀ CHUẨN
    * ========================================================================= */
   function isEpisodeUrl() {
-    return /\/(?:episode|volume)\/\d+/.test(WIN.location.pathname);
+    return /\/(?:episode|volume|magazine)\/\d+/.test(WIN.location.pathname);
   }
 
   function cleanString(str) {
@@ -199,7 +199,7 @@
 
   function getEpisodeId() {
     try {
-      const match = WIN.location.pathname.match(/\/(?:episode|volume)\/(\d+)/);
+      const match = WIN.location.pathname.match(/\/(?:episode|volume|magazine)\/(\d+)/);
       if (match && match[1]) return match[1];
     } catch (e) {}
     return "GigaViewer_Episode";
@@ -340,8 +340,8 @@
     if (!json) return null;
 
     // Hỗ trợ cả Episode thông thường và Tankobon Volume / Trial
-    const readable = json.readableProduct || json.episode || json.volume || json.trial || {};
-    const series = json.series || readable.series || json.volume?.series || {};
+    const readable = json.readableProduct || json.episode || json.volume || json.magazine || json.trial || {};
+    const series = json.series || readable.series || json.volume?.series || json.magazine?.series || {};
     const rawPages = readable.pageStructure?.pages || json.pageStructure?.pages || json.pages || [];
 
     const resultPages = [];

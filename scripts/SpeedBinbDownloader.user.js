@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SpeedBinb Universal Downloader
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
-// @version      3.0.0
+// @version      4.0.0
 // @icon         https://www.voyager.co.jp/products/pt/images/service_logo_01.jpg
 // @description  Tải manga trên các nền tảng SpeedBinb (Booklive, Comic Cmoa, Yanmaga, GauGau Monster+, ...).
 // @author       anonymous & AI
@@ -21,6 +21,15 @@
 // @match        https://binb.bricks.pub/contents/*
 // @match        https://*.bookhodai.jp/speedreader/*
 // @match        https://e-comi.shogakukan.co.jp/*
+// @match        https://www.s-manga.net/*
+// @match        https://s-manga.net/*
+// @match        https://sp.handycomic.jp/*
+// @match        https://handycomic.jp/*
+// @match        https://www.kodansha.co.jp/*
+// @match        https://kodansha.co.jp/*
+// @match        https://reader.futabasha.co.jp/*
+// @match        https://www.hayakawa-online.co.jp/*
+// @match        https://hayakawa-online.co.jp/*
 // @run-at       document-start
 // @grant        unsafeWindow
 // @grant        GM_xmlhttpRequest
@@ -53,6 +62,21 @@
 // @connect      e-comi.shogakukan.co.jp
 // @connect      *.e-comi.shogakukan.co.jp
 // @connect      sbc.e-comi.shogakukan.co.jp
+// @connect      s-manga.net
+// @connect      *.s-manga.net
+// @connect      mangabroadcast.jp
+// @connect      *.mangabroadcast.jp
+// @connect      handycomic.jp
+// @connect      *.handycomic.jp
+// @connect      binb.booklive.jp
+// @connect      kodansha.co.jp
+// @connect      *.kodansha.co.jp
+// @connect      dvs-ebook-provider.kodansha.co.jp
+// @connect      reader.futabasha.co.jp
+// @connect      *.cloudfront.net
+// @connect      hayakawa-online.co.jp
+// @connect      *.hayakawa-online.co.jp
+// @connect      binb-sbc.hayakawa-online.co.jp
 //
 // --- TỰ ĐỘNG TẢI VÀ UPDATE PHIÊN BẢN
 // @updateURL    https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/SpeedBinbDownloader.user.js
@@ -148,7 +172,7 @@
   const CmoaAdapter = {
     id: "cmoa",
     name: "Comic Cmoa",
-    theme: { color: "#ea580c", bg: "#1c1917", text: "#fdba74", top: "43px" },
+    theme: { color: "#ea580c", bg: "#1c1917", text: "#fdba74", top: "43.2px" },
 
     isMatch: (url) => url.includes("cmoa.jp") && (
       /\/bib\/speedreader\//.test(url) ||
@@ -228,7 +252,7 @@
             filename: filename,
             width: w,
             height: h,
-            src: `${config.contentServer}/sbcGetImg.php?cid=${cid}&src=${encodeURIComponent(filename)}&p=${config.p}&q=1`
+            src: `${config.contentServer}/sbcGetImg.php?cid=${cid}&src=${encodeURIComponent(filename)}&p=${config.p}&q=0`
           });
         }
       }
@@ -305,7 +329,7 @@
             filename: filename,
             width: parseInt(match[2], 10),
             height: parseInt(match[3], 10),
-            src: `${config.contentServer}/img/${filename}?q=1`
+            src: `${config.contentServer}/img/${filename}?q=0`
           });
         }
       }
@@ -443,7 +467,7 @@
   const BookliveAdapter = {
     id: "booklive",
     name: "BookLive",
-    theme: { color: "#D44C00", bg: "#ffffff", text: "#D44C00", top: "43px" },
+    theme: { color: "#D44C00", bg: "#ffffff", text: "#D44C00", top: "43.2px" },
 
     isMatch: (url) => {
       if (!url.includes("booklive.jp")) return false;
@@ -528,7 +552,7 @@
 
           const src = isTrial
             ? `${config.contentServer}/${filename}/M_H.jpg`
-            : `${config.contentServer}/sbcGetImg.php?cid=${cid}&src=${encodeURIComponent(filename)}&p=${config.p}&vm=1&q=1`;
+            : `${config.contentServer}/sbcGetImg.php?cid=${cid}&src=${encodeURIComponent(filename)}&p=${config.p}&vm=1&q=0`;
 
           files.push({
             pageNo: files.length + 1,
@@ -567,7 +591,7 @@
   const VoltageAdapter = {
     id: "voltage",
     name: "Voltage Comics",
-    theme: { color: "#559d99", bg: "#ffffff", text: "#559d99", top: "43px" },
+    theme: { color: "#559d99", bg: "#ffffff", text: "#559d99", top: "43.2px" },
 
     isMatch: (url) => url.includes("voltage-comics.com") && (
       url.includes("/viewer/") ||
@@ -604,10 +628,10 @@
       const contentUrl = `${config.contentServer}content`;
       const contentBuffer = await Utils.fetchBuffer(contentUrl);
       const rawText = new TextDecoder().decode(contentBuffer);
-      const contentJson = JSON.parse(rawText);
+      let contentJson = {};
+      try { contentJson = JSON.parse(rawText); } catch(e) {}
       const ttx = contentJson.ttx || "";
 
-      // BÓC TÁCH TIÊU ĐỀ THẬT TỪ FILE TTX HOẶC METADATA CỦA VOYAGER
       let ttxTitle = "";
       const ttxMatch = ttx.match(/<title>([^<]+)<\/title>/i) || ttx.match(/title=["']([^"']+)["']/i);
       if (ttxMatch) ttxTitle = ttxMatch[1];
@@ -615,18 +639,53 @@
       config.title = data.Title || contentJson.title || contentJson.Title || ttxTitle || "";
       config.subTitle = data.SubTitle || contentJson.subTitle || "";
 
+      // 1. KÉO TIÊU ĐỀ TỪ TRANG SERIES NẾU BỊ ĐỂ RỖNG (HỖ TRỢ TOÀN DIỆN CHO WEBTOON)
+      if (!config.title || config.title === cid || config.title.includes("speed.html")) {
+        try {
+          const urlParams = new URL(WIN.location.href).searchParams;
+          const seriesId = urlParams.get('series') || (DOC.referrer && DOC.referrer.match(/\/series\/(\d+)/)?.[1]);
+          if (seriesId) {
+            const seriesBuf = await Utils.fetchBuffer(`https://voltage-comics.com/series/${seriesId}`);
+            const seriesHtml = new TextDecoder().decode(seriesBuf);
+            
+            // Quét đa tầng: h1, h2, meta og:title, title trang
+            const titleMatch = seriesHtml.match(/<h1[^>]*>([^<]+)<\/h1>/i) 
+                            || seriesHtml.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)
+                            || seriesHtml.match(/<[^>]*class=["'][^"']*(?:work-title|series-title|title)[^"']*["'][^>]*>([^<]+)<\//i)
+                            || seriesHtml.match(/<title>([^<|｜]+)[|｜]/i);
+            if (titleMatch) config.title = titleMatch[1].trim();
+
+            // Quét tên tập tương ứng với CID từ danh sách tập trong trang series
+            const epRegex = new RegExp(`cid=${cid}[^>]*>[\\s\\S]*?([0-9０-９]+[\\s\\S]*?)(?:<|free|無料)`, 'i');
+            const epM = seriesHtml.match(epRegex);
+            if (epM) config.subTitle = epM[1].trim();
+          }
+        } catch(e) {}
+      }
+
+      // 2. PHÂN GIẢI SỐ TẬP TỪ CID NẾU CHƯA CÓ (CHỈ DÀNH CHO DẠNG _001 HOẶC _01)
+      if (!config.subTitle || config.subTitle === cid) {
+        const numM = cid.match(/_0*(\d{1,3})(?:_free)?$/);
+        if (numM && parseInt(numM[1], 10) < 300) { // Loại bỏ các mã ID như 490
+          config.subTitle = `（${numM[1]}）`;
+        }
+      }
+
       const seen = new Set();
       const files = [];
-      for (const match of ttx.matchAll(/(pages\/[a-zA-Z0-9_]*.jpg)[^A-Z]*orgwidth="(\d*)" orgheight="(\d*)"/gm)) {
+      for (const match of ttx.matchAll(/<(?:t-img|img)[^>]+src=["']?([^"'\s>]+)["']?[^>]*>/gi)) {
         const filename = match[1];
-        if (!seen.has(filename)) {
+        if (filename && !seen.has(filename)) {
           seen.add(filename);
+          const wMatch = match[0].match(/orgwidth=["']?(\d+)["']?/i);
+          const hMatch = match[0].match(/orgheight=["']?(\d+)["']?/i);
+
           files.push({
             pageNo: files.length + 1,
             filename: filename,
-            width: parseInt(match[2], 10),
-            height: parseInt(match[3], 10),
-            src: `${config.contentServer}img/${filename}?q=1`
+            width: wMatch ? parseInt(wMatch[1], 10) : 0,
+            height: hMatch ? parseInt(hMatch[1], 10) : 0,
+            src: `${config.contentServer}img/${filename}?q=0`
           });
         }
       }
@@ -636,48 +695,44 @@
 
     getTitle: function(config, cid) {
       let raw = config.title || "";
-
-      // 1. Dò tìm trên DOM hoặc document.title
-      if (!raw) {
-        const domTitle = DOC.querySelector('h1, h2, .title, [class*="title"], #contentTitle')?.textContent;
-        if (domTitle) raw = domTitle;
-      }
-      if (!raw && DOC.title && !DOC.title.includes("speed.html") && !DOC.title.includes("BinB")) {
-        raw = DOC.title;
-      }
-
-      // 2. Dò tìm từ Referrer / Breadcrumbs nếu mở từ trang truyện sang
-      if (!raw && DOC.referrer && DOC.referrer.includes("voltage-comics.com")) {
-        try {
-          const matchRef = DOC.referrer.match(/\/title\/([^\/?#]+)/);
-          if (matchRef) raw = decodeURIComponent(matchRef[1]);
-        } catch(e) {}
-      }
-
       raw = raw.split(/[|｜]/)[0].trim();
       raw = raw.replace(/[-－–—\s]*(?:ボルテージ|Voltage|ぼるコミ).*$/gi, '').trim();
+      // Gọt sạch tag rác [ボル恋TOON], [ボル恋comic]...
+      raw = raw.replace(/\[(?:ボル恋TOON|ボル恋comic|タテヨミ|単話|分冊版|コミック)[^\]]*\]/gi, '').trim();
 
-      // 3. Phân tách Tên truyện và Số tập (Ví dụ: "...とろあまセックス〜 1" hoặc "キスでふさいで、バレないで。 1")
-      let series = "";
-      let episode = "";
+      // Lọc bỏ số ID rác kiểu （490） dính ở đuôi tiêu đề
+      raw = raw.replace(/_?[（\(]\d{3,}[）\)]/g, '').trim();
 
-      if (config.subTitle) {
-        series = raw;
-        episode = cleanString(config.subTitle);
-      } else {
-        const match = raw.match(/^(.*?)(?:\s+[-－–—/]\s+|\s+)(\d+|[0-9０-９]+)$/);
+      let series = raw;
+      let episode = cleanString(config.subTitle || "");
+
+      // Lọc bỏ số ID rác ở episode nếu có
+      episode = episode.replace(/_?[（\(]\d{3,}[）\)]/g, '').trim();
+
+      if (!episode) {
+        // Tách số tập ở đuôi tên truyện nếu có
+        const match = raw.match(/^(.*?)(?:[\s_]+|[・･])((?:第\s*)?[0-9０-９]+(?:\.[0-9]+)?\s*(?:話|巻|章)?|[（\(][0-9０-９]+[）\)])$/);
         if (match) {
           series = match[1];
           episode = match[2];
-        } else {
-          const numMatch = raw.match(/^(.*?)\s+((?:第\s*)?\d+.*)$/);
-          if (numMatch) {
-            series = numMatch[1];
-            episode = numMatch[2];
-          } else {
-            series = raw;
-          }
         }
+      }
+
+      // Khử trùng lặp tên truyện trong tên tập
+      if (series && episode && episode.startsWith(series)) {
+        episode = episode.substring(series.length).trim();
+      }
+
+      // Chuẩn hóa dấu ngoặc toàn giác （1）
+      if (episode.startsWith('(')) {
+        episode = episode.replace(/^\(/, '（').replace(/\)$/, '）');
+      }
+
+      if (series && episode) {
+        if (episode.startsWith('（')) {
+          return `${series}${episode}`; // Ghép liền: TênTruyện（1）
+        }
+        return `${series} - ${episode}`;
       }
 
       return resolveCleanFileName(series, episode, cid);
@@ -737,7 +792,7 @@
             filename: filename,
             width: parseInt(match[2], 10),
             height: parseInt(match[3], 10),
-            src: `${config.contentServer}img/${filename}?q=1`
+            src: `${config.contentServer}img/${filename}?q=0`
           });
         }
       }
@@ -770,7 +825,7 @@
   const BricksAdapter = {
     id: "bricks",
     name: "Ohta Web Comic",
-    theme: { color: "#EA4736", bg: "#ffffff", text: "#EA4736", top: "43px" },
+    theme: { color: "#EA4736", bg: "#ffffff", text: "#EA4736", top: "43.2px" },
 
     isMatch: (url) => (url.includes("bricks.pub") || url.includes("ohtawebcomic.com")) && (url.includes("/speed_reader") || url.includes("/contents/")),
 
@@ -863,7 +918,7 @@
   const BookhodaiAdapter = {
     id: "bookhodai",
     name: "Bookhodai",
-    theme: { color: "#3F9339", bg: "#ffffff", text: "#3F9339", top: "43px" },
+    theme: { color: "#3F9339", bg: "#ffffff", text: "#3F9339", top: "43.2px" },
 
     isMatch: (url) => url.includes("bookhodai.jp") && (
       url.includes("/speedreader/") ||
@@ -987,7 +1042,7 @@
   const EcomiAdapter = {
     id: "ecomi",
     name: "e-Comic Store",
-    theme: { color: "#E6004B", bg: "#ffffff", text: "#E6004B", top: "43px" },
+    theme: { color: "#E6004B", bg: "#ffffff", text: "#E6004B", top: "43.2px" },
 
     isMatch: (url) => url.includes("e-comi.shogakukan.co.jp") && (
       url.includes("/speedreader") ||
@@ -1051,7 +1106,7 @@
           const wMatch = match[0].match(/orgwidth=["']?(\d+)["']?/i);
           const hMatch = match[0].match(/orgheight=["']?(\d+)["']?/i);
 
-          const imgSrc = `${serverBase}sbcGetImg.php?cid=${cid}&src=${encodeURIComponent(filename)}&p=${config.p}&vm=2${uParams}`;
+          const imgSrc = `${serverBase}sbcGetImg.php?cid=${cid}&src=${encodeURIComponent(filename)}&p=${config.p}&vm=2&q=0${uParams}`;
 
           files.push({
             pageNo: files.length + 1,
@@ -1085,7 +1140,408 @@
     }
   };
 
-  // 10. SPEEDBINB PTIMG PACKAGE (Comic Polca, Kirapo, Comic Porta, Super Hero Comics)
+  // 10. S-MANGA (s-manga.net - SHUEISHA 集英社)
+  const SMangaAdapter = {
+    id: "smanga",
+    name: "S-MANGA",
+    theme: { color: "#253238", bg: "#ffffff", text: "#253238", top: "43.2px" },
+
+    isMatch: (url) => url.includes("s-manga.net") && (
+      url.includes("/reader/") ||
+      Boolean(new URL(url, WIN.location.origin).searchParams.get('cid')) ||
+      Boolean(DOC.getElementById('content')?.getAttribute('data-ptbinb-cid'))
+    ),
+
+    getCid: () => {
+      try {
+        const cid = new URL(WIN.location.href).searchParams.get('cid');
+        if (cid && cid.trim()) return cid.trim();
+      } catch (e) {}
+      const attr = DOC.getElementById('content')?.getAttribute('data-ptbinb-cid') || DOC.getElementById('content')?.dataset?.ptbinbCid;
+      return (attr && attr.trim()) ? attr.trim() : "SManga_Episode";
+    },
+
+    fetchManifest: async function(cid, Tools, Utils) {
+      const contentEl = DOC.getElementById('content');
+      const ptbinb = contentEl?.dataset?.ptbinb || "https://www.s-manga.net/reader/sws/apis/bibGetCntntInfo.php";
+      const randomString = Tools.generateRandomString32(cid);
+
+      const apiUrl = new URL(ptbinb, WIN.location.href);
+      apiUrl.searchParams.set("cid", cid);
+      apiUrl.searchParams.set("k", randomString);
+      apiUrl.searchParams.set("dmytime", Date.now());
+
+      const infoBuf = await Utils.fetchBuffer(apiUrl.href);
+      const infoJson = JSON.parse(new TextDecoder().decode(infoBuf));
+      const data = infoJson.items?.[0];
+      if (!data?.ContentsServer) throw new Error("Không lấy được ContentsServer từ S-MANGA.");
+
+      const serverBase = data.ContentsServer.replace(/\/?$/, '/');
+      const config = {
+        title: data.Title || data.title || "",
+        subTitle: data.SubTitle || data.subtitle || "",
+        contentServer: serverBase,
+        ctbl: data.ctbl ? Tools.getDecryptedTable(cid, randomString, data.ctbl) : null,
+        ptbl: data.ptbl ? Tools.getDecryptedTable(cid, randomString, data.ptbl) : null
+      };
+
+      let ttx = "";
+      try {
+        const cntntBuf = await Utils.fetchBuffer(`${serverBase}content.js?dmytime=${Date.now()}`);
+        const rawText = new TextDecoder().decode(cntntBuf);
+        const jsonMatch = rawText.slice(rawText.indexOf('{'), rawText.lastIndexOf('}') + 1);
+        ttx = JSON.parse(jsonMatch).ttx || "";
+      } catch (e) {}
+
+      const seen = new Set();
+      const files = [];
+      for (const match of ttx.matchAll(/<(?:t-img|img)[^>]+src=["']?([^"'\s>]+)["']?[^>]*>/gi)) {
+        const filename = match[1];
+        if (filename && !seen.has(filename)) {
+          seen.add(filename);
+          const wMatch = match[0].match(/orgwidth=["']?(\d+)["']?/i);
+          const hMatch = match[0].match(/orgheight=["']?(\d+)["']?/i);
+
+          const src = filename.includes('M_H.jpg') ? `${serverBase}${filename}` : `${serverBase}${filename}/M_H.jpg`;
+          files.push({
+            pageNo: files.length + 1,
+            filename: filename,
+            width: wMatch ? parseInt(wMatch[1], 10) : 0,
+            height: hMatch ? parseInt(hMatch[1], 10) : 0,
+            src: src
+          });
+        }
+      }
+
+      return { config, files };
+    },
+
+    getTitle: function(config, cid) {
+      let raw = config.title || DOC.title || "";
+      raw = raw.split(/[|｜]/)[0].trim();
+      raw = raw.replace(/^【(?:試し読み|特別試し読み|無料).*?】\s*/gi, '').trim();
+      raw = raw.split(/[／/]/)[0].trim();
+      raw = raw.replace(/[-－–—\s]*(?:S-MANGA|集英社).*$/gi, '').trim();
+      return resolveCleanFileName(raw, config.subTitle, cid);
+    }
+  };
+
+  // 11. HANDY COMIC (sp.handycomic.jp - BookLive Group)
+  const HandyComicAdapter = {
+    id: "handycomic",
+    name: "Handy Comic",
+    theme: { color: "#E6007E", bg: "#ffffff", text: "#E6007E", top: "43.2px" },
+
+    isMatch: (url) => url.includes("handycomic.jp") && (
+      url.includes("/bviewer") ||
+      Boolean(new URL(url, WIN.location.origin).searchParams.get('cid')) ||
+      Boolean(DOC.getElementById('content')?.getAttribute('data-ptbinb-cid'))
+    ),
+
+    getCid: () => {
+      try {
+        const cid = new URL(WIN.location.href).searchParams.get('cid');
+        if (cid && cid.trim()) return cid.trim();
+      } catch (e) {}
+      const attr = DOC.getElementById('content')?.getAttribute('data-ptbinb-cid') || DOC.getElementById('content')?.dataset?.ptbinbCid;
+      return (attr && attr.trim()) ? attr.trim() : "HandyComic_Episode";
+    },
+
+    fetchManifest: async function(cid, Tools, Utils) {
+      const randomString = Tools.generateRandomString32(cid);
+      const infoUrl = `https://sp.handycomic.jp/bib-api/bibGetCntntInfo?cid=${cid}&dmytime=${Date.now()}&k=${randomString}`;
+
+      const infoBuffer = await Utils.fetchBuffer(infoUrl);
+      const infoJson = JSON.parse(new TextDecoder().decode(infoBuffer));
+      const data = infoJson.items?.[0];
+      if (!data?.ContentsServer) throw new Error("Không lấy được phiên đọc từ Handy Comic.");
+
+      // Tự động phân nhánh: Bản Trial (CloudFront content.js) vs Bản Full (sbcGetCntnt.php)
+      const isTrial = data.ContentsServer.includes('trial') || !data.p;
+      const serverBase = data.ContentsServer.replace(/\/?$/, '/');
+
+      const config = {
+        title: data.Title || data.title || "",
+        subTitle: data.SubTitle || data.subtitle || "",
+        contentServer: serverBase,
+        p: data.p || "",
+        isTrial: isTrial,
+        ctbl: Tools.getDecryptedTable(cid, randomString, data.ctbl),
+        ptbl: Tools.getDecryptedTable(cid, randomString, data.ptbl)
+      };
+
+      let ttx = "";
+      if (isTrial) {
+        // Bản Đọc thử: Kéo content.js tĩnh
+        const contentUrl = `${serverBase}content.js?dmytime=${Date.now()}`;
+        const contentBuffer = await Utils.fetchBuffer(contentUrl);
+        const rawText = new TextDecoder().decode(contentBuffer);
+        const jsonMatch = rawText.slice(rawText.indexOf('{'), rawText.lastIndexOf('}') + 1);
+        ttx = JSON.parse(jsonMatch).ttx || "";
+      } else {
+        // Bản Mua/Free: Kéo sbcGetCntnt.php với vm=1
+        const cntntUrl = `${serverBase}sbcGetCntnt.php?cid=${cid}&p=${config.p}&vm=1&dmytime=${Date.now()}`;
+        const cntntBuf = await Utils.fetchBuffer(cntntUrl);
+        ttx = JSON.parse(new TextDecoder().decode(cntntBuf)).ttx || "";
+      }
+
+      const seen = new Set();
+      const files = [];
+      for (const match of ttx.matchAll(/<(?:t-img|img)[^>]+src=["']?([^"'\s>]+)["']?[^>]*>/gi)) {
+        const filename = match[1];
+        if (filename && !seen.has(filename)) {
+          seen.add(filename);
+          const wMatch = match[0].match(/orgwidth=["']?(\d+)["']?/i);
+          const hMatch = match[0].match(/orgheight=["']?(\d+)["']?/i);
+
+          const src = isTrial
+            ? `${serverBase}${filename}/M_H.jpg`
+            : `${serverBase}sbcGetImg.php?cid=${cid}&src=${encodeURIComponent(filename)}&p=${config.p}&vm=1&q=0`;
+
+          files.push({
+            pageNo: files.length + 1,
+            filename: filename,
+            width: wMatch ? parseInt(wMatch[1], 10) : 0,
+            height: hMatch ? parseInt(hMatch[1], 10) : 0,
+            src: src
+          });
+        }
+      }
+
+      return { config, files };
+    },
+
+    getTitle: function(config, cid) {
+      let raw = config.title || DOC.title || "";
+      raw = raw.split(/[|｜]/)[0].trim();
+      raw = raw.replace(/^【(?:期間限定無料|無料お試し版|無料).*?】\s*/gi, '').trim();
+      raw = raw.replace(/[-－–—\s]*(?:HandyComic|ハンディコミック).*$/gi, '').trim();
+      return resolveCleanFileName(raw, config.subTitle, cid);
+    }
+  };
+
+  // 12. KODANSHA WEB (kodansha.co.jp - 講談社)
+  const KodanshaWebAdapter = {
+    id: "kodansha_web",
+    name: "Kodansha",
+    theme: { color: "#0C4DA2", bg: "#ffffff", text: "#0C4DA2", top: "43.2px" },
+
+    isMatch: (url) => url.includes("kodansha.co.jp") && (
+      url.includes("/ebooks/") ||
+      Boolean(new URL(url, WIN.location.origin).searchParams.get('cid')) ||
+      Boolean(DOC.getElementById('content')?.getAttribute('data-ptbinb-cid'))
+    ),
+
+    getCid: () => {
+      try {
+        const cid = new URL(WIN.location.href).searchParams.get('cid');
+        if (cid && cid.trim()) return cid.trim();
+      } catch (e) {}
+      const attr = DOC.getElementById('content')?.getAttribute('data-ptbinb-cid') || DOC.getElementById('content')?.dataset?.ptbinbCid;
+      return (attr && attr.trim()) ? attr.trim() : "Kodansha_Episode";
+    },
+
+    fetchManifest: async function(cid, Tools, Utils) {
+      const randomString = Tools.generateRandomString32(cid);
+      const infoUrl = `https://www.kodansha.co.jp/ebooks/api/bibGetCntntInfo?cid=${cid}&dmytime=${Date.now()}&k=${randomString}`;
+
+      const infoBuf = await Utils.fetchBuffer(infoUrl);
+      const infoJson = JSON.parse(new TextDecoder().decode(infoBuf));
+      const data = infoJson.items?.[0];
+      if (!data?.ContentsServer) throw new Error("Không lấy được ContentsServer từ Kodansha.");
+
+      const serverBase = data.ContentsServer.replace(/\/?$/, '/');
+      const contentBase = serverBase.replace(/\/img\/$/, '/');
+      const imgBase = serverBase.endsWith('/img/') ? serverBase : `${serverBase}img/`;
+
+      const config = {
+        title: data.Title || data.title || "",
+        contentServer: imgBase,
+        ctbl: Tools.getDecryptedTable(cid, randomString, data.ctbl),
+        ptbl: Tools.getDecryptedTable(cid, randomString, data.ptbl)
+      };
+
+      const cntntBuf = await Utils.fetchBuffer(`${contentBase}content`);
+      const { ttx } = JSON.parse(new TextDecoder().decode(cntntBuf));
+
+      const seen = new Set();
+      const files = [];
+      for (const match of ttx.matchAll(/<(?:t-img|img)[^>]+src=["']?([^"'\s>]+)["']?[^>]*>/gi)) {
+        const filename = match[1];
+        if (filename && !seen.has(filename)) {
+          seen.add(filename);
+          const wMatch = match[0].match(/orgwidth=["']?(\d+)["']?/i);
+          const hMatch = match[0].match(/orgheight=["']?(\d+)["']?/i);
+
+          files.push({
+            pageNo: files.length + 1,
+            filename: filename,
+            width: wMatch ? parseInt(wMatch[1], 10) : 0,
+            height: hMatch ? parseInt(hMatch[1], 10) : 0,
+            src: `${imgBase}${filename}?q=0`
+          });
+        }
+      }
+
+      return { config, files };
+    },
+
+    getTitle: function(config, cid) {
+      let raw = config.title || DOC.title || "";
+      raw = raw.split(/[|｜]/)[0].trim();
+      raw = raw.replace(/^『(.*?)』.*$/g, '$1').trim();
+      raw = raw.replace(/\s*試し読み$/g, '').trim();
+      return resolveCleanFileName(raw, "", cid);
+    }
+  };
+
+  // 13. FUTABASHA READER (reader.futabasha.co.jp - 双葉社)
+  const FutabashaAdapter = {
+    id: "futabasha",
+    name: "Futabasha",
+    theme: { color: "#52ad7e", bg: "#ffffff", text: "#52ad7e", top: "43.2px" },
+
+    isMatch: (url) => url.includes("reader.futabasha.co.jp"),
+
+    getCid: () => {
+      try {
+        const cid = new URL(WIN.location.href).searchParams.get('cid');
+        if (cid && cid.trim()) return cid.trim();
+      } catch (e) {}
+      const attr = DOC.getElementById('content')?.getAttribute('data-ptbinb-cid') || DOC.getElementById('content')?.dataset?.ptbinbCid;
+      return (attr && attr.trim()) ? attr.trim() : "Futabasha_Episode";
+    },
+
+    fetchManifest: async function(cid, Tools, Utils) {
+      const randomString = Tools.generateRandomString32(cid);
+      const infoUrl = `https://reader.futabasha.co.jp/sws/bibGetCntntInfo?cid=${cid}&dmytime=${Date.now()}&k=${randomString}`;
+
+      const infoBuf = await Utils.fetchBuffer(infoUrl);
+      const infoJson = JSON.parse(new TextDecoder().decode(infoBuf));
+      const data = infoJson.items?.[0];
+      if (!data?.ContentsServer) throw new Error("Không lấy được ContentsServer từ Futabasha.");
+
+      const serverBase = data.ContentsServer.replace(/\/?$/, '/');
+      const config = {
+        title: data.Title || data.title || "",
+        contentServer: serverBase,
+        ctbl: data.ctbl ? Tools.getDecryptedTable(cid, randomString, data.ctbl) : null,
+        ptbl: data.ptbl ? Tools.getDecryptedTable(cid, randomString, data.ptbl) : null
+      };
+
+      const cntntBuf = await Utils.fetchBuffer(`${serverBase}content.js?dmytime=${Date.now()}`);
+      const rawText = new TextDecoder().decode(cntntBuf);
+      const cleanJson = rawText.replace(/^DataGet_Content\(/, '').replace(/\);?\s*$/, '');
+      const ttx = JSON.parse(cleanJson).ttx || "";
+
+      const seen = new Set();
+      const files = [];
+      for (const match of ttx.matchAll(/<(?:t-img|img)[^>]+src=["']?([^"'\s>]+)["']?[^>]*>/gi)) {
+        const filename = match[1];
+        if (filename && !seen.has(filename)) {
+          seen.add(filename);
+          const wMatch = match[0].match(/orgwidth=["']?(\d+)["']?/i);
+          const hMatch = match[0].match(/orgheight=["']?(\d+)["']?/i);
+
+          const src = filename.includes('M_H.jpg') ? `${serverBase}${filename}` : `${serverBase}${filename}/M_H.jpg`;
+          files.push({
+            pageNo: files.length + 1,
+            filename: filename,
+            width: wMatch ? parseInt(wMatch[1], 10) : 0,
+            height: hMatch ? parseInt(hMatch[1], 10) : 0,
+            src: src
+          });
+        }
+      }
+
+      return { config, files };
+    },
+
+    getTitle: function(config, cid) {
+      let raw = config.title || DOC.title || "";
+      raw = raw.split(/[|｜]/)[0].trim();
+      raw = raw.replace(/[-－–—\s]*(?:双葉社|Futabasha).*$/gi, '').trim();
+      return resolveCleanFileName(raw, "", cid);
+    }
+  };
+
+  // 14. HAYAKAWA ONLINE (hayakawa-online.co.jp - 早川書房)
+  const HayakawaAdapter = {
+    id: "hayakawa",
+    name: "Hayakawa Online",
+    theme: { color: "#1E3A8A", bg: "#ffffff", text: "#1E3A8A", top: "43.2px" },
+
+    isMatch: (url) => url.includes("hayakawa-online.co.jp") && (
+      url.includes("/speedreader") ||
+      Boolean(new URL(url, WIN.location.origin).searchParams.get('cid')) ||
+      Boolean(DOC.getElementById('content')?.getAttribute('data-ptbinb-cid'))
+    ),
+
+    getCid: () => {
+      try {
+        const cid = new URL(WIN.location.href).searchParams.get('cid');
+        if (cid && cid.trim()) return cid.trim();
+      } catch (e) {}
+      const attr = DOC.getElementById('content')?.getAttribute('data-ptbinb-cid') || DOC.getElementById('content')?.dataset?.ptbinbCid;
+      return (attr && attr.trim()) ? attr.trim() : "Hayakawa_Episode";
+    },
+
+    fetchManifest: async function(cid, Tools, Utils) {
+      const randomString = Tools.generateRandomString32(cid);
+      // Giữ nguyên u0=1 và endpoint .aspx
+      const infoUrl = `https://www.hayakawa-online.co.jp/api/bibGetCntntInfo.aspx?cid=${cid}&dmytime=${Date.now()}&k=${randomString}&u0=1`;
+
+      const infoBuf = await Utils.fetchBuffer(infoUrl);
+      const infoJson = JSON.parse(new TextDecoder().decode(infoBuf));
+      const data = infoJson.items?.[0];
+      if (!data?.ContentsServer || !data?.p) throw new Error("Không lấy được phiên đọc từ Hayakawa Online.");
+
+      const serverBase = data.ContentsServer.replace(/\/?$/, '/');
+      const config = {
+        title: data.Title || data.title || "",
+        subTitle: data.SubTitle || data.subtitle || "",
+        contentServer: serverBase,
+        p: data.p,
+        ctbl: Tools.getDecryptedTable(cid, randomString, data.ctbl),
+        ptbl: Tools.getDecryptedTable(cid, randomString, data.ptbl)
+      };
+
+      // Kéo sbcGetCntnt.php với vm=1 và u0=1
+      const cntntUrl = `${serverBase}sbcGetCntnt.php?cid=${cid}&p=${config.p}&vm=1&u0=1&dmytime=${Date.now()}`;
+      const cntntBuf = await Utils.fetchBuffer(cntntUrl);
+      const { ttx } = JSON.parse(new TextDecoder().decode(cntntBuf));
+
+      const seen = new Set();
+      const files = [];
+      for (const match of ttx.matchAll(/<(?:t-img|img)[^>]+src=["']?([^"'\s>]+)["']?[^>]*>/gi)) {
+        const filename = match[1];
+        if (filename && !seen.has(filename)) {
+          seen.add(filename);
+          const wMatch = match[0].match(/orgwidth=["']?(\d+)["']?/i);
+          const hMatch = match[0].match(/orgheight=["']?(\d+)["']?/i);
+
+          files.push({
+            pageNo: files.length + 1,
+            filename: filename,
+            width: wMatch ? parseInt(wMatch[1], 10) : 0,
+            height: hMatch ? parseInt(hMatch[1], 10) : 0,
+            src: `${serverBase}sbcGetImg.php?cid=${cid}&src=${encodeURIComponent(filename)}&p=${config.p}&q=0&vm=1&u0=1`
+          });
+        }
+      }
+
+      return { config, files };
+    },
+
+    getTitle: function(config, cid) {
+      let raw = config.title || DOC.title || "";
+      raw = raw.split(/[|｜]/)[0].trim();
+      raw = raw.replace(/[-－–—\s]*(?:ハヤカワ・オンライン|早川書房).*$/gi, '').trim();
+      return resolveCleanFileName(raw, config.subTitle, cid);
+    }
+  };
+
+  // 15. SPEEDBINB PTIMG PACKAGE (Comic Polca, Kirapo, Comic Porta, Super Hero Comics)
   const PTImgAdapter = {
     id: "ptimg",
 
@@ -1095,17 +1551,17 @@
 
       // A. COMIC POLCA (123hon.com/polca) - Nền Xanh đậm (#005BAC), chữ trắng
       if (href.includes('123hon.com')) {
-        return { name: "Comic Polca", color: "#2563eb", bg: "#ffffff", text: "#1d4ed8", top: "43px" };
+        return { name: "Comic Polca", color: "#2563eb", bg: "#ffffff", text: "#1d4ed8", top: "43.2px" };
       }
 
       // B. COMIC PORTA (comic-porta.com) - Nền Cam (#FF9800), chữ đen (#18181b)
       if (href.includes('comic-porta.com')) {
-        return { name: "Comic Porta", color: "#FF9800", bg: "#ffffff", text: "#18181b", top: "43px" };
+        return { name: "Comic Porta", color: "#FF9800", bg: "#ffffff", text: "#18181b", top: "43.2px" };
       }
 
       // C. SUPER HERO COMICS (televikun) - Nền Đỏ (#E11D48), chữ trắng
       if (href.includes('televikun')) {
-        return { name: "Super Hero Comics", color: "#000000", bg: "#ffffff", text: "#000000", top: "43px" };
+        return { name: "Super Hero Comics", color: "#000000", bg: "#ffffff", text: "#000000", top: "43.2px" };
       }
 
       // D. KIRAPO (kirapo.jp) - Theme Trắng/Đen Monochrome thống nhất toàn sàn
@@ -1123,7 +1579,7 @@
           color: "#FC4679", 
           bg: "#ffffff", 
           text: "#18181b", 
-          top: "43px" 
+          top: "43.2px" 
         };
       }
 
@@ -1214,7 +1670,12 @@
     }
   };
 
-  const ADAPTERS = [CmoaAdapter, YanmagaAdapter, GaugauAdapter, BookliveAdapter, VoltageAdapter, YomongaAdapter, BricksAdapter, BookhodaiAdapter, PTImgAdapter, EcomiAdapter];
+  const ADAPTERS = [
+    CmoaAdapter, YanmagaAdapter, GaugauAdapter, BookliveAdapter,
+    VoltageAdapter, YomongaAdapter, BricksAdapter, BookhodaiAdapter,
+    EcomiAdapter, SMangaAdapter, HandyComicAdapter, 
+    KodanshaWebAdapter, FutabashaAdapter, HayakawaAdapter, PTImgAdapter,
+  ];
 
   function resolveSiteAdapter() {
     const currentUrl = WIN.location.href;
@@ -1293,7 +1754,7 @@
     const rawBuffer = await Utils.fetchBuffer(imgSrc);
     const img = await Utils.loadImage(rawBuffer);
 
-    // 2. NẾU LÀ NHÁNH SPEEDBINB ĐỘNG (BookLive, Cmoa, Yanmaga, Gaugau)
+    // 2. NẾU LÀ NHÁNH SPEEDBINB ĐỘNG (BookLive, Cmoa, Yanmaga, Gaugau, ...)
     if (!config.isPTImg && !fileObj.isPTImg) {
       const key = Tools.getDecryptionKey(fileObj.filename, config.ctbl, config.ptbl);
       const decoder = new Tools.CoordDecoder(key[0], key[1]);

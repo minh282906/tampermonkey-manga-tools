@@ -20,6 +20,15 @@
 // @match        https://binb.bricks.pub/contents/*
 // @match        https://*.bookhodai.jp/speedreader/*
 // @match        https://e-comi.shogakukan.co.jp/*
+// @match        https://www.s-manga.net/*
+// @match        https://s-manga.net/*
+// @match        https://sp.handycomic.jp/*
+// @match        https://handycomic.jp/*
+// @match        https://www.kodansha.co.jp/*
+// @match        https://kodansha.co.jp/*
+// @match        https://reader.futabasha.co.jp/*
+// @match        https://www.hayakawa-online.co.jp/*
+// @match        https://hayakawa-online.co.jp/*
 // @grant        unsafeWindow
 // @grant        GM_xmlhttpRequest
 // @connect      *
@@ -67,7 +76,7 @@
       for (const m of ttx.matchAll(/<(?:t-img|img)[^>]+src=["']?([^"'\s>]+)["']?[^>]*>/gi)) {
         if (m[1] && !seen.has(m[1])) {
           seen.add(m[1]);
-          files.push({ filename: m[1], src: isTrial ? `${server}/${m[1]}/M_H.jpg` : `${server}/sbcGetImg.php?cid=${cid}&src=${encodeURIComponent(m[1])}&p=${p}&vm=1&q=1` });
+          files.push({ filename: m[1], src: isTrial ? `${server}/${m[1]}/M_H.jpg` : `${server}/sbcGetImg.php?cid=${cid}&src=${encodeURIComponent(m[1])}&p=${p}&vm=1&q=0` });
         }
       }
       return { site: "BookLive", cid, ctbl, ptbl, files };
@@ -93,7 +102,7 @@
       for (const m of cntnt.ttx.matchAll(/<(?:t-img|img)[^>]+src=["']?([^"'\s>]+)["']?[^>]*>/gi)) {
         if (m[1] && !seen.has(m[1])) {
           seen.add(m[1]);
-          files.push({ filename: m[1], src: `${server}/sbcGetImg.php?cid=${cid}&src=${encodeURIComponent(m[1])}&p=${item.p}&q=1` });
+          files.push({ filename: m[1], src: `${server}/sbcGetImg.php?cid=${cid}&src=${encodeURIComponent(m[1])}&p=${item.p}&q=0` });
         }
       }
       return { site: "Comic Cmoa", cid, ctbl, ptbl, files };
@@ -124,7 +133,7 @@
       }
       const files = [], seen = new Set();
       for (const m of ttxJson.ttx.matchAll(/pages\/[a-zA-Z0-9_.-]+\.(?:jpg|jpeg|png|webp)/gi)) {
-        if (m[0] && !seen.has(m[0])) { seen.add(m[0]); files.push({ filename: m[0], src: `${server}/img/${m[0]}?q=1` }); }
+        if (m[0] && !seen.has(m[0])) { seen.add(m[0]); files.push({ filename: m[0], src: `${server}/img/${m[0]}?q=0` }); }
       }
       return { site: "Yanmaga Web", cid, ctbl, ptbl, files };
     }
@@ -179,10 +188,10 @@
       const { ttx } = JSON.parse(new TextDecoder().decode(cntntBuf));
 
       const files = [], seen = new Set();
-      for (const m of ttx.matchAll(/(pages\/[a-zA-Z0-9_]*.jpg)[^A-Z]*orgwidth="(\d*)" orgheight="(\d*)"/gm)) {
+      for (const m of ttx.matchAll(/<(?:t-img|img)[^>]+src=["']?([^"'\s>]+)["']?[^>]*>/gi)) {
         if (m[1] && !seen.has(m[1])) {
           seen.add(m[1]);
-          files.push({ filename: m[1], src: `${server}img/${m[1]}?q=1` });
+          files.push({ filename: m[1], src: `${server}img/${m[1]}?q=0` });
         }
       }
       return { site: "Voltage Comics", cid, ctbl, ptbl, files };
@@ -207,7 +216,7 @@
       for (const m of ttx.matchAll(/(images\/[a-zA-Z0-9_]*.jpg)[^A-Z]*orgwidth="(\d*)" orgheight="(\d*)"/gm)) {
         if (m[1] && !seen.has(m[1])) {
           seen.add(m[1]);
-          files.push({ filename: m[1], src: `${server}img/${m[1]}?q=1` });
+          files.push({ filename: m[1], src: `${server}img/${m[1]}?q=0` });
         }
       }
       return { site: "Yomonga", cid, ctbl, ptbl, files };
@@ -347,7 +356,7 @@
         const filename = m[1];
         if (filename && !seen.has(filename)) {
           seen.add(filename);
-          const imgSrc = `${serverBase}sbcGetImg.php?cid=${cid}&src=${encodeURIComponent(filename)}&p=${p}&vm=2${uParams}`;
+          const imgSrc = `${serverBase}sbcGetImg.php?cid=${cid}&src=${encodeURIComponent(filename)}&p=${p}&vm=2&q=0${uParams}`;
           files.push({ filename, src: imgSrc });
         }
       }
@@ -355,7 +364,169 @@
       return { site: "e-Comi", cid, ctbl, ptbl, files };
     }
 
-    // J. PTIMG SITES (Comic Polca, Kirapo, Comic Porta, Super Hero Comics)
+    // J. S-MANGA (s-manga.net)
+    if (url.includes('s-manga.net')) {
+      const cid = new URL(url).searchParams.get('cid') || DOC.getElementById('content')?.dataset?.ptbinbCid;
+      if (!cid) return null;
+
+      const k = Tools.generateRandomString32(cid);
+      const apiUrl = `https://www.s-manga.net/reader/sws/apis/bibGetCntntInfo.php?cid=${cid}&dmytime=${Date.now()}&k=${k}`;
+      const infoBuf = await Utils.fetchBuffer(apiUrl);
+      const info = JSON.parse(new TextDecoder().decode(infoBuf));
+      const item = info.items?.[0]; if (!item?.ContentsServer) return null;
+
+      const serverBase = item.ContentsServer.replace(/\/?$/, '/');
+      const ctbl = item.ctbl ? Tools.getDecryptedTable(cid, k, item.ctbl) : null;
+      const ptbl = item.ptbl ? Tools.getDecryptedTable(cid, k, item.ptbl) : null;
+
+      let ttx = "";
+      try {
+        const cntntBuf = await Utils.fetchBuffer(`${serverBase}content.js?dmytime=${Date.now()}`);
+        const rawText = new TextDecoder().decode(cntntBuf);
+        const jsonMatch = rawText.slice(rawText.indexOf('{'), rawText.lastIndexOf('}') + 1);
+        ttx = JSON.parse(jsonMatch).ttx || "";
+      } catch (e) {}
+
+      const files = [], seen = new Set();
+      for (const m of ttx.matchAll(/<(?:t-img|img)[^>]+src=["']?([^"'\s>]+)["']?[^>]*>/gi)) {
+        if (m[1] && !seen.has(m[1])) {
+          seen.add(m[1]);
+          const src = m[1].includes('M_H.jpg') ? `${serverBase}${m[1]}` : `${serverBase}${m[1]}/M_H.jpg`;
+          files.push({ filename: m[1], src });
+        }
+      }
+      return { site: "S-MANGA", cid, ctbl, ptbl, files };
+    }
+
+    // K. HANDY COMIC (sp.handycomic.jp)
+    if (url.includes('handycomic.jp')) {
+      const cid = new URL(url).searchParams.get('cid') || DOC.getElementById('content')?.dataset?.ptbinbCid;
+      if (!cid) return null;
+
+      const k = Tools.generateRandomString32(cid);
+      const infoBuf = await Utils.fetchBuffer(`https://sp.handycomic.jp/bib-api/bibGetCntntInfo?cid=${cid}&dmytime=${Date.now()}&k=${k}`);
+      const info = JSON.parse(new TextDecoder().decode(infoBuf));
+      const item = info.items?.[0]; 
+      if (!item?.ContentsServer) return null;
+
+      const isTrial = item.ContentsServer.includes('trial') || !item.p;
+      const serverBase = item.ContentsServer.replace(/\/?$/, '/');
+      const ctbl = Tools.getDecryptedTable(cid, k, item.ctbl);
+      const ptbl = Tools.getDecryptedTable(cid, k, item.ptbl);
+
+      let ttx = "";
+      if (isTrial) {
+        const cntntBuf = await Utils.fetchBuffer(`${serverBase}content.js?dmytime=${Date.now()}`);
+        const rawText = new TextDecoder().decode(cntntBuf);
+        ttx = JSON.parse(rawText.slice(rawText.indexOf('{'), rawText.lastIndexOf('}') + 1)).ttx || "";
+      } else {
+        const cntntBuf = await Utils.fetchBuffer(`${serverBase}sbcGetCntnt.php?cid=${cid}&p=${item.p}&vm=1&dmytime=${Date.now()}`);
+        ttx = JSON.parse(new TextDecoder().decode(cntntBuf)).ttx || "";
+      }
+
+      const files = [], seen = new Set();
+      for (const m of ttx.matchAll(/<(?:t-img|img)[^>]+src=["']?([^"'\s>]+)["']?[^>]*>/gi)) {
+        if (m[1] && !seen.has(m[1])) {
+          seen.add(m[1]);
+          const src = isTrial
+            ? `${serverBase}${m[1]}/M_H.jpg`
+            : `${serverBase}sbcGetImg.php?cid=${cid}&src=${encodeURIComponent(m[1])}&p=${item.p}&vm=1&q=0`;
+          files.push({ filename: m[1], src });
+        }
+      }
+      return { site: "Handy Comic", cid, ctbl, ptbl, files };
+    }
+
+    // L. KODANSHA WEB (kodansha.co.jp)
+    if (url.includes('kodansha.co.jp')) {
+      const cid = new URL(url).searchParams.get('cid') || DOC.getElementById('content')?.dataset?.ptbinbCid;
+      if (!cid) return null;
+
+      const k = Tools.generateRandomString32(cid);
+      const infoBuf = await Utils.fetchBuffer(`https://www.kodansha.co.jp/ebooks/api/bibGetCntntInfo?cid=${cid}&dmytime=${Date.now()}&k=${k}`);
+      const info = JSON.parse(new TextDecoder().decode(infoBuf));
+      const item = info.items?.[0]; if (!item?.ContentsServer) return null;
+
+      const serverBase = item.ContentsServer.replace(/\/?$/, '/');
+      const contentBase = serverBase.replace(/\/img\/$/, '/');
+      const imgBase = serverBase.endsWith('/img/') ? serverBase : `${serverBase}img/`;
+
+      const ctbl = Tools.getDecryptedTable(cid, k, item.ctbl);
+      const ptbl = Tools.getDecryptedTable(cid, k, item.ptbl);
+
+      const cntntBuf = await Utils.fetchBuffer(`${contentBase}content`);
+      const { ttx } = JSON.parse(new TextDecoder().decode(cntntBuf));
+
+      const files = [], seen = new Set();
+      for (const m of ttx.matchAll(/<(?:t-img|img)[^>]+src=["']?([^"'\s>]+)["']?[^>]*>/gi)) {
+        if (m[1] && !seen.has(m[1])) {
+          seen.add(m[1]);
+          files.push({ filename: m[1], src: `${imgBase}${m[1]}?q=0` });
+        }
+      }
+      return { site: "Kodansha", cid, ctbl, ptbl, files };
+    }
+
+    // M. FUTABASHA READER (reader.futabasha.co.jp)
+    if (url.includes('reader.futabasha.co.jp')) {
+      const cid = new URL(url).searchParams.get('cid') || DOC.getElementById('content')?.dataset?.ptbinbCid;
+      if (!cid) return null;
+
+      const k = Tools.generateRandomString32(cid);
+      const infoBuf = await Utils.fetchBuffer(`https://reader.futabasha.co.jp/sws/bibGetCntntInfo?cid=${cid}&dmytime=${Date.now()}&k=${k}`);
+      const info = JSON.parse(new TextDecoder().decode(infoBuf));
+      const item = info.items?.[0]; if (!item?.ContentsServer) return null;
+
+      const serverBase = item.ContentsServer.replace(/\/?$/, '/');
+      const ctbl = item.ctbl ? Tools.getDecryptedTable(cid, k, item.ctbl) : null;
+      const ptbl = item.ptbl ? Tools.getDecryptedTable(cid, k, item.ptbl) : null;
+
+      const cntntBuf = await Utils.fetchBuffer(`${serverBase}content.js?dmytime=${Date.now()}`);
+      const rawText = new TextDecoder().decode(cntntBuf);
+      const ttx = JSON.parse(rawText.replace(/^DataGet_Content\(/, '').replace(/\);?\s*$/, '')).ttx || "";
+
+      const files = [], seen = new Set();
+      for (const m of ttx.matchAll(/<(?:t-img|img)[^>]+src=["']?([^"'\s>]+)["']?[^>]*>/gi)) {
+        if (m[1] && !seen.has(m[1])) {
+          seen.add(m[1]);
+          const src = m[1].includes('M_H.jpg') ? `${serverBase}${m[1]}` : `${serverBase}${m[1]}/M_H.jpg`;
+          files.push({ filename: m[1], src });
+        }
+      }
+      return { site: "Futabasha", cid, ctbl, ptbl, files };
+    }
+
+    // N. HAYAKAWA ONLINE (hayakawa-online.co.jp)
+    if (url.includes('hayakawa-online.co.jp')) {
+      const cid = new URL(url).searchParams.get('cid') || DOC.getElementById('content')?.dataset?.ptbinbCid;
+      if (!cid) return null;
+
+      const k = Tools.generateRandomString32(cid);
+      const infoBuf = await Utils.fetchBuffer(`https://www.hayakawa-online.co.jp/api/bibGetCntntInfo.aspx?cid=${cid}&dmytime=${Date.now()}&k=${k}&u0=1`);
+      const info = JSON.parse(new TextDecoder().decode(infoBuf));
+      const item = info.items?.[0]; if (!item?.ContentsServer || !item?.p) return null;
+
+      const serverBase = item.ContentsServer.replace(/\/?$/, '/');
+      const ctbl = Tools.getDecryptedTable(cid, k, item.ctbl);
+      const ptbl = Tools.getDecryptedTable(cid, k, item.ptbl);
+
+      const cntntBuf = await Utils.fetchBuffer(`${serverBase}sbcGetCntnt.php?cid=${cid}&p=${item.p}&vm=1&u0=1&dmytime=${Date.now()}`);
+      const { ttx } = JSON.parse(new TextDecoder().decode(cntntBuf));
+
+      const files = [], seen = new Set();
+      for (const m of ttx.matchAll(/<(?:t-img|img)[^>]+src=["']?([^"'\s>]+)["']?[^>]*>/gi)) {
+        if (m[1] && !seen.has(m[1])) {
+          seen.add(m[1]);
+          files.push({
+            filename: m[1],
+            src: `${serverBase}sbcGetImg.php?cid=${cid}&src=${encodeURIComponent(m[1])}&p=${item.p}&q=0&vm=1&u0=1`
+          });
+        }
+      }
+      return { site: "Hayakawa Online", cid, ctbl, ptbl, files };
+    }
+
+    // O. PTIMG SITES (Comic Polca, Kirapo, Comic Porta, Super Hero Comics)
     const u = new URL(url, origin);
     const p = u.pathname;
     let isPTImg = false;

@@ -447,7 +447,6 @@
         ui.updateProgress({
           status: "Lỗi: " + (err?.message || "Không thể tải trang."),
         });
-        ui.setBusy(true);
       }
     }
   }

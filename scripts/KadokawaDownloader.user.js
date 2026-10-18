@@ -762,7 +762,6 @@
       console.error(`[${adapter.id}-dl] Boot error:`, err);
       if (ui) {
         ui.updateProgress({ status: "Lỗi: " + (err?.message || "không thể tải trang.") });
-        ui.setBusy(true); // Khóa cứng nút khi lỗi
       }
     }
   }

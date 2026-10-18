@@ -577,7 +577,6 @@
       console.error("[clipstudio-dl] Boot error:", err);
       if (ui) {
         ui.updateProgress({ status: "Lỗi: " + (err?.message || "Không thể tải trang.") });
-        ui.setBusy(true);
       }
     }
   }

@@ -426,7 +426,6 @@
       console.error("[amazon-dl] Download error:", err);
       if (ui) {
         ui.updateProgress({ status: "Lỗi: " + (err?.message || err) });
-        ui.setBusy(true);
       }
     } finally {
       state.running = false;
@@ -518,7 +517,6 @@
       console.error("[amazon-dl] Boot error:", err);
       if (ui) {
         ui.updateProgress({ status: "Lỗi: " + (err?.message || "Không thể tải trang.") });
-        ui.setBusy(true);
       }
     }
   }

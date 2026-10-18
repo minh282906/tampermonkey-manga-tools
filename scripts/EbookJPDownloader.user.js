@@ -730,7 +730,6 @@
       const ui = getUI();
       if (ui) {
         ui.updateProgress({ status: "Lỗi: " + (err?.message || "Không thể tải trang.") });
-        ui.setBusy(true);
       }
     } finally {
       state.booting = false;

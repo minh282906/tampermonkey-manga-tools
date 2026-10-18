@@ -582,7 +582,6 @@
       console.error("[giga-dl] Boot error:", err);
       if (ui) {
         ui.updateProgress({ status: "Lỗi: " + (err?.message || "không thể tải trang.") });
-        ui.setBusy(true);
       }
     }
   }

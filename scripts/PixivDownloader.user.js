@@ -394,7 +394,6 @@
       console.error("[pixiv-dl] Boot error:", err);
       if (ui) {
         ui.updateProgress({ status: "Lỗi: " + (err?.message || "không thể tải tranh.") });
-        ui.setBusy(true);
       }
     }
   }

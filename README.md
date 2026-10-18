@@ -48,6 +48,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 | **JumpRookie Downloader**     | (`rookie.shonenjump.com`)                                                                                                                                           | 🟢 Hoạt động |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/JumpRookieDownloader.user.js)  |
 | **GorakuWeb Downloader**      | (`gorakuweb.com`)                                                                                                                                                    | 🟢 Hoạt động |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/GorakuWebDownloader.user.js)    |
 | **Comici Downloader**         | (`comici.jp`)                                                                                                                                                       | ❌ Web đã đóng |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/ComiciJPDownloader.user.js)   |
+| **Fupro Downloader**       | (`fupro-comics.com`)                                                                                                                                                    | 🟢 Hoạt động |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/FuproDownloader.user.js)   |
 | **MechaComic Downloader**     | (`mechacomic.jp`)                                                                                                                                                   | 🟢 Hoạt động |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/MechaComicDownloader.user.js)  |
 | **Alphapolis Downloader**     | (`alphapolis.co.jp`)                                                                                                                                                | 🟢 Hoạt động |    [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/PixivDownloader.user.js)     |
 | **MangaMeets Downloader**     | MangaMeets (`manga-meets.jp`)                                                                                                                                       | 🟢 Hoạt động |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/MangaMeetsDownloader.user.js)  |
@@ -227,6 +228,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 - Jump Rookie (`rookie.shonenjump.com`)
 - Comici (`comici.jp`)
 - Alphapolis (`alphapolis.co.jp`)
+- ふゅーぷろComics (`fupro-comics.com`)
 - Amazon Kindle Manga (`amazon.co.jp`)
 - Mecha Comic (`mechacomic.jp`)
 - MangaONE và Ura Sunday (`manga-one.com`, `urasunday.com`)

@@ -116,10 +116,11 @@
   function cleanString(str) {
     if (!str) return "";
     return str
-      .replace(/[\r\n\t]+/g, " ")
-      .replace(/\s{2,}/g, " ")
-      .replace(/【(?!(?:フルカラー版|カラー版|完全版|特装版))[^】]*】/gi, "")
-      .replace(/[\\/*?:"<>|]/g, "")
+      .replace(/[\r\n\t]+/g, ' ')
+      .replace(/【(?!(?:フルカラー版|カラー版|完全版|特装版))[^】]*】/gi, ' ')
+      .replace(/[［\[【](?:ばら売り|分冊版|単話版)[］\]】]/gi, ' ')
+      .replace(/[\\/*?:"<>|]/g, '')
+      .replace(/\s{2,}/g, ' ') // Thu gọn nhiều khoảng trắng thành 1
       .trim();
   }
 
@@ -136,6 +137,14 @@
 
       rawTitle = rawTitle.replace(/\s*[-|｜]\s*ふゅーぷろ.*$/i, "").trim();
       rawTitle = cleanString(rawTitle);
+      rawTitle = rawTitle.replace(/([\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff])([0-9０-９]+)$/, '$1 $2');
+
+      // Tách " - " nếu là "1巻", "第1話", hoặc số tập đứng riêng " 1", " 2"...
+      // (TRỪ trường hợp số trong ngoặc đơn (1), (2) thì giữ nguyên cạnh tên)
+      const mVolChap = rawTitle.match(/^(.*?)\s+((?:第\s*)?[0-9０-９IVXLCDMivxlcdm一二三四五六七八九十百千万\.]+(?:\s*(?:話|回|巻|章|節|部|エピソード|分冊版|単話).*)?)$/i);
+      if (mVolChap && !/^\([0-9０-９]+\)$/.test(mVolChap[2])) {
+        return `${cleanString(mVolChap[1])} - ${cleanString(mVolChap[2])}`;
+      }
 
       if (rawTitle && rawTitle.length > 2) return rawTitle;
     } catch (e) {}

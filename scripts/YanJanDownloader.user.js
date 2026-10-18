@@ -48,7 +48,7 @@
     chapterData: null,
     ui: null,
     lastUrl: "",
-    lastEpId: null
+    lastEpisodeId: ""
   };
 
   // BẮT TRỰC TIẾP REQUEST VIEWER CỦA WEB (KỂ CẢ KHI ĐANG Ở /title/:id)
@@ -90,10 +90,10 @@
         storagePrefix: "ynjn-dl",
         title: "YanJan!",
         engine: "SHUEISHA",
-        themeColor: "#1d5ec9",      // Đổi thành Xanh Royal Blue YanJan+
+        themeColor: "#0362C6",      
         themeBg: "#18181b",         
         titleColor: "#ffffff",      
-        btnBg: "#1d5ec9",           // Thêm dòng này để nút tải cùng màu xanh
+        btnBg: "#0362C6",        
         btnColor: "#ffffff",
         topOffset: "120px",
         defaultJpgText: "Xuất file JPG (mặc định PNG)",
@@ -293,18 +293,18 @@
     const w = img.naturalWidth || img.width;
     const h = img.naturalHeight || img.height;
 
-    const targetW = pageObj.width || w;
-    const targetH = pageObj.height || h;
-
     const canvas = DOC.createElement('canvas');
-    canvas.width = targetW;
-    canvas.height = targetH;
+    canvas.width = w;
+    canvas.height = h;
 
     const ctx = canvas.getContext('2d', { alpha: false });
     ctx.imageSmoothingEnabled = false;
     ctx.mozImageSmoothingEnabled = false;
     ctx.webkitImageSmoothingEnabled = false;
     ctx.msImageSmoothingEnabled = false;
+
+    // Vẽ lót nền ảnh gốc 1:1 bảo tồn 100% viền ngoài
+    ctx.drawImage(img, 0, 0, w, h);
 
     const pieceW = Math.floor(w / 4);
     const pieceH = Math.floor(h / 4);
@@ -323,16 +323,6 @@
       const destY = destRow * pieceH;
 
       ctx.drawImage(img, srcX, srcY, pieceW, pieceH, destX, destY, pieceW, pieceH);
-    }
-
-    // Bảo vệ mép viền nếu có phần dư (dưới 4px)
-    const remainderW = w - pieceW * 4;
-    const remainderH = h - pieceH * 4;
-    if (remainderW > 0) {
-      ctx.drawImage(img, pieceW * 4, 0, remainderW, h, pieceW * 4, 0, remainderW, h);
-    }
-    if (remainderH > 0) {
-      ctx.drawImage(img, 0, pieceH * 4, w, remainderH, 0, pieceH * 4, w, remainderH);
     }
 
     const mimeType = isJpg ? 'image/jpeg' : 'image/png';
@@ -461,7 +451,6 @@
       console.error("[ynjn-dl] Boot error:", err);
       if (ui) {
         ui.updateProgress({ status: "Lỗi: " + (err?.message || "Không thể tải trang.") });
-        ui.setBusy(true);
       }
     }
   }

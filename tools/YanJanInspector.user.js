@@ -22,11 +22,9 @@
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   if (WIN.top !== WIN.self) return;
 
-  function descrambleYnjn(img, targetW, targetH) {
+  function descrambleYnjn(img) {
     const w = img.naturalWidth || img.width;
     const h = img.naturalHeight || img.height;
-    const outW = targetW || w;
-    const outH = targetH || h;
 
     const pieceW = Math.floor(w / 4);
     const pieceH = Math.floor(h / 4);
@@ -35,40 +33,19 @@
     const dummyW = w - gridW;
     const dummyH = h - gridH;
 
-    // 1. visualCanvas (Soi Live: Viền Cyan toàn ảnh + Khung Hồng ma trận)
-    const visualCanvas = DOC.createElement('canvas');
-    visualCanvas.width = outW; visualCanvas.height = outH;
-    const vCtx = visualCanvas.getContext('2d', { alpha: false });
-    vCtx.imageSmoothingEnabled = false;
-
-    for (let i = 0; i < 16; i++) {
-      const srcCol = i % 4;
-      const srcRow = Math.floor(i / 4);
-      const j = srcCol * 4 + srcRow;
-      const destCol = j % 4;
-      const destRow = Math.floor(j / 4);
-
-      vCtx.drawImage(img, srcCol * pieceW, srcRow * pieceH, pieceW, pieceH, destCol * pieceW, destRow * pieceH, pieceW, pieceH);
-    }
-
-    if (dummyW > 0) vCtx.drawImage(img, gridW, 0, dummyW, h, gridW, 0, dummyW, h);
-    if (dummyH > 0) vCtx.drawImage(img, 0, gridH, w, dummyH, 0, gridH, w, dummyH);
-
-    if (dummyW > 0 || dummyH > 0) {
-      vCtx.strokeStyle = '#ff007f';
-      vCtx.lineWidth = 2;
-      vCtx.strokeRect(0, 0, gridW, gridH);
-    }
-    vCtx.strokeStyle = '#00ffff';
-    vCtx.lineWidth = 4;
-    vCtx.strokeRect(0, 0, outW, outH);
-
-    // 2. sharpCanvas (Xuất file sạch 100%)
+    // 1. sharpCanvas (Bản xuất file sạch 100% tải về máy)
     const sharpCanvas = DOC.createElement('canvas');
-    sharpCanvas.width = outW; sharpCanvas.height = outH;
+    sharpCanvas.width = w; sharpCanvas.height = h;
     const sCtx = sharpCanvas.getContext('2d', { alpha: false });
     sCtx.imageSmoothingEnabled = false;
+    sCtx.mozImageSmoothingEnabled = false;
+    sCtx.webkitImageSmoothingEnabled = false;
+    sCtx.msImageSmoothingEnabled = false;
 
+    // 👉 BƯỚC 1: Vẽ lót nền ảnh gốc 1:1 bảo tồn 100% viền ngoài của họa sĩ
+    sCtx.drawImage(img, 0, 0, w, h);
+
+    // 👉 BƯỚC 2: Dán đè 16 ô hoán vị lên vùng ma trận
     for (let i = 0; i < 16; i++) {
       const srcCol = i % 4;
       const srcRow = Math.floor(i / 4);
@@ -79,11 +56,26 @@
       sCtx.drawImage(img, srcCol * pieceW, srcRow * pieceH, pieceW, pieceH, destCol * pieceW, destRow * pieceH, pieceW, pieceH);
     }
 
-    if (dummyW > 0) sCtx.drawImage(img, gridW, 0, dummyW, h, gridW, 0, dummyW, h);
-    if (dummyH > 0) sCtx.drawImage(img, 0, gridH, w, dummyH, 0, gridH, w, dummyH);
+    // 2. visualCanvas (Bản Soi Live: Dán sharpCanvas lên và vẽ khung viền)
+    const visualCanvas = DOC.createElement('canvas');
+    visualCanvas.width = w; visualCanvas.height = h;
+    const vCtx = visualCanvas.getContext('2d', { alpha: false });
+    vCtx.imageSmoothingEnabled = false;
+    vCtx.drawImage(sharpCanvas, 0, 0);
+
+    // Khung Hồng 2px vùng ma trận (nếu có viền dư)
+    if (dummyW > 0 || dummyH > 0) {
+      vCtx.strokeStyle = '#ff007f';
+      vCtx.lineWidth = 2;
+      vCtx.strokeRect(0, 0, gridW, gridH);
+    }
+    // Viền Cyan 4px toàn ảnh
+    vCtx.strokeStyle = '#00ffff';
+    vCtx.lineWidth = 4;
+    vCtx.strokeRect(0, 0, w, h);
 
     const dummyText = (dummyW > 0 || dummyH > 0)
-      ? `Mép giữ nguyên: ${dummyW}px phải, ${dummyH}px đáy`
+      ? `Mép giữ nguyên: ${dummyW}px phải, ${dummyH}px đáy (Không xáo trộn)`
       : `Khớp ma trận 100% (Không có phần dư)`;
 
     return { rawW: w, rawH: h, gridW, gridH, dummyText, visualCanvas, sharpCanvas, img };
@@ -116,18 +108,34 @@
     return { titleId, episodeId };
   }
 
+  function isEpisodeUrl() {
+    const path = WIN.location.pathname;
+    return /\/viewer\/\d+\/\d+/.test(path) || /\/title\/\d+/.test(path);
+  }
+
   async function boot() {
     while (!DOC.body) await sleep(50);
+
+    if (!isEpisodeUrl()) {
+      DOC.getElementById('manga-inspector-root')?.remove();
+      return;
+    }
     
     // Đợi trang nạp và bắt được episodeId (tối đa 2 giây nếu ở trang /title/)
     let { titleId, episodeId } = getUrlParams();
-    if (!titleId) return;
+    if (!titleId) {
+      DOC.getElementById('manga-inspector-root')?.remove();
+      return;
+    }
 
     for (let i = 0; i < 20 && !episodeId; i++) {
       await sleep(100);
       episodeId = getUrlParams().episodeId;
     }
-    if (!episodeId) return;
+    if (!episodeId) {
+      DOC.getElementById('manga-inspector-root')?.remove();
+      return;
+    }
 
     DOC.getElementById('manga-inspector-root')?.remove();
 
@@ -159,7 +167,7 @@
             const mime = Utils.detectMimeType(imgBuf);
             const img = await Utils.loadImage(imgBuf, mime);
 
-            const res = descrambleYnjn(img, pageItem.image_horizontal_size, pageItem.image_vertical_size);
+            const res = descrambleYnjn(img);
             onSuccess({ ...res, rawExt: ext.toUpperCase(), rawBuf: imgBuf }, pNo);
           } catch (e) { onError(e?.message || String(e)); }
         },
@@ -175,7 +183,7 @@
               const ext = Utils.detectExt(imgBuf);
               const mime = Utils.detectMimeType(imgBuf);
               const img = await Utils.loadImage(imgBuf, mime);
-              const res = descrambleYnjn(img, pageItem.image_horizontal_size, pageItem.image_vertical_size);
+              const res = descrambleYnjn(img);
 
               const a1 = DOC.createElement('a'); a1.href = URL.createObjectURL(new Blob([imgBuf], { type: mime }));
               a1.download = `Ynjn_Trang_${pNo}_raw.${ext}`; a1.click();
@@ -197,7 +205,7 @@
                 const ext = Utils.detectExt(imgBuf);
                 const mime = Utils.detectMimeType(imgBuf);
                 const img = await Utils.loadImage(imgBuf, mime);
-                const res = descrambleYnjn(img, pageItem.image_horizontal_size, pageItem.image_vertical_size);
+                const res = descrambleYnjn(img);
 
                 const sharpBlob = await new Promise(r => res.sharpCanvas.toBlob(r, mimeType, quality));
                 zip.addFile(`1_raw/${pNo}.${ext}`, new Uint8Array(imgBuf));

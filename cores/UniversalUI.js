@@ -228,6 +228,7 @@
           jpgInput.style.display = "none";
           spanJpg.textContent = "";
           isZeroCopy = false;
+          btn.textContent = "Download";
         }
 
         // 2. KHI "Sẵn sàng.": NẾU CÓ TRUYỀN format -> TỰ ĐỘNG CHUYỂN SANG CHẾ ĐỘ ZERO-COPY
@@ -245,6 +246,11 @@
           jpgInput.style.display = "";
           spanJpg.style.cursor = "pointer";
           spanJpg.textContent = "Xuất file JPG (mặc định PNG)";
+        }
+
+        // 3. KHI HOÀN TẤT LẦN ĐẦU: TỰ ĐỘNG ĐỔI THÀNH "Redownload"
+        if (data.status && data.status.includes("Hoàn tất")) {
+          btn.textContent = "Redownload";
         }
       },
       updateFormatUI: function(format) {

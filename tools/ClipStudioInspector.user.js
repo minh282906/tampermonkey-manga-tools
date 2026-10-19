@@ -12,6 +12,8 @@
 // @match        https://bs.comicdc.jp/*
 // @match        https://mbj-bs.pf.mobilebook.jp/*
 // @match        https://bs.web-viewer.honto.jp/*
+// @match        https://bsreader.handycomic.jp/*
+// @match        https://api.distribution.mediadotech.com/*
 // @grant        unsafeWindow
 // @grant        GM_xmlhttpRequest
 // @connect      *
@@ -253,7 +255,8 @@
           const xmlBuf = await Utils.fetchBuffer(xmlUrl);
           const pattern = Tools.parseScrambleXml(new TextDecoder().decode(xmlBuf));
 
-          const imgUrl = `${baseUrl}?mode=1&file=${pageStr}_0000.bin&reqtype=0&vm=${vm}&param=${param}&time=${Date.now()}`;
+          const modeImg = baseUrl.includes('handycomic') ? 3 : 1;
+          const imgUrl = `${baseUrl}?mode=${modeImg}&file=${pageStr}_0000.bin&reqtype=0&vm=${vm}&param=${param}&time=${Date.now()}`;
           const rawBin = await Utils.fetchBuffer(imgUrl);
 
           const cleanBytes = Tools.decryptBinary(rawBin);
@@ -281,7 +284,8 @@
             const xmlBuf = await Utils.fetchBuffer(xmlUrl);
             const pattern = Tools.parseScrambleXml(new TextDecoder().decode(xmlBuf));
 
-            const imgUrl = `${baseUrl}?mode=1&file=${pageStr}_0000.bin&reqtype=0&vm=${vm}&param=${param}&time=${Date.now()}`;
+            const modeImg = baseUrl.includes('handycomic') ? 3 : 1;
+            const imgUrl = `${baseUrl}?mode=${modeImg}&file=${pageStr}_0000.bin&reqtype=0&vm=${vm}&param=${param}&time=${Date.now()}`;
             const rawBin = await Utils.fetchBuffer(imgUrl);
             const cleanBytes = Tools.decryptBinary(rawBin);
             const ext = Utils.detectExt(cleanBytes.buffer);
@@ -314,7 +318,8 @@
               const xmlBuf = await Utils.fetchBuffer(xmlUrl);
               const pattern = Tools.parseScrambleXml(new TextDecoder().decode(xmlBuf));
 
-              const imgUrl = `${baseUrl}?mode=1&file=${pageStr}_0000.bin&reqtype=0&vm=${vm}&param=${param}&time=${Date.now()}`;
+              const modeImg = baseUrl.includes('handycomic') ? 3 : 1;
+              const imgUrl = `${baseUrl}?mode=${modeImg}&file=${pageStr}_0000.bin&reqtype=0&vm=${vm}&param=${param}&time=${Date.now()}`;
               const rawBin = await Utils.fetchBuffer(imgUrl);
               const cleanBytes = Tools.decryptBinary(rawBin);
               const ext = Utils.detectExt(cleanBytes.buffer);

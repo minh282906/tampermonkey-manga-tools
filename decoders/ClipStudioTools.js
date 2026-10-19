@@ -94,6 +94,12 @@
       } else if (len === 704) {
         cols = 22;
         rows = 32;
+      } else if (len === 780) {
+        cols = 26;
+        rows = 30;
+      } else if (len === 2295) {
+        cols = 45;
+        rows = 51;
       } else {
         const sqrt = Math.round(Math.sqrt(len));
         if (sqrt * sqrt === len) {

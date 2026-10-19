@@ -23,7 +23,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 | **PUBLUS Downloader**         | Bao gốm các bên sử dụng engine PUBLUS Reader / NFBR (BookWalker, PixivComic (tankobon), DMM Books, FANZA Books, COMIC nettai, Comic Boost, PASH UP!, d Anime Store, マンガBANG, dブック) | 🟢 Hoạt động |    [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/PublusDownloader.user.js)    |
 | **Piccoma Downloader**        | Piccoma (`piccoma.com`)                                                                                                                                             | 🟢 Hoạt động |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/PiccomaDownloader.user.js)    |
 | **RakutenKobo Downloader**    | [books.rakuten.co.jp/e-book](https://books.rakuten.co.jp/e-book/)                                                                                                   | 🟢 Hoạt động | [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/RakutenKoboDownloader.user.js)  |
-| **ClipStudio Downloader**     | Bao gồm tất cả các bên sử dụng engine CSR (Sugocomic, Fire CROSS, Drecomics, honto, Access BOOKS, Hakusensha e-net!, Com!cFesta)                                    | 🟢 Hoạt động |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/ClipStudioDownloader.user.js)  |
+| **ClipStudio Downloader**     | Bao gồm tất cả các bên sử dụng engine CSR (Sugocomic, Fire CROSS, Drecomics, honto, Access BOOKS, Hakusensha e-net!, Com!cFesta, Happyコミック, Comist, Galcomi, いつでも書店, ラクラクコミック, ブッコミ)                                    | 🟢 Hoạt động |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/ClipStudioDownloader.user.js)  |
 | **Renta Downloader**          | (`renta.papy.co.jp`)                                                                                                                                                | 🟢 Hoạt động |    [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/RentaDownloader.user.js)     |
 | **Comici+ Downloader**        | Champion Cross, Comic Growl, Young Champion, Young Animal, Rimacomi+, HERO'S Web..._(~30 sites)_                                                                    | 🟢 Hoạt động |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/Comici+Downloader.user.js)    |
 | **GigaViewer Downloader**     | ShonenJump+, Sunday Webry, Comic Days, Kurage Bunch, MAGCOMI, Comic Gardo, Comic Zenon..._(20+ sites)_                                                              | 🟢 Hoạt động |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/GigaViewerDownloader.user.js)  |
@@ -200,6 +200,12 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 - honto (`honto.jp`)
 - DRE Comics (`drecom-media.jp/drecomics`)
 - 白泉社 e-net! (`hakusensha-e.net`)
+- Happyコミック (`happycomic.jp`)
+- Comist (`comist.jp`)
+- Galcomi (`galcomi.jp`)
+- いつでも書店 (`itsudoco.com`)
+- ラクラクコミック (`rakurakucomic.com`)
+- ブッコミ (`sp.handycomic.jp`)
 
 </details>
 

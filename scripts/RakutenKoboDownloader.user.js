@@ -521,16 +521,32 @@
         state.bookMetadata = await fetchBookMetadata(productId);
       } catch(e) {}
 
-      // Chờ Kobo dựng xong danh sách trang trong DOM để lấy số trang thật của cuốn truyện này
+      // Chờ Kobo dựng xong danh sách trang trong DOM
       let realTotal = 0;
-      for (let r = 0; r < 100; r++) {
+      for (let r = 0; r < 80; r++) {
         if (!realTotal) {
           realTotal = DOC.querySelectorAll('#ReadingOrderView .ReadingItem, [id^="p_"], #p-cover').length;
         }
-        
-        // CHỈ THOÁT KHI CẢ SỐ TRANG LẪN BẪY MAGIC BYTES ĐỀU ĐÃ SẴN SÀNG:
-        if (realTotal > 0 && capturedBlobExt) break;        
-        await sleep(150);
+
+        // Thoát ngay khi đã có đủ cả hai
+        if (realTotal > 0 && capturedBlobExt) break;
+
+        // Nếu đã có số trang mà bẫy chưa bắt kịp (do nạp trước), quét trực tiếp thẻ ảnh blob đang hiển thị trên màn hình
+        if (realTotal > 0 && !capturedBlobExt) {
+          const blobEl = DOC.querySelector('image[*|href^="blob:"], image[href^="blob:"], img[src^="blob:"]');
+          const blobUrl = blobEl?.getAttribute('src') || blobEl?.getAttribute('href') || blobEl?.getAttribute('xlink:href');
+          if (blobUrl) {
+            try {
+              const res = await WIN.fetch(blobUrl);
+              const buf = await res.arrayBuffer();
+              const Utils = window.MangaUtils || globalThis.MangaUtils;
+              capturedBlobExt = Utils?.detectExt(buf);
+              if (capturedBlobExt) break;
+            } catch(e) {}
+          }
+        }
+
+        await sleep(200); // Tăng delay lên 200ms để trình duyệt kịp thở
       }
 
       if (realTotal <= 0) throw new Error("Không thể đếm số trang từ viewer.");

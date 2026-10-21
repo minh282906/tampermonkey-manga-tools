@@ -1547,10 +1547,45 @@
     // Nhận diện Brand Name và màu sắc theo đúng Header bạn cung cấp
     get brandInfo() {
       const href = WIN.location.href.toLowerCase();
+      const ref = (DOC.referrer || "").toLowerCase();
+      const title = (DOC.title || "").toLowerCase();
 
-      // A. COMIC POLCA (123hon.com/polca) - Nền Xanh đậm (#005BAC), chữ trắng
+      // A. HỆ THỐNG 123HON (COMIC POLCA & COMIC NOVA)
       if (href.includes('123hon.com')) {
-        return { name: "Comic Polca", color: "#2563eb", bg: "#ffffff", text: "#1d4ed8", top: "43.2px" };
+        // Kiểm tra dấu hiệu của Comic Nova (URL, Referrer, Title, DOM hoặc Cache Session)
+        let isNova = href.includes('nova') || ref.includes('/nova/') || title.includes('ノヴァ') || title.includes('nova');
+        
+        if (!isNova && (href.includes('polca') || ref.includes('/polca/') || title.includes('ポルカ') || title.includes('polca'))) {
+          isNova = false;
+        } else if (!isNova) {
+          // Fallback kiểm tra link trong DOM hoặc SessionStorage khi bấm F5
+          const hasNovaLink = Boolean(DOC.querySelector('a[href*="/nova"], img[src*="nova"], img[alt*="ノヴァ"]'));
+          const cachedBrand = sessionStorage.getItem('123hon_brand');
+          isNova = hasNovaLink || cachedBrand === 'nova';
+        }
+
+        // Lưu vết vào SessionStorage để F5 không bị mất
+        sessionStorage.setItem('123hon_brand', isNova ? 'nova' : 'polca');
+
+        // 1. COMIC NOVA: Theme Vàng rực (#EAB308) phối Đen tuyền (#18181b)
+        if (isNova) {
+          return { 
+            name: "Comic Nova", 
+            color: "#FFFF1F", 
+            bg: "#ffffff", 
+            text: "#18181b", 
+            top: "43.2px" 
+          };
+        }
+
+        // 2. COMIC POLCA: Theme Xanh dương (#2563eb)
+        return { 
+          name: "Comic Polca", 
+          color: "#2563eb", 
+          bg: "#ffffff", 
+          text: "#1d4ed8", 
+          top: "43.2px" 
+        };
       }
 
       // B. COMIC PORTA (comic-porta.com) - Nền Cam (#FF9800), chữ đen (#18181b)

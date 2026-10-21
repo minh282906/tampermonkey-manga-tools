@@ -170,6 +170,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 - e-Comic Store (`e-comi.shogakukan.co.jp`)
 - Kirapo (`kirapo.jp`) (Zulet!, Comic Meteor, Comic Polaris, Comic Ambre, Comic Etoile, Comic Astir)
 - Comic Polca (`123hon.com/polca`)
+- Comic Nova (`123hon.com/nova`)
 - Comic Porta (`comic-porta.com`)
 - Super Hero Comics (`televikun-super-hero-comics.com`)
 - S-MANGA (`s-manga.net`)

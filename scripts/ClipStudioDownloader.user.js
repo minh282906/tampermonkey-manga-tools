@@ -11,6 +11,7 @@
 // @match        https://drecom-media.jp/viewer/*
 // @match        https://bsreader.hakusensha-e.net/*
 // @match        https://bs.comicdc.jp/*
+// @match        https://bs-comicdc.bookagency.jp/*
 // @match        https://mbj-bs.pf.mobilebook.jp/*
 // @match        https://bs.web-viewer.honto.jp/*
 // @match        https://bsreader.handycomic.jp/*
@@ -25,6 +26,7 @@
 // @connect      drecom-media.jp
 // @connect      bsreader.hakusensha-e.net
 // @connect      bs.comicdc.jp
+// @connect      bs-comicdc.bookagency.jp
 // @connect      mbj-bs.pf.mobilebook.jp
 // @connect      bs.web-viewer.honto.jp
 // @connect      bsreader.handycomic.jp

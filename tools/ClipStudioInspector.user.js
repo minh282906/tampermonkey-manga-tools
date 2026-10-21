@@ -10,6 +10,7 @@
 // @match        https://drecom-media.jp/viewer/*
 // @match        https://bsreader.hakusensha-e.net/*
 // @match        https://bs.comicdc.jp/*
+// @match        https://bs-comicdc.bookagency.jp/*
 // @match        https://mbj-bs.pf.mobilebook.jp/*
 // @match        https://bs.web-viewer.honto.jp/*
 // @match        https://bsreader.handycomic.jp/*

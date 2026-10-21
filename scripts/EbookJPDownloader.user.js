@@ -369,38 +369,22 @@
   }
 
   /* =========================================================================
-   * BỘ DÒ MODULE WASM ĐỘNG (CHỐNG LỖI KHI YAHOO ĐỔI TÊN FILE BUILD)
+   * BỘ DÒ VUE ENGINE & TÓM SỐNG LOADER LIBER NUXT (DYNAMIC O(1))
    * ========================================================================= */
-  async function resolveWasmFactoryModule() {
-    if (state.cachedModule) return state.cachedModule;
-
-    // Nấc 1: Fast-Path 0ms với hash hiện tại
-    const currentChunkUrl = 'https://ebookjapan.yahoo.co.jp/_nuxt/C5rFXX3l2.js';
-    try {
-      const mod = await import(currentChunkUrl);
-      if (typeof mod?.n === 'function' && mod.n.toString().includes('LoaderType')) {
-        state.cachedModule = mod;
-        return mod;
-      }
-    } catch (e) {}
-
-    // Nấc 2: Tự hồi phục (Quét động toàn bộ modulepreload khi Yahoo đổi tên file)
-    const links = Array.from(DOC.querySelectorAll('link[rel="modulepreload"][href*="/_nuxt/"], script[src*="/_nuxt/"]'));
-    const urls = links.map(el => el.href || el.src).filter(Boolean);
-
-    for (const url of urls) {
-      try {
-        const candidate = await import(url);
-        // Dấu vân tay: Export hàm createFactory quản lý LoaderType
-        if (typeof candidate?.n === 'function' && candidate.n.toString().includes('LoaderType')) {
-          console.log(`[ej-liber-dl] 🔄 Đã tự động nhận diện module Wasm mới: ${url}`);
-          state.cachedModule = candidate;
-          return candidate;
-        }
-      } catch (err) {}
+  function findVueEngine() {
+    const root = DOC.querySelector('#__nuxt')?._vnode;
+    if (!root) return null;
+    const pending = [root], seen = new Set();
+    while (pending.length) {
+      const v = pending.pop();
+      if (!v || typeof v !== 'object' || seen.has(v)) continue;
+      seen.add(v);
+      const eng = v.component?.props?.engine;
+      if (typeof eng?.drawPage === 'function' && typeof eng?.initialize === 'function') return eng;
+      pending.push(v.component?.subTree, v.suspense?.activeBranch);
+      if (Array.isArray(v.children)) pending.push(...v.children);
     }
-
-    throw new Error("Không tìm thấy module WasmFactory trên trang EbookJapan.");
+    return null;
   }
 
   /* =========================================================================
@@ -409,78 +393,51 @@
   async function ensureBookInitialized() {
     if (state.loader?.pages?.length) return state.loader;
 
-    // 1. Phân tích URL động (Bắt mọi loại route: /free/, /story/, /sample/, /volume/...)
-    const pathParts = WIN.location.pathname.split('/').filter(Boolean); // ['viewer', 'story', 'B00...']
-    const routeType = pathParts[1] || 'story';
-    const routeCode = pathParts[2] || getBookCode();
-    const urlSsid = new URLSearchParams(WIN.location.search).get('ssid') || '';
-
-    // 2. Trích xuất metadata từ Pinia Store
-    const app = DOC.getElementById('__nuxt')?.__vue_app__;
-    const prov = app?._context?.provides || {};
-    let pinia = null;
-    for (const s of Object.getOwnPropertySymbols(prov)) {
-      if (prov[s]?.state?.value) { pinia = prov[s]; break; }
-    }
-
-    let pub = pinia?.state?.value?.['viewer-liber']?.bookInfo?.publication;
-
-    // Fallback qua NUXT_DATA nếu Pinia chưa hydrate
-    if (!pub) {
-      const nuxtEl = DOC.getElementById('__NUXT_DATA__');
-      if (nuxtEl?.textContent) {
-        try {
-          const arr = JSON.parse(nuxtEl.textContent);
-          const meta = arr.find(x => x && typeof x === 'object' && x.totalPage !== undefined);
-          if (meta) {
-            const resolve = idx => (typeof idx === 'number' && arr[idx] !== undefined) ? arr[idx] : idx;
-            pub = {
-              type: routeType,
-              code: resolve(meta.bookCd || meta.storyCd || routeCode),
-              ssid: urlSsid,
-              name: resolve(meta.name || '')
-            };
-          }
-        } catch(e) {}
+    let engine = null;
+    for (let i = 0; i < 100; i++) {
+      const candidate = findVueEngine();
+      if (candidate && (candidate.isInitialized?.value ?? candidate.isInitialized)) {
+        engine = candidate;
+        break;
       }
+      await sleep(150);
     }
 
-    if (!pub?.code) {
-      pub = { type: routeType, code: routeCode, ssid: urlSsid };
+    if (!engine) throw new Error("Không tìm thấy Vue Engine của Liber Nuxt.");
+
+    // 1. Tự động bóc URL chunk Wasm mới nhất trực tiếp từ mã nguồn engine.initialize
+    const relativeUrl = /import\(\s*['"`]([^'"`]+)['"`]\s*\)/.exec(String(engine.initialize))?.[1];
+    const entryUrl = DOC.querySelector('script[type="module"][src]')?.src;
+    if (!relativeUrl || !entryUrl) throw new Error("Không bóc được đường dẫn chunk Wasm.");
+
+    const moduleUrl = new URL(relativeUrl, entryUrl);
+    const mod = await Function('url', 'return import(url)')(moduleUrl.href);
+    const createFactory = mod.default || Object.values(mod).find(v => typeof v?.default === 'function')?.default;
+    if (typeof createFactory !== 'function') throw new Error("Không tìm thấy createFactory.");
+
+    // 2. Tìm prototype chung chứa getPageInfo
+    const probe = await createFactory(2).create(null, null, null);
+    let proto = Object.getPrototypeOf(probe);
+    while (proto && !Object.hasOwn(proto, 'getPageInfo')) proto = Object.getPrototypeOf(proto);
+    if (!proto) throw new Error("Không tìm thấy hàm getPageInfo trên prototype.");
+
+    // 3. Đặt bẫy bắt instance loader thật của trang web
+    let liveLoader = null;
+    const orig = proto.getPageInfo;
+    proto.getPageInfo = function(...args) { liveLoader ||= this; return orig.apply(this, args); };
+    try {
+      await engine.drawPage(DOC.createElement('canvas'), 0);
+    } finally {
+      proto.getPageInfo = orig;
     }
 
-    state.publication = pub;
-
-    // 3. Nạp WasmFactory động và tự dò enum Factory
-    const mod = await resolveWasmFactoryModule();
-    let factory = null;
-    for (const type of [2, 0, 1, 3]) {
-      try {
-        const f = mod.n(type);
-        if (f?.constructor?.name === 'WasmFactory' || f?.create?.toString().includes('BunchVIEWER')) {
-          factory = f;
-          break;
-        }
-      } catch (e) {}
-    }
-    if (!factory) factory = mod.n(2);
-
-    // 4. Khởi tạo BunchVIEWER và mở sách Sharp Master
-    const loader = await factory.createLoader("", void 0, undefined, false);
-    await loader.open({
-      type: pub.type || routeType,
-      code: pub.code || routeCode,
-      ssid: pub.ssid || urlSsid,
-      forceResize: 1 // CHẾ ĐỘ SHARP
-    });
-
-    if (!loader.pages?.length) {
-      throw new Error("Không thể khởi tạo danh sách trang từ máy chủ.");
+    if (!liveLoader || !Array.isArray(liveLoader.pages)) {
+      throw new Error("Không bắt được loader đang chạy của Liber Nuxt.");
     }
 
-    state.loader = loader;
-    state.totalPages = loader.pages.length;
-    return loader;
+    state.loader = liveLoader;
+    state.publication = liveLoader.currentBook?.publication || liveLoader.bookInfo?.publication || null;
+    return liveLoader;
   }
 
   /* ==========================================================================================

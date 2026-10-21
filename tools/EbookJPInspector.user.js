@@ -229,135 +229,73 @@
   }
 
   /* =========================================================================
+   * 3. BỘ DÒ VUE ENGINE & TÓM SỐNG LOADER (LIBER NUXT ENGINE - KHÔNG HARDCODE)
+   * ========================================================================= */
+  function findVueEngine() {
+    const root = DOC.querySelector('#__nuxt')?._vnode;
+    if (!root) return null;
+    const pending = [root], seen = new Set();
+    while (pending.length) {
+      const v = pending.pop();
+      if (!v || typeof v !== 'object' || seen.has(v)) continue;
+      seen.add(v);
+      const eng = v.component?.props?.engine;
+      if (typeof eng?.drawPage === 'function' && typeof eng?.initialize === 'function') return eng;
+      pending.push(v.component?.subTree, v.suspense?.activeBranch);
+      if (Array.isArray(v.children)) pending.push(...v.children);
+    }
+    return null;
+  }
+
+    /* =========================================================================
    * 3. BỘ DÒ MODULE WASM ĐỘNG & KHỞI TẠO NUXT (LIBER NUXT ENGINE)
    * ========================================================================= */
-  async function resolveWasmFactoryModule() {
-    if (state.cachedModule) return state.cachedModule;
-
-    const currentChunkUrl = "https://ebookjapan.yahoo.co.jp/_nuxt/C5rFXX3l2.js";
-    try {
-      const mod = await import(currentChunkUrl);
-      if (
-        typeof mod?.n === "function" &&
-        mod.n.toString().includes("LoaderType")
-      ) {
-        state.cachedModule = mod;
-        return mod;
-      }
-    } catch (e) {}
-
-    const links = Array.from(
-      DOC.querySelectorAll(
-        'link[rel="modulepreload"][href*="/_nuxt/"], script[src*="/_nuxt/"]',
-      ),
-    );
-    const urls = links.map((el) => el.href || el.src).filter(Boolean);
-
-    for (const url of urls) {
-      try {
-        const candidate = await import(url);
-        if (
-          typeof candidate?.n === "function" &&
-          candidate.n.toString().includes("LoaderType")
-        ) {
-          console.log(
-            `[EbookJPInspector] 🔄 Tự động nhận diện Wasm module: ${url}`,
-          );
-          state.cachedModule = candidate;
-          return candidate;
-        }
-      } catch (err) {}
-    }
-
-    throw new Error("Không tìm thấy module WasmFactory trên trang EbookJapan.");
-  }
-
-  function getBookCode() {
-    const pathParts = WIN.location.pathname.split("/").filter(Boolean);
-    return pathParts[2] || "EBOOKJP_BOOK";
-  }
-
   async function ensureNuxtBookInitialized() {
     if (state.loader?.pages?.length) return state.loader;
 
-    const pathParts = WIN.location.pathname.split("/").filter(Boolean);
-    const routeType = pathParts[1] || "story";
-    const routeCode = pathParts[2] || getBookCode();
-    const urlSsid = new URLSearchParams(WIN.location.search).get("ssid") || "";
-
-    const app = DOC.getElementById("__nuxt")?.__vue_app__;
-    const prov = app?._context?.provides || {};
-    let pinia = null;
-    for (const s of Object.getOwnPropertySymbols(prov)) {
-      if (prov[s]?.state?.value) {
-        pinia = prov[s];
+    let engine = null;
+    for (let i = 0; i < 100; i++) {
+      const candidate = findVueEngine();
+      if (candidate && (candidate.isInitialized?.value ?? candidate.isInitialized)) {
+        engine = candidate;
         break;
       }
+      await sleep(150);
+    }
+    if (!engine) throw new Error("Không tìm thấy Vue Engine của Liber Nuxt.");
+
+    // Bóc URL chunk Wasm động từ engine.initialize
+    const relativeUrl = /import\(\s*['"`]([^'"`]+)['"`]\s*\)/.exec(String(engine.initialize))?.[1];
+    const entryUrl = DOC.querySelector('script[type="module"][src]')?.src;
+    if (!relativeUrl || !entryUrl) throw new Error("Không bóc được đường dẫn chunk Wasm.");
+
+    const moduleUrl = new URL(relativeUrl, entryUrl);
+    const mod = await Function('url', 'return import(url)')(moduleUrl.href);
+    const createFactory = mod.default || Object.values(mod).find(v => typeof v?.default === 'function')?.default;
+    if (typeof createFactory !== 'function') throw new Error("Không tìm thấy createFactory.");
+
+    const probe = await createFactory(2).create(null, null, null);
+    let proto = Object.getPrototypeOf(probe);
+    while (proto && !Object.hasOwn(proto, 'getPageInfo')) proto = Object.getPrototypeOf(proto);
+    if (!proto) throw new Error("Không tìm thấy hàm getPageInfo trên prototype.");
+
+    let liveLoader = null;
+    const orig = proto.getPageInfo;
+    proto.getPageInfo = function(...args) { liveLoader ||= this; return orig.apply(this, args); };
+    try {
+      await engine.drawPage(DOC.createElement('canvas'), 0);
+    } finally {
+      proto.getPageInfo = orig;
     }
 
-    let pub = pinia?.state?.value?.["viewer-liber"]?.bookInfo?.publication;
-
-    if (!pub) {
-      const nuxtEl = DOC.getElementById("__NUXT_DATA__");
-      if (nuxtEl?.textContent) {
-        try {
-          const arr = JSON.parse(nuxtEl.textContent);
-          const meta = arr.find(
-            (x) => x && typeof x === "object" && x.totalPage !== undefined,
-          );
-          if (meta) {
-            const resolve = (idx) =>
-              typeof idx === "number" && arr[idx] !== undefined
-                ? arr[idx]
-                : idx;
-            pub = {
-              type: routeType,
-              code: resolve(meta.bookCd || meta.storyCd || routeCode),
-              ssid: urlSsid,
-              name: resolve(meta.name || ""),
-            };
-          }
-        } catch (e) {}
-      }
+    if (!liveLoader || !Array.isArray(liveLoader.pages)) {
+      throw new Error("Không bắt được loader đang chạy của Liber Nuxt.");
     }
 
-    if (!pub?.code) {
-      pub = { type: routeType, code: routeCode, ssid: urlSsid };
-    }
-
-    state.publication = pub;
-
-    const mod = await resolveWasmFactoryModule();
-    let factory = null;
-    for (const type of [2, 0, 1, 3]) {
-      try {
-        const f = mod.n(type);
-        if (
-          f?.constructor?.name === "WasmFactory" ||
-          f?.create?.toString().includes("BunchLoader")
-        ) {
-          factory = f;
-          break;
-        }
-      } catch (e) {}
-    }
-    if (!factory) factory = mod.n(2);
-
-    const loader = await factory.createLoader("", void 0, undefined, false);
-    await loader.open({
-      type: pub.type || routeType,
-      code: pub.code || routeCode,
-      ssid: pub.ssid || urlSsid,
-      forceResize: 1,
-    });
-
-    if (!loader.pages?.length) {
-      throw new Error("Không thể khởi tạo danh sách trang từ máy chủ.");
-    }
-
-    state.loader = loader;
-    state.totalPages = loader.pages.length;
-    return loader;
+    state.loader = liveLoader;
+    state.publication = liveLoader.currentBook?.publication || liveLoader.bookInfo?.publication || null;
+    state.totalPages = liveLoader.pages.length;
+    return liveLoader;
   }
 
   /* =========================================================================

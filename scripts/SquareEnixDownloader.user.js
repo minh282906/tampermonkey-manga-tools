@@ -635,7 +635,7 @@
         const atParts = line.split('*@');
         if (atParts.length < 2) continue;
 
-        const pathMatch = atParts[0].match(/([A-Za-z0-9_/-]+\.webp\.enc\?[^\s*]+)/);
+        const pathMatch = atParts[0].match(/([A-Za-z0-9_/-]+\.[a-z0-9]+\.enc\?[^\s*]+)/);
         if (!pathMatch) continue;
 
         let rawPath = pathMatch[1].replace(/^[A-Z]\//i, '');

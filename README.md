@@ -38,6 +38,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 | **PixivComic Downloader**     | (`comic.pixiv.net`)                                                                                                                                                                                        |  🟢 Hoạt động  |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/PixivComicDownloader.user.js)   |
 | **ZeroSum Online Downloader** | Zero Sum Online (`zerosumonline.com`)                                                                                                                                                                      |  🟢 Hoạt động  |    [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/ZerosumDownloader.user.js)    |
 | **MangaOne Downloader**       | Manga ONE và Ura Sunday<br />(`manga-one.com`, `urasunday.com`)                                                                                                                                            |  🟢 Hoạt động  |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/MangaOneDownloader.user.js)    |
+| **CoroCoro Downloader**   | CoroCoro Comic (`corocoro.jp`)                                                                                                                                                                          |  🟢 Hoạt động  | [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/CoroCoroDownloader.user.js)  |
 | **FlowerComics Downloader**   | フラコミlike! (`flowercomics.jp`)                                                                                                                                                                          |  🟢 Hoạt động  | [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/FlowerComicsDownloader.user.js)  |
 | **Cycomi Downloader**         | Cycomics (`cycomi.com`)                                                                                                                                                                                    |  🟢 Hoạt động  |    [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/CycomiDownloader.user.js)     |
 | **Drecomi+ Downloader**       | Drecomi+ (`drecomi-plus.jp`)                                                                                                                                                                               |  🟢 Hoạt động  |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/Drecomi+Downloader.user.js)    |
@@ -241,6 +242,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 - Mecha Comic (`mechacomic.jp`)
 - MangaONE và Ura Sunday (`manga-one.com`, `urasunday.com`)
 - フラコミlike! (`flowercomics.jp`)
+- コロコロコミック (`corocoro.jp`)
 - まんがクレヨンしんちゃん (`manga-shinchan.com`)
 - Zero Sum Online (`zerosumonline.com`)
 - Mangano (`manga-no.com`)

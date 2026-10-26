@@ -3,7 +3,7 @@
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
 // @version      1.0.0
 // @icon         https://www.corocoro.jp/favicon.ico
-// @description  Tải manga trên CoroCoro Online / 週刊コロコロコミック (corocoro.jp) giải mã AES-256-CBC Zero-Copy 0ms.
+// @description  Tải manga trên CoroCoro Online / 週刊コロコロコミック (corocoro.jp).
 // @author       anonymous & AI
 // @match        https://www.corocoro.jp/chapter/*
 // @match        https://corocoro.jp/chapter/*

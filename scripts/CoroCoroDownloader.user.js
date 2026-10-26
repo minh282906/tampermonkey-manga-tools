@@ -33,7 +33,7 @@
    * CẤU HÌNH HỆ THỐNG
    * ========================================================================= */
   const CONFIG = {
-    MAX_CONCURRENT: 6   // 6 luồng TCP Socket kịch trần
+    MAX_CONCURRENT: 6   // 6 luồng TCP Socket
   };
 
   const WIN = typeof unsafeWindow === "undefined" ? window : unsafeWindow;
@@ -135,7 +135,7 @@
   }
 
   /* =========================================================================
-   * 3. BỘ HỖ TRỢ XỬ LÝ CHUỖI, URL & TIÊU ĐỀ (GOLDEN RULE 1)
+   * 3. BỘ HỖ TRỢ XỬ LÝ CHUỖI, URL & TIÊU ĐỀ
    * ========================================================================= */
   function isEpisodeUrl() {
     return /\/chapter\/\d+(?:\/viewer)?/i.test(WIN.location.pathname);
@@ -221,7 +221,7 @@
   }
 
   /* =========================================================================
-   * KÉO GÓI TIN CHỦ ĐỘNG BẰNG HTTP METHOD PUT (CHUẨN MANGA-ONE)
+   * KÉO GÓI TIN CHỦ ĐỘNG BẰNG HTTP METHOD PUT
    * ========================================================================= */
   async function fetchChapterConfig(chapterId) {
     const apiUrl = `https://www.corocoro.jp/api/csr?rq=chapter/viewer&chapter_id=${chapterId}&use_ticket=0&event_point=0&paid_point=0`;
@@ -250,7 +250,7 @@
   }
 
   /* =========================================================================
-   * 4. BÓC TÁCH GÓI TIN MANIFEST, KEY VÀ IV (CHUẨN SHOGAKUKAN MANGA-ONE)
+   * 4. BÓC TÁCH GÓI TIN MANIFEST, KEY VÀ IV
    * ========================================================================= */
   async function resolveChapterData(chapterId) {
     let rawText = capturedApiText;

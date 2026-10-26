@@ -214,10 +214,10 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 <summary><b>Click để xem chi tiết các bên thuộc Starts Publishing (スターツ出版) </b></summary>
 
 - comicグラスト (`novema.jp/grast`)
-- OZcomics 
-- BeLuck (`novema.jp/beluck`)
 - noicomi (`no-ichigo.jp`)
 - comic BERRYS và Berry's fantasy (`berrys-cafe.jp`)
+- OZcomics 
+- BeLuck (`novema.jp/beluck`)
 
 </details>
 
@@ -278,6 +278,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 - MangaMeets (`manga-meets.jp`)
 - Souffle (`souffle.life`)
 - Comic Owl (`owl-comic.jp`)
+- 宝島すごい！WEB (`sugoiweb.jp`)
 
 </details>
 

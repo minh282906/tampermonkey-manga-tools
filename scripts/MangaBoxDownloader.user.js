@@ -72,7 +72,7 @@
         btnColor: "#ffffff",        // Chữ nút trắng
         tabBg: "#379ABC",
         tabColor: "#ffffff",
-        topOffset: "54px",
+        topOffset: "42px",
         onDownload: startDownload
       };
 

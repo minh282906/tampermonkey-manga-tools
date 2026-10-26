@@ -236,7 +236,6 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 - いつでも書店 (`itsudoco.com`)
 - ラクラクコミック (`rakurakucomic.com`)
 - ブッコミ (`sp.handycomic.jp`)
-- マンガボックス (`mangabox.me`)
 
 </details>
 
@@ -279,6 +278,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 - Souffle (`souffle.life`)
 - Comic Owl (`owl-comic.jp`)
 - 宝島すごい！WEB (`sugoiweb.jp`)
+- マンガボックス (`mangabox.me`)
 - 週プレNEWS (`wpb.shueisha.co.jp`)
 
 </details>

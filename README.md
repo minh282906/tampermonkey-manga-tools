@@ -56,6 +56,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 | **Alphapolis Downloader**       | (`alphapolis.co.jp`)                                                                                                                                                                                       |  🟢 Hoạt động  |      [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/PixivDownloader.user.js)       |
 | **MangaMeets Downloader**       | MangaMeets (`manga-meets.jp`)                                                                                                                                                                              |  🟢 Hoạt động  |    [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/MangaMeetsDownloader.user.js)    |
 | **MangaMee Downloader**         | マンガMee (`manga-mee.jp`)                                                                                                                                                                                 |  🟢 Hoạt động  |     [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/MangaMeeDownloader.user.js)     |
+| **MangaBox Downloader**         | Manga Box (`mangabox.me`)                                                                                                                                                                             |  🟢 Hoạt động  |     [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/MangaBoxDownloader.user.js)     |
 | **Amazon Downloader**           | (`amazon.co.jp`)                                                                                                                                                                                           |  🟢 Hoạt động  |      [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/AmazonDownloader.user.js)      |
 | **OwlComic Downloader**         | (`owl-comic.jp`)                                                                                                                                                                                           |  🟢 Hoạt động  |     [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/OwlComicDownloader.user.js)     |
 
@@ -237,6 +238,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 - いつでも書店 (`itsudoco.com`)
 - ラクラクコミック (`rakurakucomic.com`)
 - ブッコミ (`sp.handycomic.jp`)
+- マンガボックス (`mangabox.me`)
 
 </details>
 

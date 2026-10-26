@@ -59,6 +59,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 | **MangaBox Downloader**         | Manga Box (`mangabox.me`)                                                                                                                                                                             |  🟢 Hoạt động  |     [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/MangaBoxDownloader.user.js)     |
 | **Amazon Downloader**           | (`amazon.co.jp`)                                                                                                                                                                                           |  🟢 Hoạt động  |      [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/AmazonDownloader.user.js)      |
 | **OwlComic Downloader**         | (`owl-comic.jp`)                                                                                                                                                                                           |  🟢 Hoạt động  |     [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/OwlComicDownloader.user.js)     |
+| **Wpb Downloader**       | (`wpb.shueisha.co.jp`)                                                                                                                                                                                          |  🟢 Hoạt động  |    [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/WpbDownloader.user.js)    |
 
 ---
 
@@ -182,7 +183,6 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 - Kodansha (`kodansha.co.jp/comic`)
 - Futabasha (`futabasha.co.jp`)
 - Hayakawa (`hayakawa-online.co.jp`)
-- 
 
 </details>
 
@@ -206,8 +206,6 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 - ヤングガンガン (`magazine.jp.square-enix.com/yg/`)
 - 月刊ビッグガンガン (`magazine.jp.square-enix.com/biggangan/`)
 - MANGA UP! (`global.manga-up.com`)
-
-- Gangan Online, Manga Up, Shounen Gangan, GFantasy, Gangan Joker, Young Gangan, Big Gangan, ...
 
 </details>
 
@@ -281,6 +279,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 - Souffle (`souffle.life`)
 - Comic Owl (`owl-comic.jp`)
 - 宝島すごい！WEB (`sugoiweb.jp`)
+- 週プレNEWS (`wpb.shueisha.co.jp`)
 
 </details>
 

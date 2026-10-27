@@ -117,7 +117,7 @@
     "magcomi.com":          { name: "MAGCOMI",          top: "96px" , color: "#d92b7e", bg: "#ffffff", text: "#d92b7e" },
     "comic-gardo.com":      { name: "Comic Gardo",      top: "91px" , color: "#38bdf8", bg: "#030712", text: "#7dd3fc" },
     "comic-zenon.com":      { name: "Zenon+",           top: "80px" , color: "#d75c4b", bg: "#ffffff", text: "#d75c4b" },
-    "comic-action.com":     { name: "Web Action",       top: "90px" , color: "#e8decb", bg: "#1c1917", text: "#f5efeb" },
+    "comic-action.com":     { name: "web Action",       top: "90px" , color: "#e8decb", bg: "#1c1917", text: "#f5efeb" },
     "comic-trail.com":      { name: "Comic Trail",      top: "78px" , color: "#b238e7", bg: "#ffffff", text: "#14b8a6" },
     "feelweb.jp":           { name: "FEEL WEB",         top: "79px" , color: "#18181b", bg: "#ffffff", text: "#18181b" },
     "comic-earthstar.com":  { name: "Comic Earth Star", top: "91px" , color: "#1d4ed8", bg: "#ffffff", text: "#1d4ed8" },

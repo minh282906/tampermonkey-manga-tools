@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         PUBLUS Universal Downloader
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
-// @version      5.0.0
+// @version      5.0.1
 // @icon         http://www.google.com/s2/favicons?domain=publus.jp&sz=128
-// @description  Tải manga trên toàn bộ hệ sinh thái ACCESS PUBLUS Reader / NFBR (BookWalker, Pixiv Comic Store, DMM Books, COMIC nettai, PASH UP!, Comic Boost, d Anime Store).
+// @description  Tải manga trên toàn bộ hệ sinh thái ACCESS PUBLUS Reader / NFBR (BookWalker, Pixiv Comic Store, DMM Books, COMIC nettai, PASH UP!, Comic Boost, d Anime Store, dブック, マンガBANG!).
 // @author       anonymous & AI
 // @match        https://viewer.bookwalker.jp/*/viewer.html*
 // @match        https://viewer-trial.bookwalker.jp/*/viewer.html*
@@ -1799,7 +1799,17 @@
                 isScrambled: pageObj.isScrambled
               };
             } catch (err) {
-              if (retryCount >= 2) throw err;
+              // CHỈ KÍCH HOẠT DUY NHẤT CHO BOOKWALKER KHI TOKEN HẾT HẠN
+              if (isBookWalker()) {
+                try {
+                  const freshData = await fetchBookWalkerManifest(cid);
+                  if (freshData?.pages?.[0]?.url) {
+                    currentAuthQuery = freshData.pages[0].url.split('?')[1] || "";
+                  }
+                } catch (renewErr) {}
+              }
+
+              if (retryCount >= 3) throw err;
               retryCount++;
               await sleep(500);
             }

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kadokawa Universal Downloader
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
-// @version      1.0.0
+// @version      1.0.1
 // @icon         https://www.google.com/s2/favicons?domain=kadokawa.co.jp&sz=128
 // @description  Tải manga trên toàn bộ hệ sinh thái Kadokawa & Dwango (ComicWalker / KadoComi, Niconico Manga PC & Mobile).
 // @author       anonymous & AI
@@ -457,7 +457,7 @@
         for (const script of scripts) {
           const content = script.textContent || '';
           if (content.includes('self.__next_f') || content.includes('http')) {
-            const matches = content.match(/https?:\\?\/\\?\/[^\s"',\\]+?\d+p\?[^\s"',\\]+/g);
+            const matches = content.match(/https?:\\?\/\\?\/[^\s"',\\]*?nicomanga\.jp\/[^\s"',\\]*?\d+p(?:\?[^\s"',\\]*)?/g);
             if (matches) {
               for (let m of matches) {
                 m = m.replace(/\\/g, '');
@@ -491,13 +491,15 @@
         }
 
         if (mainItems.length === 0) {
-          const imgEls = DOC.querySelectorAll('img[src*="p?"], [data-src*="p?"]');
+          const imgEls = DOC.querySelectorAll('img[src*="nicomanga.jp"], [data-src*="nicomanga.jp"], img[src*="p"], [data-src*="p"]');
           for (const img of imgEls) {
             let src = img.getAttribute('data-src') || img.getAttribute('src') || '';
-            if (src && !src.startsWith('data:')) {
-              if (src.startsWith('//')) src = 'https:' + src;
-              if (!mainItems.some(i => i.url === src)) {
-                mainItems.push({ url: src, drmHash: Tools.extractDrmHashFromUrl(src) });
+            if (src && !src.startsWith('data:') && !src.includes('mg_thumb')) {
+              if (/\d+p(?:\?|$)/.test(src)) {
+                if (src.startsWith('//')) src = 'https:' + src;
+                if (!mainItems.some(i => i.url === src)) {
+                  mainItems.push({ url: src, drmHash: Tools.extractDrmHashFromUrl(src) });
+                }
               }
             }
           }

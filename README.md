@@ -32,6 +32,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 | **Square Enix Downloader**      | Bao gồm các bên thuộc Square Enix (Gangan Online, Manga Up, Shounen Gangan, GFantasy, Gangan Joker, Young Gangan, Big Gangan, ...)                                                                         |  🟢 Hoạt động  |    [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/SquareEnixDownloader.user.js)    |
 | **Corona EX Downloader**        | Corona EX (`to-corona-ex.com`)                                                                                                                                                                             |  🟢 Hoạt động  |     [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/CoronaExDownloader.user.js)     |
 | **Comico Downloader**           | Comico (`comico.jp`)                                                                                                                                                                                       |  🟢 Hoạt động  |      [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/ComicoDownloader.user.js)      |
+| **MangaKingdom Downloader**       | まんが王国 (`comic.k-manga.jp`) |  🟢 Hoạt động  |    [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/NextViewerDownloader.user.js)    |
 | **ComicFuz Downloader**         | COMIC FUZ (`comic-fuz.com`)                                                                                                                                                                                |  🟢 Hoạt động  |     [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/ComicFuzDownloader.user.js)     |
 | **YanJan Downloader**           | YanJan! (`ynjn.jp`)                                                                                                                                                                                        |  🟢 Hoạt động  |      [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/YanJanDownloader.user.js)      |
 | **Kadokawa Downloader**         | Bao gồm Kadokawa và Dwango (KadoComi (ComicWalker) và Niconico)                                                                                                                                            |  🟢 Hoạt động  |     [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/KadokawaDownloader.user.js)     |
@@ -255,6 +256,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 - EbookJP (`ebookjapan.yahoo.co.jp`)
 - GANMA! (`ganma.jp`)
 - Drecomi+ (`drecomi-plus.jp`)
+- まんが王国 (`comic.k-manga.jp`)
 - Piccoma Manga (`piccoma.com`)
 - Comico (`comico.jp`)
 - Corona EX (`to-corona-ex.com`)

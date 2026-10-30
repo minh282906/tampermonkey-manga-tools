@@ -22,6 +22,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 | **DLsite Downloader**           | Bao gồm tất cả DLsite Play, trong đó có cả Comipo Play (`dlsite.com`)                                                                                                                                      |  🟢 Hoạt động  |      [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/DLsiteDownloader.user.js)      |
 | **PUBLUS Downloader**           | Bao gốm các bên sử dụng engine PUBLUS Reader / NFBR (BookWalker, PixivComic (tankobon), DMM Books, FANZA Books, COMIC nettai, Comic Boost, PASH UP!, d Anime Store, マンガBANG, dブック)                   |  🟢 Hoạt động  |      [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/PublusDownloader.user.js)      |
 | **Piccoma Downloader**          | Piccoma (`piccoma.com`)                                                                                                                                                                                    |  🟢 Hoạt động  |     [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/PiccomaDownloader.user.js)      |
+| **Coicomi Downloader**           | コイコミ (`coicomi.com`)                                                                                                                                                                                       |  🟢 Hoạt động  |      [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/CoicomiDownloader.user.js)      |
 | **RakutenKobo Downloader**      | [books.rakuten.co.jp/e-book](https://books.rakuten.co.jp/e-book/)                                                                                                                                          |  🟢 Hoạt động  |   [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/RakutenKoboDownloader.user.js)    |
 | **ClipStudio Downloader**       | Bao gồm tất cả các bên sử dụng engine CSR (Sugocomic, Fire CROSS, Drecomics, honto, Access BOOKS, Hakusensha e-net!, Com!cFesta, Happyコミック, Comist, Galcomi, いつでも書店, ラクラクコミック, ブッコミ) |  🟢 Hoạt động  |    [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/ClipStudioDownloader.user.js)    |
 | **Renta Downloader**            | (`renta.papy.co.jp`)                                                                                                                                                                                       |  🟢 Hoạt động  |      [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/RentaDownloader.user.js)       |
@@ -255,6 +256,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 - DLsite Play (`dlsite.com`)
 - EbookJP (`ebookjapan.yahoo.co.jp`)
 - GANMA! (`ganma.jp`)
+- コイコミ (`coicomi.com`)
 - Drecomi+ (`drecomi-plus.jp`)
 - まんが王国 (`comic.k-manga.jp`)
 - Piccoma Manga (`piccoma.com`)

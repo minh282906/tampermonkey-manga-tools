@@ -64,6 +64,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 | **Amazon Downloader**           | (`amazon.co.jp`)                                                                                                                                                                                           |  🟢 Hoạt động  |      [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/AmazonDownloader.user.js)      |
 | **OwlComic Downloader**         | (`owl-comic.jp`)                                                                                                                                                                                           |  🟢 Hoạt động  |     [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/OwlComicDownloader.user.js)     |
 | **Akitashoten Downloader**       | 秋田書店 (`akitashoten.co.jp`)                                                                                                                                                                                          |  🟢 Hoạt động  |    [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/ArcAkitaDownloader.user.js)    |
+| **MangaZenkan Downloader**         | 漫画全巻ドットコム (`mangazenkan.com`)                                                                                                                                                                                |  🟢 Hoạt động  |     [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/MangaZenkanDownloader.user.js)     |
 | **Manabanai Downloader**    | 週刊マナバナイ (`manabanai.opinet.jp`)                                                                                                                                                                             |  🟢 Hoạt động  |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/ManabanaiDownloader.user.js)   |
 | **Wpb Downloader**       | (`wpb.shueisha.co.jp`)                                                                                                                                                                                          |  🟢 Hoạt động  |    [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/WpbDownloader.user.js)    |
 
@@ -290,6 +291,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 - 宝島すごい！WEB (`sugoiweb.jp`)
 - マンガボックス (`mangabox.me`)
 - 週プレNEWS (`wpb.shueisha.co.jp`)
+- 漫画全巻ドットコム (`mangazenkan.com`)
 - 週刊マナバナイ (`manabanai.opinet.jp`)
 - 秋田書店 (`akitashoten.co.jp`)
 

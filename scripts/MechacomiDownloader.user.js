@@ -3,7 +3,7 @@
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
 // @version      1.0.0
 // @icon         https://mechacomi.jp/assets/images/favicon.ico
-// @description  Tải manga trên まんがセゾン / Mechacomi (mechacomi.jp).
+// @description  Tải manga trên まんがセゾン (mechacomi.jp).
 // @author       anonymous & AI
 // @match        https://mechacomi.jp/viewer/mdviewer/browser/*
 // @match        https://*.mechacomi.jp/viewer/mdviewer/browser/*
@@ -57,7 +57,7 @@
   };
 
   /* =========================================================================
-   * HOOK ĐÓN GÓI TIN ACCESS-PROVIDER TẠI DOCUMENT-START (TỰ ĐỘNG TÓM TOKEN)
+   * HOOK ĐÓN GÓI TIN ACCESS-PROVIDER TẠI DOCUMENT-START
    * ========================================================================= */
   let capturedAccess = null;
 
@@ -104,7 +104,7 @@
   }
 
   /* =========================================================================
-   * 1. GIAO DIỆN UNIVERSAL UI CHUẨN MANGA SAISON (XANH DƯƠNG #007AD9)
+   * 1. GIAO DIỆN UNIVERSAL UI CHUẨN MANGA SAISON (XANH DƯƠNG #004097)
    * ========================================================================= */
   function getUI() {
     if (state.ui) return state.ui;
@@ -115,12 +115,12 @@
         storagePrefix: "mechacomi-dl",
         title: "まんがセゾン",
         engine: "MEDIADO UNIZON",
-        themeColor: "#007ad9",
+        themeColor: "#004097",
         themeBg: "#ffffff",
-        titleColor: "#007ad9",
-        btnBg: "#007ad9",
+        titleColor: "#004097",
+        btnBg: "#004097",
         btnColor: "#ffffff",
-        tabBg: "#007ad9",
+        tabBg: "#004097",
         tabColor: "#ffffff",
         topOffset: "72px",
         onDownload: startDownload
@@ -166,21 +166,15 @@
 
   function formatTitle(rawName) {
     if (!rawName) return "Mechacomi_Manga";
-    const clean = cleanString(rawName);
+    let clean = cleanString(rawName);
 
-    // Chuẩn hóa dấu ngoặc toàn giác: （１） -> （1）
-    const normalized = clean.replace(/（([０-９]+)）/g, (_, n) => {
+    // Chuẩn hóa số toàn giác trong ngoặc: （１） -> （1）
+    clean = clean.replace(/（([０-９]+)）/g, (_, n) => {
       const half = n.replace(/[０-９]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0));
       return `（${half}）`;
     });
 
-    // Tách vế tiêu đề nếu có phân đoạn số tập / 分冊版 / 第...巻
-    const m = normalized.match(/^(.*?)(?:[ \u3000]+)(分冊版.*|第?[0-9IVXLCDM一二三四五六七八九十百千万\.]+[話回巻章].*)$/i);
-    if (m && m[1] && m[2]) {
-      return `${cleanString(m[1])} - ${cleanString(m[2])}`;
-    }
-
-    return normalized;
+    return clean;
   }
 
   /* =========================================================================
@@ -231,14 +225,32 @@
   }
 
   /* =========================================================================
-   * 4. BỘ PHÂN TÍCH GÓI .UZE (PKZIP) TRONG RAM THUẦN STREAM
+   * 4. BỘ TẢI RANGE 206 VƯỢT RÀO CORS & PARSE GÓI .UZE (PKZIP) TRONG RAM
    * ========================================================================= */
+  async function downloadUzeBuffer(url) {
+    // 1. Gỡ bỏ ký tự \u0026 bảo vệ tính toàn vẹn của chữ ký số CloudFront
+    const cleanUrl = url.replace(/\\u0026/g, '&');
+
+    // 2. Tải toàn bộ file qua native fetch bằng Range: bytes=0-
+    // Kích hoạt chính sách CORS dòng truyền phát Status 206 của MediaDo CDN
+    const res = await WIN.fetch(cleanUrl, {
+      headers: { "Range": "bytes=0-" }
+    });
+
+    if (res.status === 206 || res.status === 200) {
+      const buf = await res.arrayBuffer();
+      if (buf.byteLength > 2000) return buf;
+    }
+
+    throw new Error(`Máy chủ từ chối Range Request (HTTP ${res.status})`);
+  }
+
   async function parseUzeArchive(buffer) {
     const view = new DataView(buffer);
     const uint8 = new Uint8Array(buffer);
     const len = buffer.byteLength;
 
-    // 1. Tìm End of Central Directory (0x06054b50)
+    // Tìm End of Central Directory (0x06054b50)
     let eocd = -1;
     for (let i = len - 22; i >= Math.max(0, len - 65558); i--) {
       if (view.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
@@ -253,7 +265,6 @@
     const entriesMap = new Map();
     let packageJsonEntry = null;
 
-    // 2. Quét Central Directory
     for (let i = 0; i < totalEntries; i++) {
       if (view.getUint32(cur, true) !== 0x02014b50) break;
       const method = view.getUint16(cur + 10, true);
@@ -274,7 +285,6 @@
       cur += 46 + nameLen + extraLen + commentLen;
     }
 
-    // Hàm lấy mảng byte của 1 entry trong ZIP
     function getEntryBytes(entry) {
       const locNameLen = view.getUint16(entry.localOffset + 26, true);
       const locExtraLen = view.getUint16(entry.localOffset + 28, true);
@@ -282,7 +292,7 @@
       return uint8.subarray(dataStart, dataStart + entry.compSize);
     }
 
-    // 3. Đọc META-INF/package.json để lấy đúng thứ tự trang (Spine)
+    // Đọc spine từ package.json
     let orderedImageEntries = [];
     if (packageJsonEntry) {
       try {
@@ -300,20 +310,26 @@
         for (const item of spine) {
           const href = item.href;
           if (!href) continue;
-          const found = entriesMap.get(href) || entriesMap.get(`item/${href}`) || entriesMap.get(`OEBPS/${href}`);
+          const found = entriesMap.get(href) || entriesMap.get(`OEBPS/${href}`) || entriesMap.get(`item/${href}`);
           if (found) {
             orderedImageEntries.push({ ...found, bytes: getEntryBytes(found) });
           }
         }
       } catch (e) {
-        console.warn("[mechacomi-dl] Lỗi đọc package.json, chuyển sang quét tự nhiên:", e);
+        console.warn("[mechacomi-dl] Lỗi đọc package.json:", e);
       }
     }
 
-    // Dự phòng nếu không có package.json: Lọc toàn bộ file ảnh và sắp xếp số học
+    // Dự phòng nếu không có package.json: Lọc ảnh và ghim cover lên đầu
     if (orderedImageEntries.length === 0) {
       const imgList = Array.from(entriesMap.values()).filter(e => /\.(jpe?g|png|webp|bin)$/i.test(e.name));
-      imgList.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+      imgList.sort((a, b) => {
+        const aIsCover = /cover/i.test(a.name);
+        const bIsCover = /cover/i.test(b.name);
+        if (aIsCover && !bIsCover) return -1;
+        if (!aIsCover && bIsCover) return 1;
+        return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+      });
       orderedImageEntries = imgList.map(e => ({ ...e, bytes: getEntryBytes(e) }));
     }
 
@@ -344,33 +360,25 @@
         throw new Error("Chưa nạp được liên kết tải sách.");
       }
 
-      const { uzeUrl, token, title, contentId } = bookData;
-      const Utils = WIN.MangaUtils || globalThis.MangaUtils;
-
-      // 1. Giải mã token lấy Image Key (16 bytes)
-      const imageKey = await resolveImageKey(token);
-
-      // 2. Kéo gói .uze nguyên khối vào RAM
-      const uzeBuffer = await Utils.fetchBuffer(uzeUrl, { "Referer": WIN.location.href });
-
-      // 3. Parse ZIP lấy danh sách các file ảnh mã hóa
-      const imageEntries = await parseUzeArchive(uzeBuffer);
+      const { uzeUrl, token, title, contentId, imageEntries } = bookData;
       const totalPages = imageEntries.length;
-      if (!totalPages) throw new Error("Không tìm thấy trang tranh nào trong file .uze.");
+      if (!totalPages) throw new Error("Không có trang hợp lệ để tải.");
 
+      const Utils = WIN.MangaUtils || globalThis.MangaUtils;
       const ZipClass = window.PureZipWriter || globalThis.PureZipWriter;
       const zip = new ZipClass();
 
-      // Đính kèm file định danh ${contentId}.txt theo Golden Rule 2
+      // Đính kèm file định danh ${contentId}.txt
       zip.addFile(`${contentId}.txt`, new Uint8Array(0));
       if (ui) ui.updateProgress({ completed: 0, total: totalPages, status: "Đang tải..." });
 
-      // 4. Chuẩn bị cỗ máy giải mã AES-128-CBC
+      // Giải mã imageKey
+      const imageKey = await resolveImageKey(token);
       const cryptoKey = await WIN.crypto.subtle.importKey(
         "raw", imageKey, { name: "AES-CBC" }, false, ["decrypt"]
       );
 
-      // 5. Giải mã tuần tự từng trang tranh trực tiếp trên RAM (Zero-Copy 0ms)
+      // Giải mã nhị phân tuần tự qua từng trang tranh trong RAM (Zero-Copy 0ms)
       for (let i = 0; i < totalPages; i++) {
         const entry = imageEntries[i];
         let decryptedBuf;
@@ -382,7 +390,6 @@
             entry.bytes
           );
         } catch (decryptErr) {
-          // Dự phòng nếu có trang không bị mã hóa
           decryptedBuf = entry.bytes.buffer;
         }
 
@@ -400,7 +407,6 @@
       if (ui) ui.updateProgress({ completed: totalPages, total: totalPages, status: "Đang đóng gói file ZIP..." });
       await sleep(50);
 
-      // Đặt tên ZIP chuẩn mực
       const finalFileName = `${title}.zip`;
       zip.download(finalFileName);
 
@@ -453,20 +459,17 @@
 
       if (!access?.url || !access?.token) throw new Error("Không lấy được phiên đọc sách.");
 
-      // 3. Test giải mã khóa ngay lập tức trong RAM
+      // 3. Tải file .uze bằng Range: bytes=0- (Miễn nhiễm 100% với CORS)
+      const uzeBuffer = await downloadUzeBuffer(access.url);
+      const imageEntries = await parseUzeArchive(uzeBuffer);
+      if (!imageEntries.length) throw new Error("Không tìm thấy trang tranh nào.");
+
+      // 4. Giải mã Image Key và soi Magic Bytes trang đầu tiên (Zero-Trust)
       const imageKey = await resolveImageKey(access.token);
       const cryptoKey = await WIN.crypto.subtle.importKey(
         "raw", imageKey, { name: "AES-CBC" }, false, ["decrypt"]
       );
 
-      // 4. Tải gói .uze ngầm để chốt cứng số trang tranh thật (Khử triệt để bẫy Kobo)
-      const Utils = WIN.MangaUtils || globalThis.MangaUtils;
-      const uzeBuffer = await Utils.fetchBuffer(access.url, { "Referer": WIN.location.href });
-      const imageEntries = await parseUzeArchive(uzeBuffer);
-
-      if (!imageEntries.length) throw new Error("Không có trang hợp lệ.");
-
-      // Soi Magic Bytes thực tế của trang 1 (Zero-Trust)
       let testDecrypted;
       try {
         testDecrypted = await WIN.crypto.subtle.decrypt(
@@ -478,6 +481,7 @@
         testDecrypted = imageEntries[0].bytes.buffer;
       }
 
+      const Utils = WIN.MangaUtils || globalThis.MangaUtils;
       const realExt = Utils.detectExt(testDecrypted);
 
       state.bookData = {

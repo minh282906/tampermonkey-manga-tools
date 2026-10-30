@@ -45,6 +45,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 | **Cycomi Downloader**           | Cycomics (`cycomi.com`)                                                                                                                                                                                    |  🟢 Hoạt động  |      [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/CycomiDownloader.user.js)      |
 | **Drecomi+ Downloader**         | Drecomi+ (`drecomi-plus.jp`)                                                                                                                                                                               |  🟢 Hoạt động  |     [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/Drecomi+Downloader.user.js)     |
 | **MangaNo Downloader**          | Mangano (`manga-no.com`)                                                                                         git                                                                                       |  🟢 Hoạt động  |     [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/MangaNoDownloader.user.js)      |
+| **Mechacomi Downloader**           | まんがセゾン (`mechacomi.jp`)                                                                                                                                                                                       |  🟢 Hoạt động  |      [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/MechacomiDownloader.user.js)      |
 | **MangaPark Downloader**          | マンガPark (`manga-park.com`)                                                                                         git                                                                                       |  🟢 Hoạt động  |     [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/MangaParkDownloader.user.js)      |
 | **Souffle Downloader**          | Souffle (`souffle.life`)                                                                                                                                                                                   |  🟢 Hoạt động  |     [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/SouffleDownloader.user.js)      |
 | **MangaShinchan Downloader**    | Souffle (`manga-shinchan.com`)                                                                                                                                                                             |  🟢 Hoạt động  |  [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/MangaShinchanDownloader.user.js)   |
@@ -261,6 +262,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 - まんが王国 (`comic.k-manga.jp`)
 - Piccoma Manga (`piccoma.com`)
 - Comico (`comico.jp`)
+- まんがセゾン (`mechacomi.jp`)
 - Corona EX (`to-corona-ex.com`)
 - COMIC FUZ (`comic-fuz.com`)
 - Cycomics (`cycomi.com`)

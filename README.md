@@ -33,6 +33,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 | **Square Enix Downloader**      | Bao gồm các bên thuộc Square Enix (Gangan Online, Manga Up, Shounen Gangan, GFantasy, Gangan Joker, Young Gangan, Big Gangan, ...)                                                                         |  🟢 Hoạt động  |    [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/SquareEnixDownloader.user.js)    |
 | **Corona EX Downloader**        | Corona EX (`to-corona-ex.com`)                                                                                                                                                                             |  🟢 Hoạt động  |     [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/CoronaExDownloader.user.js)     |
 | **Comico Downloader**           | Comico (`comico.jp`)                                                                                                                                                                                       |  🟢 Hoạt động  |      [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/ComicoDownloader.user.js)      |
+| **SharpEblieva Downloader**           | Bao gốm các bên sử dụng Sharp Eblieva Browser Viewer (COCORO BOOKS, コミック.jp, music.jp)                   |  🟢 Hoạt động  |      [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/SharpEblievaDownloader.user.js)      |
 | **MangaKingdom Downloader**       | まんが王国 (`comic.k-manga.jp`) |  🟢 Hoạt động  |    [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/NextViewerDownloader.user.js)    |
 | **ComicFuz Downloader**         | COMIC FUZ (`comic-fuz.com`)                                                                                                                                                                                |  🟢 Hoạt động  |     [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/ComicFuzDownloader.user.js)     |
 | **YanJan Downloader**           | YanJan! (`ynjn.jp`)                                                                                                                                                                                        |  🟢 Hoạt động  |      [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/YanJanDownloader.user.js)      |
@@ -243,6 +244,15 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 - いつでも書店 (`itsudoco.com`)
 - ラクラクコミック (`rakurakucomic.com`)
 - ブッコミ (`sp.handycomic.jp`)
+
+</details>
+
+<details>
+<summary><b>Click để xem chi tiết các bên sử dụng Sharp Eblieva Browser Viewer</b></summary>
+
+- COCORO BOOKS (`galapagosstore.com`)
+- コミック.jp (`comic.jp`)
+- music.jp (`music-book.jp`)
 
 </details>
 

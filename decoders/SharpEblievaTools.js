@@ -257,11 +257,20 @@
       vCtx.lineWidth = 4;
       vCtx.strokeRect(0, 0, totalW, totalH);
 
+      const sliceBuffers = slices.map(uri => {
+        const b64 = uri.substring(uri.indexOf(',') + 1);
+        const bin = atob(b64);
+        const arr = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+        return arr;
+      });
+
       return {
         sharpCanvas, visualCanvas, rawCanvas, img: sharpCanvas,
         rawW: totalW, rawH: totalH, gridW: totalW, gridH: totalH,
         dummyText: `Phân đoạn ${cols}x${rows} lát (${totalW}x${totalH}px)`,
-        isScrambled: true
+        isScrambled: true,
+        sliceBuffers
       };
     }
 

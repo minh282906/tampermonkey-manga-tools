@@ -256,7 +256,7 @@
     try {
       const { master, layoutUrl, totalPages, title, cid, isCleanTrial } = state.chapterData;
       const isGalapagos = WIN.location.hostname.includes('galapagos');
-      const useJpeg = Boolean(state.convertJpeg || isCleanTrial);
+      const useJpeg = Boolean(state.convertJpeg);
 
       const Tools = WIN.SharpEblievaTools || window.SharpEblievaTools;
       const Utils = WIN.MangaUtils || window.MangaUtils;
@@ -409,21 +409,11 @@
     if (ui) {
       await sleep(80);
       ui.setBusy(false);
-
-      if (isCleanTrial) {
-        ui.updateProgress({
-          completed: 0,
-          total: totalPages,
-          status: "Sẵn sàng.",
-          format: "JPG"
-        });
-      } else {
-        ui.updateProgress({
-          completed: 0,
-          total: totalPages,
-          status: "Sẵn sàng."
-        });
-      }
+      ui.updateProgress({
+        completed: 0,
+        total: totalPages,
+        status: "Sẵn sàng."
+      });
     }
   }
 

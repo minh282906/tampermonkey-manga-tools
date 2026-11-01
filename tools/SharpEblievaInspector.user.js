@@ -224,115 +224,77 @@
           btn.disabled = true;
           try {
             const mimeType = fmt === 'png' ? 'image/png' : (fmt === 'webp' ? 'image/webp' : 'image/jpeg');
+            const ZipClass = window.PureZipWriter || globalThis.PureZipWriter;
+            const zip = new ZipClass();
 
-            if (pageArray.length === 1) {
-              const pNo = pageArray[0];
+            for (let i = 0; i < pageArray.length; i++) {
+              const pNo = pageArray[i];
+              statusText.textContent = `Đang xử lý: ${i + 1}/${pageArray.length} (Trang ${pNo})...`;
               const fileStem = String(pNo).padStart(5, '0');
               const keyItem = getKeyItem(master, pNo);
 
-              // 🎯 GALAPAGOS TRIAL: TẢI 1 BẢN ẢNH GỐC DUY NHẤT
+              // 🎯 NHÁNH GALAPAGOS: RAW LƯU ĐỦ 9 TẤM TÁCH BIỆT VÀO ZIP
               if (isGalapagos) {
                 const jsonpUrl = `${layoutUrl}/${fileStem}.jsonp?store_code=sharpbvs&pid=sh`;
                 const rawBuf = await fetchBufferDualFlight(jsonpUrl, Utils);
+                if (!rawBuf) continue;
                 const text = new TextDecoder().decode(rawBuf);
                 const pageData = Tools.decryptGalapagosJsonp(text, keyItem);
                 const res = await Tools.stitchGalapagosCanvas(pageData, Utils);
 
-                const blob = await new Promise(r => res.sharpCanvas.toBlob(r, 'image/jpeg', 1.0));
-                const a = DOC.createElement('a');
-                a.href = URL.createObjectURL(blob);
-                a.download = `Cocorobooks_Trang_${pNo}.jpg`;
-                a.click();
-                statusText.textContent = `✅ Đã tải xong ảnh gốc trang ${pNo}!`;
-                return;
-              }
-
-              // COMIC & MUSIC: XUẤT 2 BẢN ĐỐI CHIẾU
-              const imgUrl = `${layoutUrl}/${fileStem}.jpg`;
-              const b1Url  = `${layoutUrl}/${fileStem}_b1.png`;
-              const b2Url  = `${layoutUrl}/${fileStem}_b2.png`;
-
-              const [bImg, b1, b2] = await Promise.all([
-                fetchBufferDualFlight(imgUrl, Utils),
-                fetchBufferDualFlight(b1Url, Utils),
-                fetchBufferDualFlight(b2Url, Utils)
-              ]);
-              const rawBuf = bImg;
-              const ext = Utils.detectExt(rawBuf);
-              const mime = Utils.detectMimeType(rawBuf);
-              const mainImg = await Utils.loadImage(rawBuf, mime);
-              const b1Img   = b1 ? await Utils.loadImage(b1, 'image/png') : null;
-              const b2Img   = b2 ? await Utils.loadImage(b2, 'image/png') : null;
-
-              const coordStr = keyItem?.ey || keyItem?.sy || "";
-              const res = Tools.descrambleVariantA(mainImg, coordStr, b1Img, b2Img);
-
-              const a1 = DOC.createElement('a');
-              a1.href = URL.createObjectURL(new Blob([rawBuf], { type: 'image/jpeg' }));
-              a1.download = `Eblieva_Trang_${pNo}_raw.${ext}`; a1.click();
-
-              const a2 = DOC.createElement('a');
-              a2.href = URL.createObjectURL(await new Promise(r => res.sharpCanvas.toBlob(r, mimeType, quality)));
-              a2.download = `Eblieva_Trang_${pNo}_decoded.${fmt}`; a2.click();
-
-              statusText.textContent = `✅ Đã tải xong 2 bản trang ${pNo}!`;
-            } else {
-              const ZipClass = window.PureZipWriter || globalThis.PureZipWriter;
-              const zip = new ZipClass();
-
-              for (let i = 0; i < pageArray.length; i++) {
-                const pNo = pageArray[i];
-                statusText.textContent = `Đang xử lý: ${i + 1}/${pageArray.length} (Trang ${pNo})...`;
-                const fileStem = String(pNo).padStart(5, '0');
-                const keyItem = getKeyItem(master, pNo);
-
-                if (isGalapagos) {
-                  const jsonpUrl = `${layoutUrl}/${fileStem}.jsonp?store_code=sharpbvs&pid=sh`;
-                  const rawBuf = await fetchBufferDualFlight(jsonpUrl, Utils);
-                  if (!rawBuf) continue;
-                  const text = new TextDecoder().decode(rawBuf);
-                  const pageData = Tools.decryptGalapagosJsonp(text, keyItem);
-                  const res = await Tools.stitchGalapagosCanvas(pageData, Utils);
-
-                  const blob = await new Promise(r => res.sharpCanvas.toBlob(r, 'image/jpeg', 1.0));
-                  zip.addFile(`${pNo}.jpg`, new Uint8Array(await blob.arrayBuffer()));
-                } else {
-                  const imgUrl = `${layoutUrl}/${fileStem}.jpg`;
-                  const b1Url  = `${layoutUrl}/${fileStem}_b1.png`;
-                  const b2Url  = `${layoutUrl}/${fileStem}_b2.png`;
-
-                  const [bImg, b1, b2] = await Promise.all([
-                    fetchBufferDualFlight(imgUrl, Utils),
-                    fetchBufferDualFlight(b1Url, Utils),
-                    fetchBufferDualFlight(b2Url, Utils)
-                  ]);
-                  if (!bImg) continue;
-                  const rawBuf = bImg;
-                  const ext = Utils.detectExt(rawBuf);
-                  const mime = Utils.detectMimeType(rawBuf);
-                  const mainImg = await Utils.loadImage(rawBuf, mime);
-                  const b1Img   = b1 ? await Utils.loadImage(b1, 'image/png') : null;
-                  const b2Img   = b2 ? await Utils.loadImage(b2, 'image/png') : null;
-
-                  const coordStr = keyItem?.ey || keyItem?.sy || "";
-                  const res = Tools.descrambleVariantA(mainImg, coordStr, b1Img, b2Img);
-
-                  if (b1) zip.addFile(`1_raw/${pNo}_b1.png`, new Uint8Array(b1));
-                  if (b2) zip.addFile(`1_raw/${pNo}_b2.png`, new Uint8Array(b2));
-
-                  const sharpBlob = await new Promise(r => res.sharpCanvas.toBlob(r, mimeType, quality));
-                  zip.addFile(`1_raw/${pNo}.${ext}`, new Uint8Array(rawBuf));
-                  zip.addFile(`2_decoded/${pNo}.${fmt}`, new Uint8Array(await sharpBlob.arrayBuffer()));
+                // 1. Lưu 9 tấm RAW lát cắt độc lập vào 1_raw/
+                if (Array.isArray(res.sliceBuffers)) {
+                  res.sliceBuffers.forEach((buf, sIdx) => {
+                    zip.addFile(`1_raw/${pNo}_slice_${sIdx + 1}.jpg`, buf);
+                  });
                 }
 
-                await sleep(25);
+                // 2. Lưu bản ĐÃ GHÉP Canvas vào 2_decoded/
+                const sharpBlob = await new Promise(r => res.sharpCanvas.toBlob(r, mimeType, quality));
+                zip.addFile(`2_decoded/${pNo}.${fmt}`, new Uint8Array(await sharpBlob.arrayBuffer()));
+
+              } else {
+                // 🎯 NHÁNH COMIC.JP & MUSIC-BOOK.JP: TẢI ĐỦ RAW.JPG + B1.PNG + B2.PNG
+                const imgUrl = `${layoutUrl}/${fileStem}.jpg`;
+                const b1Url  = `${layoutUrl}/${fileStem}_b1.png`;
+                const b2Url  = `${layoutUrl}/${fileStem}_b2.png`;
+
+                const [bImg, b1, b2] = await Promise.all([
+                  fetchBufferDualFlight(imgUrl, Utils),
+                  fetchBufferDualFlight(b1Url, Utils),
+                  fetchBufferDualFlight(b2Url, Utils)
+                ]);
+                if (!bImg) continue;
+
+                const ext = Utils.detectExt(bImg);
+                const mime = Utils.detectMimeType(bImg);
+                const mainImg = await Utils.loadImage(bImg, mime);
+                const b1Img   = b1 ? await Utils.loadImage(b1, 'image/png') : null;
+                const b2Img   = b2 ? await Utils.loadImage(b2, 'image/png') : null;
+
+                const coordStr = keyItem?.ey || keyItem?.sy || "";
+                const res = Tools.descrambleVariantA(mainImg, coordStr, b1Img, b2Img);
+
+                // 1. Lưu file RAW chính và CẢ 2 DẢI SEAMS B1, B2
+                zip.addFile(`1_raw/${pNo}.${ext}`, new Uint8Array(bImg));
+                if (b1) zip.addFile(`1_raw/${pNo}_b1.png`, new Uint8Array(b1));
+                if (b2) zip.addFile(`1_raw/${pNo}_b2.png`, new Uint8Array(b2));
+
+                // 2. Lưu bản ĐÃ GHÉP hoàn chỉnh
+                const sharpBlob = await new Promise(r => res.sharpCanvas.toBlob(r, mimeType, quality));
+                zip.addFile(`2_decoded/${pNo}.${fmt}`, new Uint8Array(await sharpBlob.arrayBuffer()));
               }
 
-              statusText.textContent = `Đang đóng gói file ZIP...`;
-              await sleep(50);
-              zip.download(`Eblieva_${isGalapagos ? 'Galapagos' : 'Compare'}_${pageArray[0]}-${pageArray[pageArray.length - 1]}.zip`);
-              statusText.textContent = `✅ Đã xuất xong file ZIP!`;
+              await sleep(25);
             }
+
+            statusText.textContent = `Đang đóng gói file ZIP...`;
+            await sleep(50);
+            const zipName = pageArray.length === 1
+              ? `Eblieva_${isGalapagos ? 'Galapagos' : 'Compare'}_Trang_${pageArray[0]}.zip`
+              : `Eblieva_${isGalapagos ? 'Galapagos' : 'Compare'}_${pageArray[0]}-${pageArray[pageArray.length - 1]}.zip`;
+            zip.download(zipName);
+            statusText.textContent = `✅ Đã xuất xong file ZIP đối chiếu!`;
           } catch (e) {
             statusText.textContent = `❌ ${e?.message || String(e)}`;
           } finally {

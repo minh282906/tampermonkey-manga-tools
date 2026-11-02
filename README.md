@@ -158,7 +158,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 - COMIC OGYAAA!! (`comic-ogyaaa.com`)
 - Comic Seasons (`comic-seasons.com`)
 - COMIC Y-OURS (`comic-y-ours.com`)
-- Ichicomi (`ichicomi.com`)
+- 一迅プラス (`ichicomi.com`)
 - Manga Time Square (`mangatime-square.com`)
 - OUR FEEL (`ourfeel.jp`)
 - &Sofa (`andsofa.com`)

@@ -35,6 +35,7 @@
 // @match        https://mangabu.jp/*
 // @match        https://*.comic-ryu.jp/*
 // @match        https://comic-ryu.jp/*
+// @match        https://buncomi.bunshun.jp/*
 // @grant        unsafeWindow
 // @grant        GM_xmlhttpRequest
 // @connect      *

@@ -121,6 +121,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 - Manga Zegra (`manga-zegra.com`)
 - MANGABU (`mangabu.jp`)
 - Comic Ryu Live (`comic-ryu.jp`)
+- BUNCOMI (`buncomi.bunshun.jp`)
 
 </details>
 

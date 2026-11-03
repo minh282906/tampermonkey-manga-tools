@@ -38,6 +38,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 | **MangaKingdom Downloader**       | まんが王国 (`comic.k-manga.jp`) |  🟢 Hoạt động  |    [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/NextViewerDownloader.user.js)    |
 | **ComicFuz Downloader**         | COMIC FUZ (`comic-fuz.com`)                                                                                                                                                                                |  🟢 Hoạt động  |     [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/ComicFuzDownloader.user.js)     |
 | **YanJan Downloader**           | YanJan! (`ynjn.jp`)                                                                                                                                                                                        |  🟢 Hoạt động  |      [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/YanJanDownloader.user.js)      |
+| **Zebrack Downloader**   | ゼブラック (`zebrack-comic.shueisha.co.jp`)                                                                                                                                                                      |  🟢 Hoạt động  |     [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/ZebrackDownloader.user.js)      |
 | **Kadokawa Downloader**         | Bao gồm Kadokawa và Dwango (KadoComi (ComicWalker) và Niconico)                                                                                                                                            |  🟢 Hoạt động  |     [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/KadokawaDownloader.user.js)     |
 | **PixivComic Downloader**       | (`comic.pixiv.net`)                                                                                                                                                                                        |  🟢 Hoạt động  |    [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/PixivComicDownloader.user.js)    |
 | **ZeroSum Online Downloader**   | Zero Sum Online (`zerosumonline.com`)                                                                                                                                                                      |  🟢 Hoạt động  |     [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/ZerosumDownloader.user.js)      |
@@ -292,6 +293,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 - Amazon Kindle Manga (`amazon.co.jp`)
 - Mecha Comic (`mechacomic.jp`)
 - MangaONE và Ura Sunday (`manga-one.com`, `urasunday.com`)
+- ゼブラック (`zebrack-comic.shueisha.co.jp`)
 - フラコミlike! (`flowercomics.jp`)
 - コロコロコミック (`corocoro.jp`)
 - まんがクレヨンしんちゃん (`manga-shinchan.com`)

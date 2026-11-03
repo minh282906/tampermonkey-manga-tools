@@ -193,6 +193,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 - Kodansha (`kodansha.co.jp/comic`)
 - Futabasha (`futabasha.co.jp`)
 - Hayakawa (`hayakawa-online.co.jp`)
+- MangaPlaza (`mangaplaza.com`)
 
 </details>
 

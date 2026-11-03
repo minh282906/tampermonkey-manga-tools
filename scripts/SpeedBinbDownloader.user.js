@@ -30,6 +30,7 @@
 // @match        https://reader.futabasha.co.jp/*
 // @match        https://www.hayakawa-online.co.jp/*
 // @match        https://hayakawa-online.co.jp/*
+// @match        https://reader.mangaplaza.com/*
 // @run-at       document-start
 // @grant        unsafeWindow
 // @grant        GM_xmlhttpRequest
@@ -77,6 +78,8 @@
 // @connect      hayakawa-online.co.jp
 // @connect      *.hayakawa-online.co.jp
 // @connect      binb-sbc.hayakawa-online.co.jp
+// @connect      reader.mangaplaza.com
+// @connect      mangaplaza.com
 //
 // --- TỰ ĐỘNG TẢI VÀ UPDATE PHIÊN BẢN
 // @updateURL    https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/SpeedBinbDownloader.user.js
@@ -1704,11 +1707,96 @@
     }
   };
 
+  // 16. MANGAPLAZA (reader.mangaplaza.com - NTT Solmare)
+  const MangaPlazaAdapter = {
+    id: "mangaplaza",
+    name: "MangaPlaza",
+    theme: { color: "#FFA903", bg: "#ffffff", text: "#FFA903", top: "43.2px" },
+
+    isMatch: (url) => url.includes("mangaplaza.com") && (
+      url.includes("/speedreader") ||
+      Boolean(new URL(url, WIN.location.origin).searchParams.get('cid')) ||
+      Boolean(DOC.getElementById('content')?.getAttribute('data-ptbinb-cid'))
+    ),
+
+    getCid: () => {
+      try {
+        const cid = new URL(WIN.location.href).searchParams.get('cid');
+        if (cid && cid.trim()) return cid.trim();
+      } catch (e) {}
+      const attr = DOC.getElementById('content')?.getAttribute('data-ptbinb-cid') || DOC.getElementById('content')?.dataset?.ptbinbCid;
+      return (attr && attr.trim()) ? attr.trim() : "MangaPlaza_Episode";
+    },
+
+    getUParams: () => {
+      const params = new URL(WIN.location.href).searchParams;
+      return Array.from({ length: 10 }, (_, i) => {
+        const val = params.get(`u${i}`);
+        return val ? `&u${i}=${encodeURIComponent(val)}` : '';
+      }).join('');
+    },
+
+    fetchManifest: async function(cid, Tools, Utils) {
+      const randomString = Tools.generateRandomString32(cid);
+      const uParams = this.getUParams();
+      const infoUrl = `https://reader.mangaplaza.com/sws/apis/bibGetCntntInfo.php?cid=${cid}&dmytime=${Date.now()}&k=${randomString}${uParams}`;
+
+      const infoBuffer = await Utils.fetchBuffer(infoUrl);
+      const infoJson = JSON.parse(new TextDecoder().decode(infoBuffer));
+      const data = infoJson.items?.[0];
+      if (!data?.ContentsServer) throw new Error("Không lấy được ContentsServer từ MangaPlaza.");
+
+      const serverBase = data.ContentsServer.replace(/\/?$/, '/');
+      const config = {
+        title: data.Title || data.title || "",
+        subTitle: data.SubTitle || data.subtitle || "",
+        contentServer: serverBase,
+        ctbl: Tools.getDecryptedTable(cid, randomString, data.ctbl),
+        ptbl: Tools.getDecryptedTable(cid, randomString, data.ptbl)
+      };
+
+      // Kéo tệp manifest content tĩnh
+      const contentUrl = `${serverBase}content`;
+      const contentBuffer = await Utils.fetchBuffer(contentUrl);
+      const { ttx } = JSON.parse(new TextDecoder().decode(contentBuffer));
+
+      const seen = new Set();
+      const files = [];
+      // Họ 2: Máy chủ tĩnh dùng tiền tố /img/ và cờ q=0
+      for (const match of ttx.matchAll(/<(?:t-img|img)[^>]+src=["']?([^"'\s>]+)["']?[^>]*>/gi)) {
+        const filename = match[1];
+        if (filename && !seen.has(filename)) {
+          seen.add(filename);
+          const wMatch = match[0].match(/orgwidth=["']?(\d+)["']?/i);
+          const hMatch = match[0].match(/orgheight=["']?(\d+)["']?/i);
+
+          files.push({
+            pageNo: files.length + 1,
+            filename: filename,
+            width: wMatch ? parseInt(wMatch[1], 10) : 0,
+            height: hMatch ? parseInt(hMatch[1], 10) : 0,
+            src: `${serverBase}img/${filename}?q=0${uParams}`
+          });
+        }
+      }
+
+      return { config, files };
+    },
+
+    getTitle: function(config, cid) {
+      let raw = config.title || DOC.title || "";
+      raw = raw.split(/[|｜]/)[0].trim();
+      raw = raw.replace(/[-－–—\s]*(?:MangaPlaza|マンガプラザ).*$/gi, '').trim();
+      return resolveCleanFileName(raw, config.subTitle, cid);
+    }
+  };
+
   const ADAPTERS = [
     CmoaAdapter, YanmagaAdapter, GaugauAdapter, BookliveAdapter,
     VoltageAdapter, YomongaAdapter, BricksAdapter, BookhodaiAdapter,
     EcomiAdapter, SMangaAdapter, HandyComicAdapter, 
     KodanshaWebAdapter, FutabashaAdapter, HayakawaAdapter, PTImgAdapter,
+    MangaPlazaAdapter
   ];
 
   function resolveSiteAdapter() {

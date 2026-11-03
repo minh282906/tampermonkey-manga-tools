@@ -29,6 +29,7 @@
 // @match        https://reader.futabasha.co.jp/*
 // @match        https://www.hayakawa-online.co.jp/*
 // @match        https://hayakawa-online.co.jp/*
+// @match        https://reader.mangaplaza.com/*
 // @grant        unsafeWindow
 // @grant        GM_xmlhttpRequest
 // @connect      *
@@ -576,6 +577,40 @@
       }));
 
       return { site: siteName, isPTImg: true, files };
+    }
+
+    // P. MANGAPLAZA (reader.mangaplaza.com)
+    if (url.includes('mangaplaza.com')) {
+      const params = new URL(url).searchParams;
+      const cid = params.get('cid') || DOC.getElementById('content')?.dataset?.ptbinbCid;
+      if (!cid) return null;
+
+      const k = Tools.generateRandomString32(cid);
+      const uParams = Array.from({ length: 10 }, (_, i) => params.get(`u${i}`) ? `&u${i}=${encodeURIComponent(params.get(`u${i}`))}` : '').join('');
+      const infoUrl = `https://reader.mangaplaza.com/sws/apis/bibGetCntntInfo.php?cid=${cid}&dmytime=${Date.now()}&k=${k}${uParams}`;
+
+      const infoBuf = await Utils.fetchBuffer(infoUrl);
+      const info = JSON.parse(new TextDecoder().decode(infoBuf));
+      const item = info.items?.[0]; if (!item?.ContentsServer) return null;
+
+      const serverBase = item.ContentsServer.replace(/\/?$/, '/');
+      const ctbl = Tools.getDecryptedTable(cid, k, item.ctbl);
+      const ptbl = Tools.getDecryptedTable(cid, k, item.ptbl);
+
+      const cntntBuf = await Utils.fetchBuffer(`${serverBase}content`);
+      const { ttx } = JSON.parse(new TextDecoder().decode(cntntBuf));
+
+      const files = [], seen = new Set();
+      for (const m of ttx.matchAll(/<(?:t-img|img)[^>]+src=["']?([^"'\s>]+)["']?[^>]*>/gi)) {
+        if (m[1] && !seen.has(m[1])) {
+          seen.add(m[1]);
+          files.push({
+            filename: m[1],
+            src: `${serverBase}img/${m[1]}?q=0${uParams}`
+          });
+        }
+      }
+      return { site: "MangaPlaza", cid, ctbl, ptbl, files };
     }
 
     return null;

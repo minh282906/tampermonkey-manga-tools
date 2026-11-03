@@ -182,7 +182,9 @@
       if (start === -1 || end === -1) throw new Error("Không thể trích xuất chuỗi từ JSONP");
 
       const rawStr = text.substring(start + 1, end).replace(/\\"/g, '"');
-      const decryptedStr = keyItem.Dp(rawStr);
+      const decryptedStr = (keyItem && typeof keyItem.Dp === 'function') 
+        ? keyItem.Dp(rawStr) 
+        : rawStr;
       return JSON.parse(decryptedStr);
     }
 

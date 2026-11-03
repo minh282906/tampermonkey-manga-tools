@@ -77,26 +77,23 @@
     return master;
   }
 
+  function getPageLimit(k) {
+    if (typeof k.oy === 'number' && k.oy > 0) return k.oy;
+    if (typeof k.ny === 'number' && k.ny > 0) return k.ny;
+    if (typeof k.ny?.Iy === 'number') return k.ny.Iy;
+    return Number(k.lastPage || k.p || 0);
+  }
+
   function getKeyItem(master, pNo) {
-    if (WIN.location.hostname.includes('galapagos')) {
-      const keys = master.d?.Ay?.Dy || [];
-      return keys.find(k => pNo <= k.oy) || keys[keys.length - 1];
-    }
-    const branch = master.d?.By || master.d?.ky || Object.values(master.d || {})[0];
-    const list = branch?.by || branch?.Dy || [];
-    return list.find(k => pNo <= (k.ny?.Iy || k.ny || k.oy || 0)) || list[list.length - 1];
+    const list = master.d?.Ay?.Dy || master.d?.By?.by || master.d?.ky?.by || [];
+    return list.find(k => pNo <= getPageLimit(k)) || list[list.length - 1];
   }
 
   function extractParamList(master) {
-    if (WIN.location.hostname.includes('galapagos')) {
-      const keys = master.d?.Ay?.Dy || [];
-      return keys.map(item => ({ coords: item.sy || "", lastPage: item.oy || 0 }));
-    }
-    const branch = master.d?.By || master.d?.ky || Object.values(master.d || {})[0];
-    const list = branch?.by || branch?.Dy || [];
+    const list = master.d?.Ay?.Dy || master.d?.By?.by || master.d?.ky?.by || [];
     return list.map(item => ({
       coords: item.ey || item.sy || "",
-      lastPage: Number(item.ny?.Iy || item.ny || item.oy || 0)
+      lastPage: getPageLimit(item)
     }));
   }
 
@@ -157,7 +154,19 @@
       let layoutUrl = master.layout_url.trim();
       if (layoutUrl.startsWith('//')) layoutUrl = 'https:' + layoutUrl;
 
-      const paramList = extractParamList(master);
+      // 🎯 NHẬN DIỆN 0MS QUA PERFORMANCE API (TRIỆT TIÊU 100% RỦI RO ĐOÁN MÒ)
+      const recentReqs = WIN.performance?.getEntriesByType?.('resource') || [];
+      let isJsonp = recentReqs.some(r => r.name.includes(layoutUrl) && r.name.includes('.jsonp'));
+
+      // Dự phòng an toàn nếu mở trang quá nhanh:
+      if (!isJsonp && !recentReqs.some(r => r.name.includes(layoutUrl) && r.name.includes('.jpg'))) {
+        const firstP = String(bv.currentLayoutData?.start || 1).padStart(5, '0');
+        try {
+          const res = await WIN.fetch(`${layoutUrl}/${firstP}.jsonp${WIN.location.search}`, { method: 'HEAD' });
+          isJsonp = (res.status === 200);
+        } catch(e) {}
+      }
+
       const Tools = WIN.SharpEblievaTools || window.SharpEblievaTools;
       const Utils = WIN.MangaUtils || window.MangaUtils;
       const createUI = window.createInspectorUI || globalThis.createInspectorUI;
@@ -177,8 +186,7 @@
             const fileStem = String(pNo).padStart(5, '0');
             const keyItem = getKeyItem(master, pNo);
 
-            // 🎯 PHÂN NHÁNH 1: GALAPAGOS
-            if (isGalapagos) {
+            if (isJsonp) {
               const jsonpUrl = `${layoutUrl}/${fileStem}.jsonp?store_code=sharpbvs&pid=sh`;
               const res = await fetchBufferDualFlight(jsonpUrl, Utils);
               if (!res) return onError(`Không thể tải trang ${pNo} từ CDN!`);
@@ -224,37 +232,50 @@
           btn.disabled = true;
           try {
             const mimeType = fmt === 'png' ? 'image/png' : (fmt === 'webp' ? 'image/webp' : 'image/jpeg');
-            const ZipClass = window.PureZipWriter || globalThis.PureZipWriter;
-            const zip = new ZipClass();
 
-            for (let i = 0; i < pageArray.length; i++) {
-              const pNo = pageArray[i];
-              statusText.textContent = `Đang xử lý: ${i + 1}/${pageArray.length} (Trang ${pNo})...`;
+            // Hàm tải trực tiếp file lẻ (chống ăn xuyên lật trang)
+            function triggerDownload(blobOrBuf, fileName, mime = 'image/jpeg') {
+              const blob = (blobOrBuf instanceof Blob) ? blobOrBuf : new Blob([blobOrBuf], { type: mime });
+              const url = URL.createObjectURL(blob);
+              const a = DOC.createElement('a');
+              a.href = url;
+              a.download = fileName;
+              a.style.display = 'none';
+              a.addEventListener('click', e => { e.stopPropagation(); e.stopImmediatePropagation(); }, true);
+              DOC.body.appendChild(a);
+              a.dispatchEvent(new MouseEvent('click', { bubbles: false, cancelable: true }));
+              a.remove();
+              setTimeout(() => URL.revokeObjectURL(url), 60000);
+            }
+
+            // =========================================================================
+            // 🎯 TRƯỜNG HỢP 1: TẢI ĐÚNG 1 TRANG -> TẢI THẲNG FILE ẢNH LẺ (KHÔNG NÉN ZIP)
+            // =========================================================================
+            if (pageArray.length === 1) {
+              const pNo = pageArray[0];
+              statusText.textContent = `Đang tải các bản của trang ${pNo}...`;
               const fileStem = String(pNo).padStart(5, '0');
               const keyItem = getKeyItem(master, pNo);
 
-              // 🎯 NHÁNH GALAPAGOS: RAW LƯU ĐỦ 9 TẤM TÁCH BIỆT VÀO ZIP
-              if (isGalapagos) {
+              if (isJsonp) {
+                // Nhánh JSONP (Galapagos): Tải 9 lát cắt RAW + 1 bản Đã ghép
                 const jsonpUrl = `${layoutUrl}/${fileStem}.jsonp?store_code=sharpbvs&pid=sh`;
                 const rawBuf = await fetchBufferDualFlight(jsonpUrl, Utils);
-                if (!rawBuf) continue;
                 const text = new TextDecoder().decode(rawBuf);
                 const pageData = Tools.decryptGalapagosJsonp(text, keyItem);
                 const res = await Tools.stitchGalapagosCanvas(pageData, Utils);
 
-                // 1. Lưu 9 tấm RAW lát cắt độc lập vào 1_raw/
                 if (Array.isArray(res.sliceBuffers)) {
-                  res.sliceBuffers.forEach((buf, sIdx) => {
-                    zip.addFile(`1_raw/${pNo}_slice_${sIdx + 1}.jpg`, buf);
-                  });
+                  for (let sIdx = 0; sIdx < res.sliceBuffers.length; sIdx++) {
+                    triggerDownload(res.sliceBuffers[sIdx], `Eblieva_Trang_${pNo}_slice_${sIdx + 1}.jpg`, 'image/jpeg');
+                    await sleep(40);
+                  }
                 }
-
-                // 2. Lưu bản ĐÃ GHÉP Canvas vào 2_decoded/
                 const sharpBlob = await new Promise(r => res.sharpCanvas.toBlob(r, mimeType, quality));
-                zip.addFile(`2_decoded/${pNo}.${fmt}`, new Uint8Array(await sharpBlob.arrayBuffer()));
+                triggerDownload(sharpBlob, `Eblieva_Trang_${pNo}_decoded.${fmt}`, mimeType);
 
               } else {
-                // 🎯 NHÁNH COMIC.JP & MUSIC-BOOK.JP: TẢI ĐỦ RAW.JPG + B1.PNG + B2.PNG
+                // Nhánh JPG (Comic/Music): Tải RAW.jpg + b1.png + b2.png + 1 bản Đã ghép
                 const imgUrl = `${layoutUrl}/${fileStem}.jpg`;
                 const b1Url  = `${layoutUrl}/${fileStem}_b1.png`;
                 const b2Url  = `${layoutUrl}/${fileStem}_b2.png`;
@@ -264,8 +285,6 @@
                   fetchBufferDualFlight(b1Url, Utils),
                   fetchBufferDualFlight(b2Url, Utils)
                 ]);
-                if (!bImg) continue;
-
                 const ext = Utils.detectExt(bImg);
                 const mime = Utils.detectMimeType(bImg);
                 const mainImg = await Utils.loadImage(bImg, mime);
@@ -275,26 +294,84 @@
                 const coordStr = keyItem?.ey || keyItem?.sy || "";
                 const res = Tools.descrambleVariantA(mainImg, coordStr, b1Img, b2Img);
 
-                // 1. Lưu file RAW chính và CẢ 2 DẢI SEAMS B1, B2
-                zip.addFile(`1_raw/${pNo}.${ext}`, new Uint8Array(bImg));
-                if (b1) zip.addFile(`1_raw/${pNo}_b1.png`, new Uint8Array(b1));
-                if (b2) zip.addFile(`1_raw/${pNo}_b2.png`, new Uint8Array(b2));
+                triggerDownload(bImg, `Eblieva_Trang_${pNo}_raw.${ext}`, mime);
+                if (b1) { await sleep(40); triggerDownload(b1, `Eblieva_Trang_${pNo}_b1.png`, 'image/png'); }
+                if (b2) { await sleep(40); triggerDownload(b2, `Eblieva_Trang_${pNo}_b2.png`, 'image/png'); }
 
-                // 2. Lưu bản ĐÃ GHÉP hoàn chỉnh
                 const sharpBlob = await new Promise(r => res.sharpCanvas.toBlob(r, mimeType, quality));
-                zip.addFile(`2_decoded/${pNo}.${fmt}`, new Uint8Array(await sharpBlob.arrayBuffer()));
+                await sleep(40);
+                triggerDownload(sharpBlob, `Eblieva_Trang_${pNo}_decoded.${fmt}`, mimeType);
               }
 
-              await sleep(25);
-            }
+              statusText.textContent = `✅ Đã tải xong các file lẻ trang ${pNo}!`;
 
-            statusText.textContent = `Đang đóng gói file ZIP...`;
-            await sleep(50);
-            const zipName = pageArray.length === 1
-              ? `Eblieva_${isGalapagos ? 'Galapagos' : 'Compare'}_Trang_${pageArray[0]}.zip`
-              : `Eblieva_${isGalapagos ? 'Galapagos' : 'Compare'}_${pageArray[0]}-${pageArray[pageArray.length - 1]}.zip`;
-            zip.download(zipName);
-            statusText.textContent = `✅ Đã xuất xong file ZIP đối chiếu!`;
+            } else {
+              // =========================================================================
+              // 🎯 TRƯỜNG HỢP 2: TỪ 2 TRANG TRỞ LÊN -> ĐÓNG GÓI DUY NHẤT 1 FILE ZIP
+              // =========================================================================
+              const ZipClass = window.PureZipWriter || globalThis.PureZipWriter;
+              const zip = new ZipClass();
+
+              for (let i = 0; i < pageArray.length; i++) {
+                const pNo = pageArray[i];
+                statusText.textContent = `Đang xử lý: ${i + 1}/${pageArray.length} (Trang ${pNo})...`;
+                const fileStem = String(pNo).padStart(5, '0');
+                const keyItem = getKeyItem(master, pNo);
+
+                if (isJsonp) {
+                  const jsonpUrl = `${layoutUrl}/${fileStem}.jsonp?store_code=sharpbvs&pid=sh`;
+                  const rawBuf = await fetchBufferDualFlight(jsonpUrl, Utils);
+                  if (!rawBuf) continue;
+                  const text = new TextDecoder().decode(rawBuf);
+                  const pageData = Tools.decryptGalapagosJsonp(text, keyItem);
+                  const res = await Tools.stitchGalapagosCanvas(pageData, Utils);
+
+                  if (Array.isArray(res.sliceBuffers)) {
+                    res.sliceBuffers.forEach((buf, sIdx) => {
+                      zip.addFile(`1_raw/${pNo}_slice_${sIdx + 1}.jpg`, buf);
+                    });
+                  }
+                  const sharpBlob = await new Promise(r => res.sharpCanvas.toBlob(r, mimeType, quality));
+                  zip.addFile(`2_decoded/${pNo}.${fmt}`, new Uint8Array(await sharpBlob.arrayBuffer()));
+
+                } else {
+                  const imgUrl = `${layoutUrl}/${fileStem}.jpg`;
+                  const b1Url  = `${layoutUrl}/${fileStem}_b1.png`;
+                  const b2Url  = `${layoutUrl}/${fileStem}_b2.png`;
+
+                  const [bImg, b1, b2] = await Promise.all([
+                    fetchBufferDualFlight(imgUrl, Utils),
+                    fetchBufferDualFlight(b1Url, Utils),
+                    fetchBufferDualFlight(b2Url, Utils)
+                  ]);
+                  if (!bImg) continue;
+
+                  const ext = Utils.detectExt(bImg);
+                  const mime = Utils.detectMimeType(bImg);
+                  const mainImg = await Utils.loadImage(bImg, mime);
+                  const b1Img   = b1 ? await Utils.loadImage(b1, 'image/png') : null;
+                  const b2Img   = b2 ? await Utils.loadImage(b2, 'image/png') : null;
+
+                  const coordStr = keyItem?.ey || keyItem?.sy || "";
+                  const res = Tools.descrambleVariantA(mainImg, coordStr, b1Img, b2Img);
+
+                  zip.addFile(`1_raw/${pNo}.${ext}`, new Uint8Array(bImg));
+                  if (b1) zip.addFile(`1_raw/${pNo}_b1.png`, new Uint8Array(b1));
+                  if (b2) zip.addFile(`1_raw/${pNo}_b2.png`, new Uint8Array(b2));
+
+                  const sharpBlob = await new Promise(r => res.sharpCanvas.toBlob(r, mimeType, quality));
+                  zip.addFile(`2_decoded/${pNo}.${fmt}`, new Uint8Array(await sharpBlob.arrayBuffer()));
+                }
+
+                await sleep(25);
+              }
+
+              statusText.textContent = `Đang đóng gói file ZIP...`;
+              await sleep(50);
+              const zipName = `Eblieva_Compare_${pageArray[0]}-${pageArray[pageArray.length - 1]}.zip`;
+              zip.download(zipName);
+              statusText.textContent = `✅ Đã xuất xong file ZIP đối chiếu!`;
+            }
           } catch (e) {
             statusText.textContent = `❌ ${e?.message || String(e)}`;
           } finally {

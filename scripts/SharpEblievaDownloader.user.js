@@ -156,26 +156,23 @@
     return master;
   }
 
+  function getPageLimit(k) {
+    if (typeof k.oy === 'number' && k.oy > 0) return k.oy;
+    if (typeof k.ny === 'number' && k.ny > 0) return k.ny;
+    if (typeof k.ny?.Iy === 'number') return k.ny.Iy;
+    return Number(k.lastPage || k.p || 0);
+  }
+
   function getKeyItem(master, pNo) {
-    if (WIN.location.hostname.includes('galapagos')) {
-      const keys = master.d?.Ay?.Dy || [];
-      return keys.find(k => pNo <= k.oy) || keys[keys.length - 1];
-    }
-    const branch = master.d?.By || master.d?.ky || Object.values(master.d || {})[0];
-    const list = branch?.by || branch?.Dy || [];
-    return list.find(k => pNo <= (k.ny?.Iy || k.ny || k.oy || 0)) || list[list.length - 1];
+    const list = master.d?.Ay?.Dy || master.d?.By?.by || master.d?.ky?.by || [];
+    return list.find(k => pNo <= getPageLimit(k)) || list[list.length - 1];
   }
 
   function extractParamList(master) {
-    if (WIN.location.hostname.includes('galapagos')) {
-      const keys = master.d?.Ay?.Dy || [];
-      return keys.map(item => ({ coords: item.sy || "", lastPage: item.oy || 0 }));
-    }
-    const branch = master.d?.By || master.d?.ky || Object.values(master.d || {})[0];
-    const list = branch?.by || branch?.Dy || [];
+    const list = master.d?.Ay?.Dy || master.d?.By?.by || master.d?.ky?.by || [];
     return list.map(item => ({
       coords: item.ey || item.sy || "",
-      lastPage: Number(item.ny?.Iy || item.ny || item.oy || 0)
+      lastPage: getPageLimit(item)
     }));
   }
 
@@ -254,8 +251,7 @@
     if (ui) ui.setBusy(true);
 
     try {
-      const { master, layoutUrl, totalPages, title, cid, isCleanTrial } = state.chapterData;
-      const isGalapagos = WIN.location.hostname.includes('galapagos');
+      const { master, layoutUrl, totalPages, title, cid, isJsonp} = state.chapterData;
       const useJpeg = Boolean(state.convertJpeg);
 
       const Tools = WIN.SharpEblievaTools || window.SharpEblievaTools;
@@ -272,7 +268,7 @@
         const keyItem = getKeyItem(master, pNo);
         let sharpCanvas;
 
-        if (isGalapagos) {
+        if (isJsonp) {
           const jsonpUrl = `${layoutUrl}/${fileStem}.jsonp?store_code=sharpbvs&pid=sh`;
           const rawBuf = await fetchBufferDualFlight(jsonpUrl, Utils);
           if (!rawBuf) throw new Error(`Lỗi tải trang ${pNo}`);
@@ -394,8 +390,17 @@
     const cleanTitle = formatCleanTitle(rawTitle);
     const cid = bv.bookInfo?.contents_info?.contents_id || "book";
 
-    const isGalapagos = WIN.location.hostname.includes('galapagos');
-    const isCleanTrial = isGalapagos && WIN.location.hash.includes('sample=true');
+    const recentReqs = WIN.performance?.getEntriesByType?.('resource') || [];
+    let isJsonp = recentReqs.some(r => r.name.includes(layoutUrl) && r.name.includes('.jsonp'));
+
+    // Dự phòng an toàn nếu mở trang quá nhanh:
+    if (!isJsonp && !recentReqs.some(r => r.name.includes(layoutUrl) && r.name.includes('.jpg'))) {
+      const firstP = String(bv.currentLayoutData?.start || 1).padStart(5, '0');
+      try {
+        const res = await WIN.fetch(`${layoutUrl}/${firstP}.jsonp${WIN.location.search}`, { method: 'HEAD' });
+        isJsonp = (res.status === 200);
+      } catch(e) {}
+    }
 
     state.chapterData = {
       master,
@@ -403,7 +408,7 @@
       totalPages,
       title: cleanTitle,
       cid,
-      isCleanTrial
+      isJsonp
     };
 
     if (ui) {

@@ -2,7 +2,7 @@
 // @name         Comici+ Universal Downloader
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
 // @version      3.0.0
-// @icon         https://files.catbox.moe/tpd5zq.png
+// @icon         https://www.google.com/s2/favicons?domain=comici.co.jp&sz=64
 // @description  Tải manga trên ~30 nền tảng SaaS Comici+ (Champion Cross, Comic Growl, Young Champion, Young Animal, Hana to Yume, Big Comics, HERO'S Web, Take Comic!, Hayacomic, MAG Garden, G-comi, Comic PASH! neo, KimiComi, COMIC ROOM BASE, Comic Rela, Bibibi Comic, Mangalt, comici MANGA, Rimacomi+, Comic Ride, Manga BANG Comics, Manga SPA!, Asacomi, Nami Comic, Pia Comic, COMIC Ruelle & COMIC Jardin, booklistaSTUDIOweb, Manga Zegra).
 // @author       anonymous & AI
 // @match        https://championcross.jp/*
@@ -125,7 +125,7 @@
     "hanayume.com":           { name: "Hana to Yume",         top: "60px", color: "#d94132", bg: "#080707", text: "#d94132" },
     "bigcomics.jp":           { name: "Big Comics",           top: "60px", color: "#E50111", bg: "#ffffff", text: "#E50111" },
     "heros-web.com":          { name: "HERO'S Web",           top: "60px", color: "#D12D35", bg: "#18181b", text: "#fca5a5" },
-    "takecomic.jp":           { name: "Takecomic",            top: "60px", color: "#78be20", bg: "#ffffff", text: "#558b2f" },
+    "takecomic.jp":           { name: "竹コミ！",              top: "60px", color: "#78be20", bg: "#ffffff", text: "#558b2f" },
     "hayacomic.jp":           { name: "Hayacomic",            top: "60px", color: "#00E6FF", bg: "#080C32", text: "#ffffff" }, // đẹp
     "kansai.mag-garden.co.jp":{ name: "MAGKAN",               top: "61px", color: "#E6001E", bg: "#ffffff", text: "#E6001E" },
     "g-comi.jp":              { name: "G-Comi",               top: "60px", color: "#eb4d27", bg: "#ffffff", text: "#eb4d27" },

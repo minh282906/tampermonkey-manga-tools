@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Drecomi+ Universal Downloader
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
-// @version      1.0.0
+// @version      1.0.1
 // @icon         https://drecomi-plus.jp/favicon.ico
 // @description  Tải manga trên Drecomi+ (drecomi-plus.jp).
 // @author       anonymous & AI

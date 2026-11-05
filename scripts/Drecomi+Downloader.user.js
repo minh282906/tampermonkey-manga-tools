@@ -134,15 +134,30 @@
     const { type, targetCode, isTrial } = params;
     const apiUrl = `https://api.drecomi-plus.jp/api/v1/app/viewer/${type}/${targetCode}/${isTrial ? 'trial-' : ''}session`;
 
+    // Kéo accessToken từ NextAuth session trên web mẹ (cho chap mua)
+    let accessToken = "";
+    try {
+      const authRes = await WIN.fetch("https://drecomi-plus.jp/api/auth/session", { credentials: "include" });
+      if (authRes.ok) {
+        const authJson = await authRes.json();
+        accessToken = authJson?.accessToken || "";
+      }
+    } catch (e) {}
+
+    const reqHeaders = {
+      "Accept": "application/json",
+      "Content-Type": "application/json"
+    };
+    if (accessToken) {
+      reqHeaders["Authorization"] = `Bearer ${accessToken}`;
+    }
+
     let json = null;
     try {
       const res = await WIN.fetch(apiUrl, {
         method: "POST",
         credentials: "include",
-        headers: {
-          "Accept": "application/json",
-          "Content-Type": "application/json"
-        }
+        headers: reqHeaders
       });
       if (res.ok) json = await res.json();
     } catch (e) {}
@@ -154,8 +169,7 @@
           method: "POST",
           url: apiUrl,
           headers: {
-            "Accept": "application/json",
-            "Content-Type": "application/json",
+            ...reqHeaders,
             "Referer": WIN.location.href
           },
           responseType: "json",

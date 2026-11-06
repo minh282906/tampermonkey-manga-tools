@@ -60,6 +60,9 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 | **Comici Downloader**           | (`comici.jp`)                                                                                                                                                                                              | ❌ Web đã đóng |     [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/ComiciJPDownloader.user.js)     |
 | **Fupro Downloader**            | (`fupro-comics.com`)                                                                                                                                                                                       |  🟢 Hoạt động  |      [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/FuproDownloader.user.js)       |
 | **MechaComic Downloader**       | (`mechacomic.jp`)                                                                                                                                                                                          |  🟢 Hoạt động  |    [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/MechaComicDownloader.user.js)    |
+| **Yawaspi Downloader**   | やわらかスピリッツ (`yawaspi.com`)                                                                                                                                                                      |  🟢 Hoạt động  |     [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/YawaspiDownloader.user.js)      |
+| **日刊月チャン Downloader**   | 日刊月チャン (`nikkangecchan.jp`)                                                                                                                                                                      |  🟢 Hoạt động  |     [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/NikkanGecchanDownloader.user.js)      |
+| **SaiZenSen Downloader**   | 最前線 (`sai-zen-sen.jp`) bao gồm cả ツイ４, 4PAGES                                                                                                                                                                      |  🟢 Hoạt động  |     [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/SaiZenSenDownloader.user.js)      |
 | **Alphapolis Downloader**       | (`alphapolis.co.jp`)                                                                                                                                                                                       |  🟢 Hoạt động  |      [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/PixivDownloader.user.js)       |
 | **MangaMeets Downloader**       | MangaMeets (`manga-meets.jp`)                                                                                                                                                                              |  🟢 Hoạt động  |    [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/MangaMeetsDownloader.user.js)    |
 | **MangaMee Downloader**         | マンガMee (`manga-mee.jp`)                                                                                                                                                                                 |  🟢 Hoạt động  |     [Cài đặt](https://raw.githubusercontent.com/minh282906/tampermonkey-manga-tools/main/scripts/MangaMeeDownloader.user.js)     |
@@ -306,10 +309,13 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 - Comic Owl (`owl-comic.jp`)
 - 宝島すごい！WEB (`sugoiweb.jp`)
 - マンガボックス (`mangabox.me`)
+- やわらかスピリッツ (`yawaspi.com`)
 - 週プレNEWS (`wpb.shueisha.co.jp`)
+- 日刊月チャン (`nikkangecchan.jp`)
 - 漫画全巻ドットコム (`mangazenkan.com`)
 - 週刊マナバナイ (`manabanai.opinet.jp`)
 - 秋田書店 (`akitashoten.co.jp`)
+- 最前線 (`sai-zen-sen.jp`)
 
 </details>
 

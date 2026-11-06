@@ -330,7 +330,7 @@ Bấm vào link **[Cài đặt]** tương ứng để cài đặt trực tiếp 
 1. ****Clone dự án về máy:****
    ```bash
    git clone https://github.com/minh282906/tampermonkey-manga-tools.git
-   cd manga-downloaders
+   cd tampermonkey-manga-tools
    ```
 2. ****Chỉnh sửa code trực tiếp trong thư mục****
 3. ****Kiểm tra script chạy thử trên Tampermonkey.****

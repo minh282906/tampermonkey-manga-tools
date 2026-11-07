@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kadokawa Universal Downloader
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
-// @version      1.0.1
+// @version      1.0.2
 // @icon         https://www.google.com/s2/favicons?domain=kadokawa.co.jp&sz=128
 // @description  Tải manga trên toàn bộ hệ sinh thái Kadokawa & Dwango (ComicWalker / KadoComi, Niconico Manga PC & Mobile).
 // @author       anonymous & AI
@@ -74,7 +74,7 @@
    * ========================================================================= */
   const ComicWalkerAdapter = {
     id: "comicwalker",
-    name: "ComicWalker",
+    name: "カドコミ",
     engine: "KADOKAWA",
     storagePrefix: "cw-dl",
     theme: { color: "#18181b", bg: "#ffffff", text: "#000000", top: "31px" },
@@ -311,7 +311,7 @@
    * ========================================================================= */
   const NiconicoAdapter = {
     id: "niconico",
-    name: "Niconico",
+    name: "ニコニコ",
     engine: "DWANGO",
     storagePrefix: "nico-dl",
     theme: { color: "#77C238", bg: "#ffffff", text: "#77C238", top: "48px" },

@@ -99,7 +99,12 @@
   }
 
   function isEpisodeUrl() {
-    return /\/(?:manga|book|magazine)\/(?:viewer\/)?\d+/i.test(WIN.location.pathname);
+    const p = WIN.location.pathname;
+    // Trang manga có viewer nhúng hoặc viewer riêng
+    if (/\/manga\/\d+/i.test(p)) return true;
+    // Nhánh book và magazine: Bắt buộc phải có /viewer/
+    if (/\/(?:manga|book|magazine)\/viewer\/\d+/i.test(p)) return true;
+    return false;
   }
 
   // Hàm điều phối lấy toàn bộ Metadata (Chapter ID, Tên truyện, Tên chap đầy đủ)
@@ -112,7 +117,21 @@
       const chapterId = viewerMatch[1];
       const pageProps = WIN.__NEXT_DATA__?.props?.pageProps;
 
-      // 1. Ưu tiên lấy trực tiếp từ Next.js Data nếu có
+      // 1. Ưu tiên bóc tách từ DOM Header nếu có
+      const domTitleEl = DOC.querySelector('p[class*="ViewerHeader_container__title"], .ViewerHeader_container__title__lOGe7');
+      if (domTitleEl) {
+        const rawDomTitle = cleanString(domTitleEl.textContent);
+        if (rawDomTitle) {
+          // Chuẩn hóa tên tập: "IDOL×IDOL STORY! 11巻" -> "IDOL×IDOL STORY! - 11巻"
+          const m = rawDomTitle.match(/^(.*?)(?:\s+)([0-9０-９]+巻.*)$/i);
+          if (m && m[1] && m[2]) {
+            return { chapterId, title: `${cleanString(m[1])} - ${cleanString(m[2])}` };
+          }
+          return { chapterId, title: rawDomTitle };
+        }
+      }
+
+      // 2. Ưu tiên lấy trực tiếp từ Next.js Data nếu có (Chap lẻ)
       const seriesFromNext = cleanString(pageProps?.manga?.mangaName || pageProps?.chapter?.mangaName || "");
       const mainFromNext   = cleanString(pageProps?.chapter?.chapterMainName || "");
       const subFromNext    = cleanString(pageProps?.chapter?.chapterSubName || "");
@@ -122,11 +141,11 @@
         return { chapterId, title: `${seriesFromNext} - ${chapFull}` };
       }
 
-      // 2. Lấy chuỗi tiêu đề từ meta og:title
+      // 3. Lấy chuỗi tiêu đề từ meta og:title
       const metaOg = DOC.querySelector('meta[property="og:title"]')?.getAttribute('content') || DOC.title || "";
       let clean = cleanString(metaOg.replace(/[-－–—\s]*COMIC\s*FUZ.*$/i, ''));
 
-      // 3. Tách bằng tên truyện từ link quay lại trang manga: <a href="/manga/3274">花唄メモワール</a>
+      // 4. Tách bằng tên truyện từ link quay lại trang manga: <a href="/manga/3274">花唄メモワール</a>
       const mangaLinkEl = DOC.querySelector('a[href^="/manga/"]:not([href*="viewer"])');
       const seriesFromDom = cleanString(mangaLinkEl?.textContent || "");
 
@@ -137,7 +156,7 @@
         }
       }
 
-      // 4. Regex vạn năng: Bắt chữ "第" + mọi danh từ đơn vị (唄, 話, 局, 曲...) hoặc các từ khóa tiếng Anh
+      // 5. Regex vạn năng: Bắt chữ "第" + mọi danh từ đơn vị (唄, 話, 局, 曲...) hoặc các từ khóa tiếng Anh
       const m = clean.match(/^(.*?)(?:\s+[-－–—]\s+|\s+)((?:(?:第\s*[0-9０-９一二三四五六七八九十百千万]+[^\s]*)|(?:TRIGGER|CHAPTER|EPISODE|ACT|ROUND|VOL)[\.\s]*\d+).*)$/i);
       if (m) {
         return { chapterId, title: `${cleanString(m[1])} - ${cleanString(m[2])}` };
@@ -238,22 +257,48 @@
   }
 
   async function fetchComicFuzManifest(chapterId) {
+
+    const isBook = WIN.location.pathname.includes('/book/');
+    // Nếu là book thì gọi book_viewer, ngược lại gọi manga_viewer
+    const apiEndpoint = isBook ? "https://api.comic-fuz.com/v1/book_viewer_3" : "https://api.comic-fuz.com/v1/manga_viewer";
+
     const body = encodeProtobufRequest(chapterId);
+    
 
-    const responseText = await new Promise((resolve, reject) => {
-      GM_xmlhttpRequest({
-        method: "POST",
-        url: "https://api.comic-fuz.com/v1/manga_viewer",
-        data: body,
-        headers: { "Content-Type": "application/x-protobuf" },
-        responseType: "text",
-        onload: res => (res.status >= 200 && res.status < 300) ? resolve(res.responseText) : reject(new Error(`HTTP ${res.status}`)),
-        onerror: () => reject(new Error("Lỗi kết nối API Comic-Fuz")),
-        ontimeout: () => reject(new Error("Timeout kết nối API Comic-Fuz"))
+    let responseText = "";
+    try {
+      responseText = await new Promise((resolve, reject) => {
+        GM_xmlhttpRequest({
+          method: "POST",
+          url: apiEndpoint,
+          data: body,
+          headers: { "Content-Type": "application/x-protobuf" },
+          responseType: "text",
+          onload: res => (res.status >= 200 && res.status < 300) ? resolve(res.responseText) : reject(new Error(`HTTP ${res.status}`)),
+          onerror: () => reject(new Error("Lỗi kết nối API Comic-Fuz")),
+          ontimeout: () => reject(new Error("Timeout kết nối API Comic-Fuz"))
+        });
       });
-    });
+    } catch (e) {
+      // Dự phòng nếu book_viewer không có hậu tố _3
+      if (isBook) {
+        responseText = await new Promise((resolve, reject) => {
+          GM_xmlhttpRequest({
+            method: "POST",
+            url: "https://api.comic-fuz.com/v1/book_viewer",
+            data: body,
+            headers: { "Content-Type": "application/x-protobuf" },
+            responseType: "text",
+            onload: res => (res.status >= 200 && res.status < 300) ? resolve(res.responseText) : reject(new Error(`HTTP ${res.status}`)),
+            onerror: reject
+          });
+        });
+      } else {
+        throw e;
+      }
+    }
 
-    // Bóc tách URL CDN (bảo toàn trọn vẹn cả &ct=1), IV 32-hex và Key 64-hex (IV (32-hex) + "@ + Key (64-hex))
+    // Bóc tách URL CDN (bảo toàn trọn vẹn cả &ct=1), IV 32-hex và Key 64-hex
     const regex = /(\/[fkh].*?&e=\d{10}[^\s"'\x00-\x1f]*).*?([0-9a-fA-F]{32})"@([0-9a-fA-F]{64})/g;
     const pages = [];
     let match;

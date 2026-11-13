@@ -57,7 +57,8 @@
     ui: null,
     currentAdapter: null,
     lastUrl: "",
-    lastEpisodeId: ""
+    lastEpisodeId: "",
+    bootGeneration: 0
   };
 
   /* =========================================================================
@@ -70,10 +71,13 @@
     const hookedFetch = async function(...args) {
       const response = await origFetch.apply(this, args);
       try {
-        const url = typeof args[0] === 'string' ? args[0] : (args[0]?.url || '');
+        const rawTarget = args[0];
+        const url = typeof rawTarget === 'string'
+          ? rawTarget
+          : (rawTarget?.url || rawTarget?.href || (rawTarget instanceof URL ? rawTarget.href : String(rawTarget || '')));
         if (url.includes('/web/episode/viewer')) {
           const epMatch = url.match(/[?&]episode_id=(\d+)/);
-          const reqEpId = epMatch ? epMatch[1] : null;
+          const reqEpId = (epMatch ? epMatch[1] : null) || state.currentAdapter?.getEpisodeId() || resolveSiteAdapter()?.getEpisodeId();
 
           const clone = response.clone();
           clone.json().then(data => {
@@ -193,12 +197,13 @@
                      || DOC.querySelector('meta[property="og:title"]')?.getAttribute('content')
                      || DOC.title || "";
 
+      let s = "", e = "";
       if (metaTitle.includes('|')) {
         const parts = metaTitle.split('|').map(p => p.trim());
-        const s = parts[0] || ""; // "となりの黒川さん"
+        s = parts[0] || ""; // "となりの黒川さん"
         
         // parts[1]: "【第1話】彼女はヒロイン？ / マガポケ..."
-        let e = (parts[1] || "").split('/')[0].trim();
+        e = (parts[1] || "").split('/')[0].trim();
         // Chuyển 【第1話】 thành "第1話 "
         e = e.replace(/【\s*((?:第\s*)?[0-9０-９IVXLCDMivxlcdm一二三四五六七八九十百千万\.]+\s*(?:話|巻|章|節|部|エピソード|分冊版|単話)?)\s*】/gi, '$1 ')
              .replace(/[【】\[\]「」『』]/g, '')
@@ -352,7 +357,20 @@
   /* =========================================================================
    * 5. ĐỒNG BỘ DANH MỤC TRANG & GIẢI MÃ TẬP TRUNG QUA BAMBITOOLS
    * ========================================================================= */
+  let syncPromise = null;
   async function syncChapterData() {
+    if (syncPromise) return syncPromise;
+    syncPromise = (async () => {
+      try {
+        await _syncChapterDataInternal();
+      } finally {
+        syncPromise = null;
+      }
+    })();
+    return syncPromise;
+  }
+
+  async function _syncChapterDataInternal() {
     const adapter = state.currentAdapter || resolveSiteAdapter();
     if (!adapter) return;
     state.currentAdapter = adapter;
@@ -368,16 +386,14 @@
     let apiData = state.capturedApiData;
 
     // =========================================================================
-    // NGUYÊN TẮC VÀNG CHỐNG LỖI 3106: CHỜ GÓI TIN TỰ NHIÊN CỦA WEB TRONG 1500ms
-    // Tuyệt đối KHÔNG tự ý gọi fetchApiFallback khi web đang tải!
+    // 1. [CỨU TINH F5 - 0ms]: Đọc ngay từ sessionStorage nếu vừa bấm F5 tải lại trang
     // =========================================================================
-    // Đọc ngay từ sessionStorage nếu vừa bấm F5 tải lại trang
     if (!apiData) {
       try {
         const cached = sessionStorage.getItem(`bambi_dl_cache_${currentEpId}`);
         if (cached) {
           const parsed = JSON.parse(cached);
-          if (parsed?.page_list || parsed?.pages) {
+          if (parsed?.page_list || parsed?.pages || parsed?.data?.page_list) {
             apiData = parsed;
             state.capturedApiData = parsed;
           }
@@ -385,26 +401,40 @@
       } catch(e) {}
     }
 
+    // =========================================================================
+    // 2. CHỜ GÓI TIN TỰ NHIÊN CỦA WEB:
+    // - MagaPoke & Ciao Plus: Chờ tối đa 1800ms cho web, nếu web chưa gọi thì kích hoạt
+    //   ngay Fallback chữ ký số cực nhanh (~250ms), giúp UI sẵn sàng chỉ sau ~2s!
+    // - KManga: Chờ tối đa 4500ms để web viewer qua VPN kịp phản hồi an toàn, tránh WAF/3106.
+    // =========================================================================
     if (!apiData) {
+      const maxWait = (adapter.id === "kmanga") ? 4500 : 1800;
       const startWait = Date.now();
-      while (Date.now() - startWait < 5000) {
+      while (Date.now() - startWait < maxWait) {
         apiData = state.capturedApiData;
         if (apiData && String(apiData.episode_id) === String(currentEpId)) break;
         await sleep(100);
       }
 
-      // CHỈ KHI NÀO SAU 5 GIÂY MÀ WEB VẪN CHƯA GỌI THÌ MỚI DÙNG FALLBACK
+      // KÍCH HOẠT FALLBACK NẾU HẾT THỜI GIAN CHỜ MÀ WEB CHƯA GỌI
       if (!apiData || String(apiData.episode_id) !== String(currentEpId)) {
         const Utils = window.MangaUtils || globalThis.MangaUtils;
         try {
           apiData = await adapter.fetchApiFallback(currentEpId, Utils);
-          if (apiData) state.capturedApiData = apiData;
+          if (apiData) {
+            apiData.episode_id = String(currentEpId);
+            state.capturedApiData = apiData;
+          }
         } catch (e) {}
       }
     }
 
     const rawPages = apiData?.page_list || apiData?.pages || apiData?.data?.page_list;
     if (!apiData || !Array.isArray(rawPages) || rawPages.length === 0) return;
+
+    if (currentEpId) {
+      try { sessionStorage.setItem(`bambi_dl_cache_${currentEpId}`, JSON.stringify(apiData)); } catch(e) {}
+    }
 
     const allPages = [];
     const seenUrls = new Set();
@@ -465,7 +495,7 @@
 
     const ui = getUI();
     if (ui && !state.running) {
-      await sleep(120)
+      await sleep(100);
       ui.updateProgress({ completed: 0, total: allPages.length, status: "Sẵn sàng." });
       ui.setBusy(false);
     }
@@ -571,20 +601,39 @@
       return;
     }
 
+    const curEpId = adapter.getEpisodeId();
+    if (!curEpId || curEpId.includes("episode")) {
+      if (ui?.panel) ui.panel.style.display = "none";
+      return;
+    }
+
+    // Đánh dấu ngay ID và URL hiện tại để chặn RouteWatcher kích hoạt nhầm khi Nuxt/Vue hydration
+    state.lastEpisodeId = curEpId;
+    state.lastUrl = WIN.location.href;
+
+    const currentToken = ++state.bootGeneration;
+
     if (ui?.panel) {
       ui.panel.style.display = "block";
-      ui.setBusy(true);
-      ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
+      // Nếu đã có sẵn chapterData của đúng tập này (ví dụ F5 hoặc vừa bắt gói tin), không giật UI về "Đang kiểm tra..."
+      if (!state.chapterData || String(state.chapterData.episodeId) !== String(curEpId)) {
+        ui.setBusy(true);
+        ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
+      }
     }
 
     try {
       await syncChapterData();
+      if (currentToken !== state.bootGeneration) return; // Đã có phiên boot mới hơn, dừng lại
+
       if (!state.chapterData?.pages?.length) {
         throw new Error("Không thể trích xuất trang truyện (Chương bị khóa hoặc lỗi kết nối).");
       }
     } catch (err) {
+      if (currentToken !== state.bootGeneration) return;
       console.error("[bambi-dl] Boot error:", err);
-      if (ui) {
+      // Chỉ hiện lỗi nếu sau cùng vẫn chưa có dữ liệu trang
+      if (ui && !state.chapterData?.pages?.length) {
         ui.updateProgress({ status: "Lỗi: " + (err?.message || "Không thể tải trang.") });
       }
     }
@@ -609,8 +658,13 @@
 
       state.currentAdapter = adapter;
       const curEpId = adapter.getEpisodeId();
+      if (!curEpId || curEpId.includes("episode")) return;
 
-      if (state.lastEpisodeId && state.lastEpisodeId === curEpId) return;
+      // Tuyệt đối không reset hay chạy lại boot nếu vẫn đang ở cùng 1 chương (tránh nuốt gói tin khi Vue/Nuxt hydration)
+      if (state.lastEpisodeId === curEpId || (state.chapterData && String(state.chapterData.episodeId) === String(curEpId))) {
+        state.lastUrl = newUrl;
+        return;
+      }
 
       state.lastUrl = newUrl;
       state.lastEpisodeId = curEpId;

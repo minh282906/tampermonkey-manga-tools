@@ -35,7 +35,10 @@
     WIN.fetch = async function(...args) {
       const res = await origFetch.apply(this, args);
       try {
-        const u = typeof args[0] === 'string' ? args[0] : (args[0]?.url || '');
+        const rawTarget = args[0];
+        const u = typeof rawTarget === 'string'
+          ? rawTarget
+          : (rawTarget?.url || rawTarget?.href || (rawTarget instanceof URL ? rawTarget.href : String(rawTarget || '')));
         if (u.includes('/web/episode/viewer')) {
           const epMatch = u.match(/[?&]episode_id=(\d+)/);
           res.clone().json().then(d => {
@@ -47,6 +50,11 @@
                 try { sessionStorage.setItem(`bambi_insp_cache_${targetId}`, JSON.stringify(d)); } catch(e) {}
               }
               capturedApi = d;
+              // Tự động vẽ lại Inspector ngay khi gói tin tập mới về (tránh bị mất UI khi chuyển chap SPA)
+              const curSite = getSiteInfo();
+              if (curSite?.epId && (!targetId || targetId === String(curSite.epId))) {
+                boot();
+              }
             }
           }).catch(() => {});
         }
@@ -207,9 +215,10 @@
       } catch(e) {}
     }
 
-    // 3. Nếu chuyển sang tập mới chưa có cache: Đợi gói tin tự nhiên của web trong 1.5s
+    // 3. Nếu chuyển sang tập mới chưa có cache: Đợi gói tin tự nhiên của web (1800ms cho Ciao/MagaPoke, 4500ms cho KManga)
     if (!apiData) {
-      for (let i = 0; i < 30; i++) {
+      const maxTicks = site.isKManga ? 45 : 18;
+      for (let i = 0; i < maxTicks; i++) {
         if (capturedApi && String(capturedApi.episode_id || '') === String(site.epId)) {
           apiData = capturedApi;
           break;
@@ -328,15 +337,34 @@
   }
 
   /* =========================================================================
-   * 5. THEO DÕI ĐỔI URL (SPA) Y HỆT BẢN GỐC
+   * 5. THEO DÕI ĐỔI URL (SPA) TỨC THÌ
    * ========================================================================= */
   let lastUrl = location.href;
-  setInterval(() => {
-    if (location.href !== lastUrl) {
+  let lastEpId = "";
+  const checkRoute = () => {
+    const site = getSiteInfo();
+    const curEpId = site?.epId || "";
+    if (location.href !== lastUrl || (curEpId && curEpId !== lastEpId)) {
+      if (curEpId && curEpId === lastEpId && DOC.getElementById('manga-inspector-root')) {
+        lastUrl = location.href;
+        return;
+      }
       lastUrl = location.href;
+      lastEpId = curEpId;
       boot();
     }
-  }, 400);
+  };
+  const origPush = history.pushState;
+  if (typeof origPush === 'function') {
+    history.pushState = function(...args) { origPush.apply(this, args); checkRoute(); };
+  }
+  const origReplace = history.replaceState;
+  if (typeof origReplace === 'function') {
+    history.replaceState = function(...args) { origReplace.apply(this, args); checkRoute(); };
+  }
+  window.addEventListener("popstate", checkRoute);
+  window.addEventListener("hashchange", checkRoute);
+  setInterval(checkRoute, 400);
 
   boot();
 })();

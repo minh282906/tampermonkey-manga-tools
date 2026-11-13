@@ -93,6 +93,7 @@
               if (reqEpId) {
                 data.episode_id = String(reqEpId);
                 try { sessionStorage.setItem(`bambi_dl_cache_${reqEpId}`, JSON.stringify(data)); } catch(e) {}
+                try { localStorage.setItem(`bambi_dl_cache_${reqEpId}`, JSON.stringify(data)); } catch(e) {}
               }
               state.capturedApiData = data;
               if (!state.currentAdapter) state.currentAdapter = resolveSiteAdapter();
@@ -390,9 +391,9 @@
     // =========================================================================
     if (!apiData) {
       try {
-        const cached = sessionStorage.getItem(`bambi_dl_cache_${currentEpId}`);
-        if (cached) {
-          const parsed = JSON.parse(cached);
+        const rawCached = sessionStorage.getItem(`bambi_dl_cache_${currentEpId}`) || localStorage.getItem(`bambi_dl_cache_${currentEpId}`);
+        if (rawCached) {
+          const parsed = JSON.parse(rawCached);
           if (parsed?.page_list || parsed?.pages || parsed?.data?.page_list) {
             apiData = parsed;
             state.capturedApiData = parsed;

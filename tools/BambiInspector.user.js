@@ -48,6 +48,7 @@
                 d.episode_id = targetId;
                 // Lưu vào cache theo đúng ID để F5 có ngay tại 0ms
                 try { sessionStorage.setItem(`bambi_insp_cache_${targetId}`, JSON.stringify(d)); } catch(e) {}
+                try { localStorage.setItem(`bambi_insp_cache_${targetId}`, JSON.stringify(d)); } catch(e) {}
               }
               capturedApi = d;
               // Tự động vẽ lại Inspector ngay khi gói tin tập mới về (tránh bị mất UI khi chuyển chap SPA)
@@ -201,12 +202,12 @@
       apiData = capturedApi;
     }
 
-    // 2. [CỨU TINH F5 - 0ms]: Đọc ngay từ sessionStorage nếu vừa bấm F5
+    // 2. [CỨU TINH F5 - 0ms]: Đọc ngay từ sessionStorage hoặc localStorage nếu vừa nạp lại
     if (!apiData) {
       try {
-        const cached = sessionStorage.getItem(`bambi_insp_cache_${site.epId}`);
-        if (cached) {
-          const parsed = JSON.parse(cached);
+        const rawCached = sessionStorage.getItem(`bambi_insp_cache_${site.epId}`) || localStorage.getItem(`bambi_insp_cache_${site.epId}`);
+        if (rawCached) {
+          const parsed = JSON.parse(rawCached);
           if (parsed?.page_list || parsed?.pages || parsed?.data?.page_list) {
             apiData = parsed;
             capturedApi = parsed;

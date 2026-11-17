@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YanJan! (YNJN) Inspector
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
-// @version      1.0.0
+// @version      1.0.1
 // @description  Inspector soi ma trận chuyển vị 4x4 và tải đối chiếu 2 bản ảnh cho YanJan! (ynjn.jp).
 // @author       anonymous & AI
 // @match        https://ynjn.jp/*
@@ -81,6 +81,12 @@
     return { rawW: w, rawH: h, gridW, gridH, dummyText, visualCanvas, sharpCanvas, img };
   }
 
+  function isViewerUrl() {
+    const path = (WIN.location.pathname || '').replace(/\/+$/, '');
+    if (path === '/membership/about' || path === '/membership/issues') return false;
+    return /\/viewer\/\d+\/\d+/.test(path) || /\/title\/\d+/.test(path) || path === '/membership';
+  }
+
   function getUrlParams() {
     const path = WIN.location.pathname;
     let titleId = "", episodeId = "";
@@ -108,54 +114,75 @@
     return { titleId, episodeId };
   }
 
-  function isEpisodeUrl() {
-    const path = WIN.location.pathname;
-    return /\/viewer\/\d+\/\d+/.test(path) || /\/title\/\d+/.test(path);
+  // Tóm trực tiếp mảng trang ảnh từ API (dùng chung cho cả Membership lẫn Viewer chương)
+  let capturedPages = null;
+  const origFetch = WIN.fetch;
+  if (typeof origFetch === 'function') {
+    WIN.fetch = async function(...args) {
+      const res = await origFetch.apply(this, args);
+      try {
+        const u = typeof args[0] === 'string' ? args[0] : (args[0]?.url || '');
+        if (u.includes('webapi.ynjn.jp')) {
+          res.clone().json().then(j => {
+            const p = j?.data?.pages?.filter(x => x.manga_page?.page_image_url);
+            if (p?.length) {
+              capturedPages = p;
+              boot();
+            }
+          }).catch(() => {});
+        }
+      } catch (e) {}
+      return res;
+    };
   }
 
   async function boot() {
     while (!DOC.body) await sleep(50);
 
-    if (!isEpisodeUrl()) {
-      DOC.getElementById('manga-inspector-root')?.remove();
-      return;
-    }
-    
-    // Đợi trang nạp và bắt được episodeId (tối đa 2 giây nếu ở trang /title/)
-    let { titleId, episodeId } = getUrlParams();
-    if (!titleId) {
+    if (!isViewerUrl()) {
       DOC.getElementById('manga-inspector-root')?.remove();
       return;
     }
 
-    for (let i = 0; i < 20 && !episodeId; i++) {
-      await sleep(100);
-      episodeId = getUrlParams().episodeId;
-    }
-    if (!episodeId) {
-      DOC.getElementById('manga-inspector-root')?.remove();
-      return;
+    // 1. Ưu tiên dữ liệu tóm từ fetch hook (0ms)
+    let pages = capturedPages;
+
+    // 2. Dự phòng nạp API truyền thống nếu ở trang truyện chương
+    if (!pages?.length) {
+      let { titleId, episodeId } = getUrlParams();
+      for (let i = 0; i < 40 && !capturedPages; i++) {
+        await sleep(150);
+        if (!isViewerUrl()) return;
+        if (!episodeId) episodeId = getUrlParams().episodeId;
+      }
+      pages = capturedPages;
+
+      if (!pages?.length && titleId && episodeId) {
+        try {
+          const Utils = window.MangaUtils || globalThis.MangaUtils;
+          const apiUrl = `https://webapi.ynjn.jp/viewer?title_id=${titleId}&episode_id=${episodeId}&viewerOnly=0`;
+          const headers = {
+            "Accept": "application/json, text/plain, */*",
+            "Origin": "https://ynjn.jp",
+            "Referer": "https://ynjn.jp/"
+          };
+          const rawBuf = await Utils.fetchBuffer(apiUrl, headers);
+          const json = JSON.parse(new TextDecoder().decode(rawBuf));
+          pages = json?.data?.pages?.filter(p => p.manga_page?.page_image_url) || [];
+        } catch (e) {}
+      }
     }
 
+    if (!pages?.length) return;
     DOC.getElementById('manga-inspector-root')?.remove();
 
     try {
       const Utils = window.MangaUtils || globalThis.MangaUtils;
-      const apiUrl = `https://webapi.ynjn.jp/viewer?title_id=${titleId}&episode_id=${episodeId}&viewerOnly=0`;
-      const headers = {
-        "Accept": "application/json, text/plain, */*",
-        "Origin": "https://ynjn.jp",
-        "Referer": "https://ynjn.jp/"
-      };
-
-      const rawBuf = await Utils.fetchBuffer(apiUrl, headers);
-      const json = JSON.parse(new TextDecoder().decode(rawBuf));
-      const pages = json?.data?.pages?.filter(p => p.manga_page?.page_image_url) || [];
-      if (!pages.length) return;
-
+      const isMember = (WIN.location.pathname || '').replace(/\/+$/, '') === '/membership';
       const createUI = window.createInspectorUI || globalThis.createInspectorUI;
+
       createUI({
-        title: "YANJAN! (YNJN) INSPECTOR",
+        title: isMember ? "YANJAN! MEMBERSHIP INSPECTOR" : "YANJAN! (YNJN) INSPECTOR",
         totalPages: pages.length,
         onPreview: async (pNo, onSuccess, onError) => {
           try {
@@ -233,6 +260,7 @@
   setInterval(() => {
     if (location.href !== lastUrl) {
       lastUrl = location.href;
+      capturedPages = null;
       boot();
     }
   }, 400);

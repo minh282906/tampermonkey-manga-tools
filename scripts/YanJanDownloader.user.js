@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YanJan! (YNJN) Universal Downloader
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
-// @version      1.0.0
+// @version      1.0.1
 // @icon         https://www.google.com/s2/favicons?domain=ynjn.jp&sz=128
 // @description  Tải manga trên nền tảng YanJan!.
 // @author       anonymous & AI
@@ -51,16 +51,35 @@
     lastEpisodeId: ""
   };
 
-  // BẮT TRỰC TIẾP REQUEST VIEWER CỦA WEB (KỂ CẢ KHI ĐANG Ở /title/:id)
+  // BẮT TRỰC TIẾP REQUEST VIEWER CỦA WEB (KỂ CẢ KHI ĐANG Ở /title/:id HOẶC /membership)
   let capturedViewerData = null;
   let capturedEpisodeId = null;
 
+  async function syncDataToUI() {
+    const ui = getUI();
+    if (!ui || !isEpisodeUrl()) return;
+    try {
+      const data = await fetchYnjnPages();
+      if (data && data.pages?.length > 0) {
+        state.chapterData = data;
+        ui.updateProgress({
+          completed: 0,
+          total: data.pages.length,
+          status: "Sẵn sàng."
+        });
+        ui.setBusy(false);
+      }
+    } catch (e) {}
+  }
+
   function handleViewerResponse(url, json) {
-    if (json?.data?.pages && Array.isArray(json.data.pages)) {
+    const pages = json?.data?.pages?.filter(p => p.manga_page?.page_image_url);
+    if (pages && pages.length > 0) {
       capturedViewerData = json.data;
       const u = new URL(url, WIN.location.href);
-      const ep = u.searchParams.get('episodeId') || u.searchParams.get('episode_id');
+      const ep = u.searchParams.get('episodeId') || u.searchParams.get('episode_id') || u.pathname.match(/\/(\d{5,})/)?.[1];
       if (ep) capturedEpisodeId = ep;
+      syncDataToUI();
     }
   }
 
@@ -70,7 +89,7 @@
       const res = await origFetch.apply(this, args);
       try {
         const u = typeof args[0] === 'string' ? args[0] : (args[0]?.url || '');
-        if (u.includes('webapi.ynjn.jp/viewer')) {
+        if (u.includes('webapi.ynjn.jp')) {
           res.clone().json().then(json => handleViewerResponse(u, json)).catch(() => {});
         }
       } catch (e) {}
@@ -125,8 +144,9 @@
    * ========================================================================= */
   
   function isEpisodeUrl() {
-    const path = WIN.location.pathname;
-    return /\/viewer\/\d+\/\d+/.test(path) || /\/title\/\d+/.test(path);
+    const path = (WIN.location.pathname || '').replace(/\/+$/, '');
+    if (path === '/membership/about' || path === '/membership/issues') return false;
+    return /\/viewer\/\d+\/\d+/.test(path) || /\/title\/\d+/.test(path) || path === '/membership';
   }
 
   function cleanString(str) {
@@ -143,6 +163,14 @@
     const path = WIN.location.pathname;
     let titleId = "";
     let episodeId = "";
+
+    // 0. Nếu là trang /membership
+    if (path.startsWith('/membership')) {
+      const qId = new URL(WIN.location.href).searchParams.get('id');
+      if (qId) episodeId = qId;
+      else if (capturedEpisodeId) episodeId = capturedEpisodeId;
+      return { titleId: "membership", episodeId };
+    }
 
     // 1. Nếu URL là dạng chuẩn /viewer/:titleId/:episodeId
     const vMatch = path.match(/\/viewer\/(\d+)\/(\d+)/);
@@ -191,6 +219,44 @@
   // BẮT BUỘC: [Tên Truyện] - [Tên Tập/Chap].zip
   function getCleanTitle(manifestChapterName) {
     try {
+      const isMember = (WIN.location.pathname || '').replace(/\/+$/, '') === '/membership';
+      if (isMember) {
+        let magTitle = "";
+        let issueName = "";
+
+        // 1. Quét theo DOM thực tế từ DevTools: class typography-heading và typography-body
+        const magEl = DOC.querySelector('[class*="typography-heading"], [class*="heading"]');
+        if (magEl && cleanString(magEl.textContent)) {
+          magTitle = cleanString(magEl.textContent);
+        }
+
+        const parent = magEl?.closest('[class*="flex-col"]') || magEl?.parentElement;
+        if (parent) {
+          const bodyEls = parent.querySelectorAll('[class*="typography-body"]');
+          for (const el of bodyEls) {
+            const txt = cleanString(el.textContent);
+            if (/No\.\s*\d+/i.test(txt)) {
+              issueName = txt;
+              break;
+            }
+          }
+        }
+
+        // 2. Dự phòng: Tìm element chứa pattern "No.xx" hoặc "YYYY No.xx"
+        if (!issueName) {
+          const allEls = DOC.querySelectorAll('div, span, p');
+          for (const el of allEls) {
+            if (el.children.length === 0 && /\b(?:\d{4}\s+)?No\.\s*\d+\b/i.test(el.textContent)) {
+              issueName = cleanString(el.textContent);
+              break;
+            }
+          }
+        }
+
+        if (!magTitle) magTitle = "ヤングジャンプ";
+        return issueName ? `${magTitle} - ${issueName}` : magTitle;
+      }
+
       let seriesTitle = "";
       let episodeTitle = cleanString(manifestChapterName);
 
@@ -235,18 +301,20 @@
    * ========================================================================= */
   async function fetchYnjnPages() {
     const Utils = window.MangaUtils || globalThis.MangaUtils;
+    const isMember = WIN.location.pathname.startsWith('/membership');
     const { titleId, episodeId } = getUrlParams();
     if (!titleId) throw new Error("Không tìm thấy ID truyện YNJN.");
 
     let data = null;
 
     // 1. Tận dụng gói tin Hook mạng nếu có sẵn (0ms)
-    if (capturedViewerData && (!episodeId || String(capturedEpisodeId) === String(episodeId))) {
+    if (capturedViewerData && (isMember || !episodeId || String(capturedEpisodeId) === String(episodeId))) {
       data = capturedViewerData;
     }
 
-    // 2. Nếu chưa có, gửi request API
+    // 2. Nếu chưa có, gửi request API (cho truyện chương thông thường)
     if (!data) {
+      if (isMember) throw new Error("Đang đợi gói tin tạp chí Membership...");
       if (!episodeId) throw new Error("Chưa xác định được Episode ID (Vui lòng đợi web nạp tập 1).");
       const apiUrl = `https://webapi.ynjn.jp/viewer?title_id=${titleId}&episode_id=${episodeId}&viewerOnly=0`;
       const headers = {
@@ -277,8 +345,8 @@
     }
 
     return {
-      chapterName: data.viewer_navigation?.name || "第1話",
-      episodeId: episodeId || "ep1",
+      chapterName: data.viewer_navigation?.name || (isMember ? "ヤングジャンプ" : "第1話"),
+      episodeId: episodeId || capturedEpisodeId || "ep1",
       pages
     };
   }
@@ -424,7 +492,7 @@
       let data = null;
       let retries = 0;
 
-      while (retries < 25) {
+      while (retries < 40) {
         try {
           data = await fetchYnjnPages();
           if (data && data.pages?.length > 0) break;
@@ -449,7 +517,7 @@
       }
     } catch (err) {
       console.error("[ynjn-dl] Boot error:", err);
-      if (ui) {
+      if (ui && !state.chapterData) {
         ui.updateProgress({ status: "Lỗi: " + (err?.message || "Không thể tải trang.") });
       }
     }

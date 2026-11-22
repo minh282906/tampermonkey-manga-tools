@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MANGA Plus Universal Downloader
 // @namespace    https://github.com/minh282906/tampermonkey-manga-tools
-// @version      2.0.0
+// @version      2.0.1
 // @icon         https://mangaplus.shueisha.co.jp/favicon.ico
 // @description  Tải manga chất lượng High (cao nhất) trên MANGA Plus by SHUEISHA.
 // @author       anonymous & AI
@@ -48,27 +48,70 @@
     capturedChapterId: null,
     ui: null,
     lastUrl: "",
-    lastChapterId: ""
+    lastChapterId: "",
+    bootGeneration: 0
   };
+
+  /* =========================================================================
+   * BỘ ĐỆM CACHE BASE64 (TƯƠNG THÍCH CẢ ARRAY CŨ LẪN BASE64 MỚI)
+   * ========================================================================= */
+  function encodeArrayBufferToBase64(buffer) {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    const len = bytes.byteLength;
+    for (let i = 0; i < len; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return WIN.btoa(binary);
+  }
+
+  function decodeBase64ToArrayBuffer(b64) {
+    const binary = WIN.atob(b64);
+    const len = binary.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes.buffer;
+  }
+
+  function loadCachedBuffer(cid) {
+    try {
+      const rawStr = sessionStorage.getItem(`mplus_raw_${cid}`);
+      if (rawStr) return decodeBase64ToArrayBuffer(rawStr);
+    } catch (e) {}
+    return null;
+  }
 
   /* =========================================================================
    * 2. MAIN-WORLD DIRECT HOOK: ĐỒNG BỘ TRỰC TIẾP TRÊN UNSAFEWINDOW
    * ========================================================================= */
-  function handleViewerPayload(rawBuffer) {
+  function handleViewerPayload(rawBuffer, reqUrl) {
     if (!rawBuffer) return;
-    state.capturedPayloadRaw = rawBuffer;
-    const cid = getChapterId();
-    if (cid) {
-      state.capturedChapterId = cid;
-      try {
-        const uint8 = new Uint8Array(rawBuffer);
-        sessionStorage.setItem(`mplus_raw_${cid}`, JSON.stringify(Array.from(uint8)));
-      } catch (e) {}
-    }
+    const urlCid = (typeof reqUrl === 'string') ? reqUrl.match(/chapter_id=(\d+)/i)?.[1] : null;
+    const cid = urlCid || getChapterId();
+    if (!cid) return;
 
+    // Nếu đã có dữ liệu hoàn chỉnh của đúng chương này thì bỏ qua (tránh re-boot khi web tải muộn)
     if (state.chapterData && String(state.chapterData.chapterId) === String(cid)) {
       return;
     }
+
+    // Kiểm tra tính hợp lệ của Protobuf trước khi nhận (chống bắt nhầm payload lỗi / account banned)
+    const parsed = parseProtobufData(rawBuffer);
+    if (!parsed || !parsed.pages || parsed.pages.length === 0) return;
+
+    state.capturedPayloadRaw = rawBuffer;
+    state.capturedChapterId = cid;
+
+    try {
+      sessionStorage.setItem(`mplus_raw_${cid}`, encodeArrayBufferToBase64(rawBuffer));
+    } catch (e) {}
+
+    state.chapterData = {
+      chapterId: cid,
+      ...parsed
+    };
 
     if (isEpisodeUrl() && !state.running) {
       boot();
@@ -98,7 +141,7 @@
           try {
             const clone = res.clone();
             const buf = await clone.arrayBuffer();
-            handleViewerPayload(buf);
+            handleViewerPayload(buf, u);
           } catch (e) {}
         }
         return res;
@@ -123,7 +166,7 @@
           if (this._mplus_url && isViewerReq(this._mplus_url)) {
             try {
               let raw = (this.responseType === '' || this.responseType === 'text') ? this.responseText : this.response;
-              if (raw) handleViewerPayload(raw);
+              if (raw) handleViewerPayload(raw, this._mplus_url);
             } catch (e) {}
           }
         });
@@ -270,10 +313,23 @@
     if (!rawInput) return null;
 
     let uint8;
-    if (rawInput instanceof ArrayBuffer) uint8 = new Uint8Array(rawInput);
-    else if (ArrayBuffer.isView(rawInput)) uint8 = new Uint8Array(rawInput.buffer, rawInput.byteOffset, rawInput.byteLength);
-    else if (Array.isArray(rawInput)) uint8 = new Uint8Array(rawInput);
-    else return null;
+    try {
+      if (rawInput instanceof Uint8Array) {
+        uint8 = rawInput;
+      } else if (rawInput.byteLength !== undefined && rawInput.buffer !== undefined) {
+        uint8 = new Uint8Array(rawInput.buffer, rawInput.byteOffset || 0, rawInput.byteLength);
+      } else if (rawInput.byteLength !== undefined) {
+        uint8 = new Uint8Array(rawInput);
+      } else if (Array.isArray(rawInput)) {
+        uint8 = new Uint8Array(rawInput);
+      } else if (typeof rawInput === 'string') {
+        uint8 = new TextEncoder().encode(rawInput);
+      } else {
+        uint8 = new Uint8Array(rawInput);
+      }
+    } catch (e) {
+      return null;
+    }
 
     const textLatin1 = new TextDecoder('latin1').decode(uint8);
     const textUtf8 = new TextDecoder('utf-8', { fatal: false }).decode(uint8);
@@ -326,29 +382,41 @@
     };
   }
 
+  function getSessionId() {
+    try {
+      const v = localStorage.getItem("SESSION_ID_KEY") || WIN.localStorage?.getItem("SESSION_ID_KEY");
+      if (v) return v;
+    } catch (e) {}
+
+    const newId = (typeof crypto !== "undefined" && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : (WIN.crypto?.randomUUID ? WIN.crypto.randomUUID() : (Math.random().toString(36).substring(2) + Date.now().toString(36)));
+
+    try { localStorage.setItem("SESSION_ID_KEY", newId); } catch (e) {}
+    try { WIN.localStorage?.setItem("SESSION_ID_KEY", newId); } catch (e) {}
+    return newId;
+  }
+
   /* =========================================================================
    * 7. DUAL-FLIGHT SCANNER & ĐỒNG BỘ TIẾN TRÌNH UI
    * ========================================================================= */
   async function fetchManifestDirect(chapterId) {
-    let targetUrl = "";
-
-    if (typeof WIN.performance?.getEntriesByType === 'function') {
-      const entries = WIN.performance.getEntriesByType('resource');
-      const vEntry = entries.find(r => r.name && (r.name.includes('/api/manga_viewer') || (r.name.includes('tokyo-cdn.com') && r.name.includes('viewer'))));
-      if (vEntry) {
-        targetUrl = vEntry.name.replace(/img_quality=(?:low|medium|high)/g, 'img_quality=super_high');
-      }
-    }
-
-    if (!targetUrl) {
-      targetUrl = `https://jumpg-webapi.tokyo-cdn.com/api/manga_viewer_v3?chapter_id=${chapterId}&split=yes&img_quality=super_high&viewer_mode=horizontal&clang=eng`;
-    }
+    const targetUrl = `https://jumpg-webapi.tokyo-cdn.com/api/manga_viewer_v3?chapter_id=${chapterId}&split=yes&img_quality=super_high&viewer_mode=horizontal&clang=eng`;
+    const sessionId = getSessionId();
 
     try {
-      const res = await WIN.fetch(targetUrl, { mode: 'cors' });
+      const res = await WIN.fetch(targetUrl, {
+        mode: 'cors',
+        headers: {
+          "SESSION-TOKEN": sessionId
+        }
+      });
       if (res.ok) {
         const buf = await res.arrayBuffer();
-        if (buf && buf.byteLength > 100) return buf;
+        if (buf && buf.byteLength > 100) {
+          const parsed = parseProtobufData(buf);
+          if (parsed && parsed.pages?.length > 0) return buf;
+        }
       }
     } catch (e) {}
 
@@ -361,10 +429,18 @@
           headers: {
             "Origin": "https://mangaplus.shueisha.co.jp",
             "Referer": `https://mangaplus.shueisha.co.jp/viewer/${chapterId}`,
+            "SESSION-TOKEN": sessionId,
+            "User-Agent": navigator.userAgent,
             "Accept": "*/*"
           },
           timeout: 15000,
-          onload: res => (res.status >= 200 && res.status < 300 && res.response) ? resolve(res.response) : reject(new Error(`HTTP ${res.status}`)),
+          onload: res => {
+            if (res.status >= 200 && res.status < 300 && res.response) {
+              const parsed = parseProtobufData(res.response);
+              if (parsed && parsed.pages?.length > 0) return resolve(res.response);
+            }
+            reject(new Error(`HTTP ${res.status} hoặc payload không hợp lệ`));
+          },
           onerror: reject,
           ontimeout: () => reject(new Error("Timeout"))
         });
@@ -374,41 +450,69 @@
     return null;
   }
 
+  let syncPromise = null;
   async function syncChapterData() {
-    const currentChapterId = getChapterId();
-    if (!currentChapterId) return;
-
-    let rawBuffer = state.capturedPayloadRaw;
-
-    if (!rawBuffer) {
+    if (syncPromise) return syncPromise;
+    syncPromise = (async () => {
       try {
-        const cachedStr = sessionStorage.getItem(`mplus_raw_${currentChapterId}`);
-        if (cachedStr) {
-          const arr = JSON.parse(cachedStr);
-          if (Array.isArray(arr)) rawBuffer = new Uint8Array(arr).buffer;
+        const currentChapterId = getChapterId();
+        if (!currentChapterId) return;
+
+        // 1. Nếu đã có dữ liệu hoàn chỉnh của đúng chương này thì bỏ qua
+        if (state.chapterData && String(state.chapterData.chapterId) === String(currentChapterId) && state.chapterData.pages?.length > 0) {
+          return;
         }
-      } catch (e) {}
-    }
 
-    if (!rawBuffer) {
-      rawBuffer = await fetchManifestDirect(currentChapterId);
-      if (rawBuffer) state.capturedPayloadRaw = rawBuffer;
-    }
+        // 2. [CỨU TINH F5 - 0ms]: Kiểm tra bộ nhớ đệm sessionStorage hoặc gói tin vừa hứng
+        let rawBuffer = (state.capturedPayloadRaw && String(state.capturedChapterId) === String(currentChapterId))
+          ? state.capturedPayloadRaw
+          : loadCachedBuffer(currentChapterId);
 
-    if (!rawBuffer) return;
+        // 3. TỰ CHỦ LẤY MANIFEST SIÊU TỐC (~200ms) BẰNG SESSION-TOKEN
+        // Thay vì bị động chờ web viewer 4.5s (dễ bị timeout khi cold paste),
+        // chủ động gọi fetchManifestDirect ngay để sẵn sàng lập tức trong 200ms!
+        if (!rawBuffer) {
+          rawBuffer = await fetchManifestDirect(currentChapterId);
+          if (rawBuffer) {
+            state.capturedPayloadRaw = rawBuffer;
+            state.capturedChapterId = currentChapterId;
+            try {
+              sessionStorage.setItem(`mplus_raw_${currentChapterId}`, encodeArrayBufferToBase64(rawBuffer));
+            } catch (e) {}
+          }
+        }
 
-    const parsed = parseProtobufData(rawBuffer);
-    if (!parsed || parsed.pages.length === 0) return;
+        // 4. DỰ PHÒNG: Nếu direct fetch chưa về (mạng chập chờn), đợi tối đa 1500ms gói tin tự nhiên từ web
+        if (!rawBuffer) {
+          const startWait = Date.now();
+          while (Date.now() - startWait < 1500) {
+            if (state.capturedPayloadRaw && String(state.capturedChapterId) === String(currentChapterId)) {
+              rawBuffer = state.capturedPayloadRaw;
+              break;
+            }
+            await sleep(100);
+          }
+        }
 
-    state.chapterData = {
-      chapterId: currentChapterId,
-      pages: parsed.pages,
-      vwToken: parsed.vwToken,
-      globalKey: parsed.globalKey,
-      titleName: parsed.titleName,
-      chapterName: parsed.chapterName,
-      chapterSubTitle: parsed.chapterSubTitle
-    };
+        if (!rawBuffer) return;
+
+        const parsed = parseProtobufData(rawBuffer);
+        if (!parsed || !parsed.pages || parsed.pages.length === 0) return;
+
+        state.chapterData = {
+          chapterId: currentChapterId,
+          pages: parsed.pages,
+          vwToken: parsed.vwToken,
+          globalKey: parsed.globalKey,
+          titleName: parsed.titleName,
+          chapterName: parsed.chapterName,
+          chapterSubTitle: parsed.chapterSubTitle
+        };
+      } finally {
+        syncPromise = null;
+      }
+    })();
+    return syncPromise;
   }
 
   /* =========================================================================
@@ -548,23 +652,30 @@
       return;
     }
 
+    const currentCid = getChapterId();
+    if (!currentCid) {
+      if (ui?.panel) ui.panel.style.display = "none";
+      return;
+    }
+
+    // Đánh dấu ngay ID và URL hiện tại để chặn RouteWatcher kích hoạt nhầm khi Vue hydration
+    state.lastChapterId = currentCid;
+    state.lastUrl = WIN.location.href;
+
+    const currentToken = ++state.bootGeneration;
+
     if (ui?.panel) {
       ui.panel.style.display = "block";
-      ui.setBusy(true);
-      ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
+      // Nếu đã có sẵn chapterData của đúng tập này (ví dụ F5 hoặc vừa bắt gói tin), không giật UI về "Đang kiểm tra..."
+      if (!state.chapterData || String(state.chapterData.chapterId) !== String(currentCid)) {
+        ui.setBusy(true);
+        ui.updateProgress({ completed: 0, total: 0, status: "Đang kiểm tra..." });
+      }
     }
 
     try {
-      const chapterId = getChapterId();
-      if (!chapterId) throw new Error("Không tìm thấy ID chương.");
-
-      let retries = 0;
-      while (retries < 25) {
-        await syncChapterData();
-        if (state.chapterData?.pages?.length > 0) break;
-        await sleep(150);
-        retries++;
-      }
+      await syncChapterData();
+      if (currentToken !== state.bootGeneration) return; // Đã có phiên boot mới hơn, dừng lại
 
       if (!state.chapterData?.pages?.length) {
         throw new Error("Không lấy được dữ liệu trang.");
@@ -580,6 +691,8 @@
       const realExt = Utils.detectExt(dec.buffer);
       if (!realExt) throw new Error("Không thể nhận diện Magic Bytes ảnh.");
 
+      if (currentToken !== state.bootGeneration) return;
+
       if (ui) {
         ui.updateProgress({
           completed: 0,
@@ -590,8 +703,9 @@
         ui.setBusy(false);
       }
     } catch (err) {
+      if (currentToken !== state.bootGeneration) return;
       console.error("[mplus-dl] Boot error:", err);
-      if (ui) {
+      if (ui && !state.chapterData?.pages?.length) {
         ui.updateProgress({ status: "Lỗi: " + (err?.message || "không thể tải trang.") });
       }
     }
@@ -607,18 +721,30 @@
         state.lastChapterId = "";
         state.lastUrl = ""; 
         state.capturedPayloadRaw = null;
+        state.capturedChapterId = null;
         state.running = false;
         return;
       }
 
       const currentCid = getChapterId();
-      if (state.lastChapterId && state.lastChapterId === currentCid) return;
+      if (!currentCid) return;
+
+      // Tuyệt đối không reset hay chạy lại boot nếu vẫn đang ở cùng 1 chương (tránh nuốt gói tin khi Vue hydration)
+      if (state.lastChapterId === currentCid || (state.chapterData && String(state.chapterData.chapterId) === String(currentCid))) {
+        state.lastUrl = newUrl;
+        return;
+      }
 
       state.lastUrl = newUrl;
       state.lastChapterId = currentCid;
       state.chapterData = null;
-      state.capturedPayloadRaw = null;
       state.running = false;
+
+      // Chỉ xóa capturedPayloadRaw nếu nó là của tập cũ, không xóa nhầm gói tin mới vừa hứng được
+      if (state.capturedChapterId && String(state.capturedChapterId) !== String(currentCid)) {
+        state.capturedPayloadRaw = null;
+        state.capturedChapterId = null;
+      }
 
       const ui = getUI();
       if (ui) {
